@@ -19,10 +19,16 @@ export default function LiveTranscription({ transcriptions, speakingUsers }: Pro
   const recentTranscriptions = transcriptions.slice(-10);
 
   useEffect(() => {
+    console.log('[LiveTranscription] Transcrições atualizadas:', transcriptions.length);
     if (scrollRef.current) {
       scrollRef.current.scrollTop = scrollRef.current.scrollHeight;
     }
   }, [transcriptions]);
+
+  useEffect(() => {
+    console.log('[LiveTranscription] Componente montado');
+    return () => console.log('[LiveTranscription] Componente desmontado');
+  }, []);
 
   const getUserName = (userId: string) => {
     return `Usuário ${userId.substr(-4)}`;

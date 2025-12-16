@@ -12,6 +12,7 @@ import ChatHeader from './components/ChatHeader';
 import MessageList from './components/MessageList';
 import MessageInput from './components/MessageInput';
 import DebugPanel from './components/DebugPanel';
+import TranscriptionTest from './components/TranscriptionTest';
 import { useWebSocket } from './hooks/useWebSocket';
 import { useVideoCall } from './hooks/useVideoCall';
 import { useAudioStream } from './hooks/useAudioStream';
@@ -149,6 +150,18 @@ function RoomPage() {
     }
   };
 
+  const handleAddTestTranscription = (text: string) => {
+    const testTranscription: Transcription = {
+      transcriptionId: 'test_' + Date.now(),
+      userId: userId,
+      transcribedText: text,
+      timestamp: Date.now(),
+      speakerLabel: 'Teste'
+    };
+    console.log('[TEST] Adicionando transcrição:', testTranscription);
+    setTranscriptions(prev => [...prev, testTranscription]);
+  };
+
   return (
     <div className="flex h-screen bg-slate-50">
       <Toast toasts={toasts} onDismiss={dismissToast} />
@@ -161,6 +174,7 @@ function RoomPage() {
         messagesCount={messages.length}
         transcriptionsCount={transcriptions.length}
       />
+      <TranscriptionTest onAddTranscription={handleAddTestTranscription} />
       
       {/* Sidebar */}
       <Sidebar
@@ -214,7 +228,7 @@ function RoomPage() {
                 videoQuality={videoQuality}
               />
             </div>
-            <div className="border-t border-gray-200">
+            <div className="border-t border-gray-200 max-h-64 overflow-hidden">
               <LiveTranscription 
                 transcriptions={transcriptions} 
                 speakingUsers={speakingUsers}
