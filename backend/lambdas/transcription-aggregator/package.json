@@ -1,0 +1,12 @@
+{
+  "name": "transcription-aggregator",
+  "version": "1.0.0",
+  "description": "Transcription aggregator",
+  "main": "index.js",
+  "dependencies": {
+    "@aws-sdk/client-dynamodb": "^3.490.0",
+    "@aws-sdk/lib-dynamodb": "^3.490.0",
+    "@aws-sdk/client-lambda": "^3.490.0",
+    "@aws-sdk/client-apigatewaymanagementapi": "^3.490.0"
+  }
+}

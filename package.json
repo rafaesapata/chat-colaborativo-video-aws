@@ -1,0 +1,22 @@
+{
+  "name": "chat-colaborativo-serverless",
+  "version": "1.0.0",
+  "description": "Chat colaborativo serverless com transcrição em tempo real",
+  "scripts": {
+    "deploy": "bash scripts/deploy.sh",
+    "test:websocket": "node scripts/test-websocket.js",
+    "install:lambdas": "for dir in backend/lambdas/*/; do (cd $dir && npm install); done"
+  },
+  "keywords": [
+    "aws",
+    "serverless",
+    "chat",
+    "transcription",
+    "websocket"
+  ],
+  "author": "",
+  "license": "MIT",
+  "dependencies": {
+    "ws": "^8.18.3"
+  }
+}

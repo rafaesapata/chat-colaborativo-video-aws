@@ -1,0 +1,11 @@
+{
+  "name": "ai-analysis",
+  "version": "1.0.0",
+  "description": "AI analysis using Amazon Bedrock",
+  "main": "index.js",
+  "dependencies": {
+    "@aws-sdk/client-bedrock-runtime": "^3.490.0",
+    "@aws-sdk/client-dynamodb": "^3.490.0",
+    "@aws-sdk/lib-dynamodb": "^3.490.0"
+  }
+}

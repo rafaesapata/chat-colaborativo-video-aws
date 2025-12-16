@@ -1,0 +1,13 @@
+node_modules/
+.aws-sam/
+.env
+*.log
+dist/
+build/
+.DS_Store
+frontend/.env
+backend/lambdas/*/node_modules/
+*.zip
+.vscode/
+test-connection.js
+test-final.js
