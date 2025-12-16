@@ -109,7 +109,7 @@ export default function LiveTranscription({ transcriptions, speakingUsers }: Pro
               <p className={`text-gray-700 leading-relaxed ${
                 trans.isPartial ? 'italic text-gray-500' : ''
               }`}>
-                {trans.transcribedText}
+                {trans.transcribedText || '(sem texto)'}
                 {trans.isPartial && (
                   <span className="ml-1 text-yellow-600">...</span>
                 )}
@@ -123,12 +123,34 @@ export default function LiveTranscription({ transcriptions, speakingUsers }: Pro
             <svg className="w-12 h-12 mx-auto text-gray-300 mb-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
               <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 11a7 7 0 01-7 7m0 0a7 7 0 01-7-7m7 7v4m0 0H8m4 0h4m-4-8a3 3 0 01-3-3V5a3 3 0 116 0v6a3 3 0 01-3 3z" />
             </svg>
-            <p className="text-gray-400 text-sm">
-              Aguardando transcrições de áudio...
+            <p className="text-gray-400 text-sm font-semibold mb-2">
+              Nenhuma transcrição ainda
             </p>
-            <p className="text-gray-300 text-xs mt-1">
-              Fale algo para ver a transcrição aparecer aqui
-            </p>
+            <div className="bg-blue-50 border border-blue-200 rounded-lg p-3 text-left text-xs space-y-2">
+              <p className="font-semibold text-blue-900">💡 Como testar:</p>
+              <ol className="list-decimal list-inside space-y-1 text-blue-700">
+                <li>Clique no botão <span className="font-bold">🧪 Testar Transcrição</span> (roxo, canto inferior direito)</li>
+                <li>Clique em "▶️ Adicionar Todas"</li>
+                <li>Veja as transcrições aparecerem aqui!</li>
+              </ol>
+            </div>
+          </div>
+        )}
+        
+        {transcriptions.length > 0 && transcriptions.every(t => !t.transcribedText) && (
+          <div className="bg-yellow-50 border border-yellow-200 rounded-lg p-3 text-sm">
+            <div className="flex items-start gap-2">
+              <svg className="w-5 h-5 text-yellow-600 flex-shrink-0 mt-0.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" />
+              </svg>
+              <div>
+                <p className="font-semibold text-yellow-900 mb-1">⚠️ Transcrições sem texto</p>
+                <p className="text-yellow-700 text-xs">
+                  As transcrições estão sendo criadas mas sem conteúdo. 
+                  Use o botão <span className="font-bold">🧪 Testar Transcrição</span> para adicionar textos de exemplo.
+                </p>
+              </div>
+            </div>
           </div>
         )}
       </div>

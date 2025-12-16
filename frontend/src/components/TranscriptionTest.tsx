@@ -19,9 +19,13 @@ export default function TranscriptionTest({ onAddTranscription }: TranscriptionT
     return (
       <button
         onClick={() => setIsOpen(true)}
-        className="fixed bottom-20 right-4 bg-purple-600 text-white px-3 py-2 rounded-lg shadow-lg text-xs font-mono hover:bg-purple-700 transition z-50"
+        className="fixed bottom-20 right-4 bg-purple-600 text-white px-4 py-3 rounded-lg shadow-2xl text-sm font-semibold hover:bg-purple-700 transition z-50 animate-pulse hover:animate-none flex items-center gap-2"
       >
-        🧪 Testar Transcrição
+        <span className="text-lg">🧪</span>
+        <div className="text-left">
+          <div>Testar Transcrição</div>
+          <div className="text-xs font-normal opacity-90">Clique aqui!</div>
+        </div>
       </button>
     );
   }
