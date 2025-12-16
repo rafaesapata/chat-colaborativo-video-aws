@@ -7,6 +7,11 @@ import LiveTranscription from './components/LiveTranscription';
 import ParticipantsList from './components/ParticipantsList';
 import AIInsightsPanel from './components/AIInsightsPanel';
 import Toast from './components/Toast';
+import Sidebar from './components/Sidebar';
+import ChatHeader from './components/ChatHeader';
+import MessageList from './components/MessageList';
+import MessageInput from './components/MessageInput';
+import DebugPanel from './components/DebugPanel';
 import { useWebSocket } from './hooks/useWebSocket';
 import { useVideoCall } from './hooks/useVideoCall';
 import { useAudioStream } from './hooks/useAudioStream';
@@ -38,11 +43,6 @@ interface Transcription {
   timestamp: number;
   speakerLabel?: string;
 }
-
-import Sidebar from './components/Sidebar';
-import ChatHeader from './components/ChatHeader';
-import MessageList from './components/MessageList';
-import MessageInput from './components/MessageInput';
 
 function RoomPage() {
   const { roomId: urlRoomId } = useParams<{ roomId: string }>();
@@ -152,6 +152,15 @@ function RoomPage() {
   return (
     <div className="flex h-screen bg-slate-50">
       <Toast toasts={toasts} onDismiss={dismissToast} />
+      <DebugPanel
+        wsUrl={wsUrl}
+        isConnected={isConnected}
+        roomId={roomId}
+        userId={userId}
+        transcriptionEnabled={transcriptionEnabled}
+        messagesCount={messages.length}
+        transcriptionsCount={transcriptions.length}
+      />
       
       {/* Sidebar */}
       <Sidebar

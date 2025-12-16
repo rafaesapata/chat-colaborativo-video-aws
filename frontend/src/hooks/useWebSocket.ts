@@ -11,13 +11,17 @@ export function useWebSocket(
   const messageHandlers = useRef<Set<(data: any) => void>>(new Set());
 
   useEffect(() => {
-    if (!url || !userId) return;
+    if (!url || !userId) {
+      console.warn('[WebSocket] URL ou userId não definidos:', { url, userId });
+      return;
+    }
 
     const wsUrl = `${url}?userId=${userId}&roomId=${roomId}`;
+    console.log('[WebSocket] Conectando em:', wsUrl);
     const ws = new WebSocket(wsUrl);
 
     ws.onopen = () => {
-      console.log('WebSocket connected');
+      console.log('[WebSocket] ✅ Conectado com sucesso!');
       setIsConnected(true);
     };
 
@@ -33,11 +37,11 @@ export function useWebSocket(
     };
 
     ws.onerror = (error) => {
-      console.error('WebSocket error:', error);
+      console.error('[WebSocket] ❌ Erro:', error);
     };
 
-    ws.onclose = () => {
-      console.log('WebSocket disconnected');
+    ws.onclose = (event) => {
+      console.log('[WebSocket] 🔴 Desconectado:', { code: event.code, reason: event.reason });
       setIsConnected(false);
     };
 
