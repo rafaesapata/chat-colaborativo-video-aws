@@ -215,7 +215,7 @@ function RoomPage() {
 
           {/* Video Panel */}
           <div className="w-96 flex flex-col border-l border-gray-200 bg-white">
-            <div className="flex-1 overflow-hidden">
+            <div className="h-80 overflow-hidden border-b border-gray-200">
               <VideoCall
                 localStream={localStream}
                 remoteStreams={remoteStreams}
@@ -228,7 +228,7 @@ function RoomPage() {
                 videoQuality={videoQuality}
               />
             </div>
-            <div className="border-t border-gray-200 max-h-64 overflow-hidden">
+            <div className="flex-1 overflow-auto bg-slate-50">
               <LiveTranscription 
                 transcriptions={transcriptions} 
                 speakingUsers={speakingUsers}

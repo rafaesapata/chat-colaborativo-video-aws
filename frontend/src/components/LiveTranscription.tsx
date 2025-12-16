@@ -57,13 +57,16 @@ export default function LiveTranscription({ transcriptions, speakingUsers }: Pro
   };
 
   return (
-    <div className="bg-gradient-to-b from-gray-50 to-white border-t border-gray-200 p-4 shadow-inner">
-      <div className="flex items-center justify-between mb-3">
-        <h3 className="font-semibold text-sm flex items-center gap-2">
-          <svg className="w-5 h-5 text-purple-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+    <div className="h-full flex flex-col bg-white p-4">
+      <div className="flex items-center justify-between mb-3 pb-3 border-b border-gray-200">
+        <h3 className="font-bold text-base flex items-center gap-2">
+          <svg className="w-6 h-6 text-purple-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
             <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
           </svg>
-          Transcrição em Tempo Real
+          Transcrições
+          <span className="ml-2 px-2 py-0.5 bg-purple-100 text-purple-700 rounded-full text-xs font-semibold">
+            {transcriptions.length}
+          </span>
         </h3>
         {speakingUsers.size > 0 && (
           <div className="flex items-center gap-1 text-xs text-green-600 animate-pulse">
@@ -75,7 +78,7 @@ export default function LiveTranscription({ transcriptions, speakingUsers }: Pro
       
       <div 
         ref={scrollRef}
-        className="space-y-3 max-h-40 overflow-y-auto pr-2 custom-scrollbar"
+        className="flex-1 space-y-3 overflow-y-auto pr-2 custom-scrollbar"
       >
         {recentTranscriptions.map((trans) => {
           const isSpeaking = speakingUsers.has(trans.userId);
