@@ -1,140 +1,169 @@
-# 🎉 Chat Colaborativo Serverless AWS - COMPLETO!
+# 🎥 Chat Colaborativo por Vídeo - AWS Serverless
 
-Aplicação profissional de chat colaborativo similar ao Microsoft Teams, 100% serverless na AWS, com transcrição em tempo real usando IA.
+Aplicação profissional de chat colaborativo por vídeo, 100% serverless na AWS, com transcrição em tempo real usando IA.
 
-## ✅ STATUS: PRONTO PARA DEPLOY!
+[![Deploy Status](https://img.shields.io/badge/deploy-success-brightgreen)]()
+[![AWS](https://img.shields.io/badge/AWS-Serverless-orange)]()
+[![License](https://img.shields.io/badge/license-MIT-blue)]()
 
----
+## 🌐 Demo
 
-## 🚀 INÍCIO RÁPIDO
-
-### Opção 1: Deploy com Domínio Customizado (livechat.ai.udstec.io)
-```bash
-./scripts/deploy-complete.sh
-```
-**Resultado:** https://livechat.ai.udstec.io funcionando em 15 minutos!
-
-### Opção 2: Deploy Básico (sem domínio)
-```bash
-sam build --template infrastructure/template.yaml
-sam deploy --guided
-```
-
-### Opção 3: Testar Localmente
-```bash
-cd frontend
-npm run dev
-# Acesse: http://localhost:3000
-```
+**URL:** https://livechat.ai.udstec.io
 
 ---
 
-## 📚 DOCUMENTAÇÃO
+## ✨ Funcionalidades
 
-### 🌟 COMECE AQUI
-1. **README_DEPLOY_DOMINIO.md** ⭐ - Deploy com domínio customizado
-2. **DEPLOY_AGORA.md** - Guia rápido de deploy
-3. **INICIO_RAPIDO.md** - Use a aplicação em 3 minutos
+### 🎥 Vídeo Conferência
+- **WebRTC** para comunicação peer-to-peer
+- Suporte a **múltiplos participantes** simultâneos (5-100)
+- Controles de **câmera e microfone**
+- **Picture-in-picture** para vídeo local
+- Grid responsivo de vídeos
 
-### 📖 Guias Completos
-4. **DEPLOY_DOMINIO.md** - Deploy detalhado com domínio
-5. **COMO_USAR.md** - Como usar todas as funcionalidades
-6. **STATUS_FINAL.md** - Status completo do projeto
-
-### 🔧 Referência Técnica
-7. **RESUMO_DEPLOY_DOMINIO.md** - Resumo técnico
-8. **COMANDOS_RAPIDOS.md** - Comandos úteis
-9. **DEPLOYMENT_SUCCESS.md** - Info do primeiro deploy
-10. **docs/ARCHITECTURE.md** - Arquitetura detalhada
-11. **docs/API.md** - Documentação da API WebSocket
-12. **docs/DEPLOYMENT.md** - Guia de deployment
-
----
-
-## 🎯 Funcionalidades
-
-### ✅ Chat em Tempo Real
-- Mensagens instantâneas via WebSocket
-- Múltiplos usuários simultâneos (5-100)
-- Histórico persistente
+### 💬 Chat em Tempo Real
+- Mensagens instantâneas via **WebSocket**
+- Histórico persistente no **DynamoDB**
 - Status online/offline
+- Indicadores de digitação
 
-### ✅ Transcrição de Áudio
-- Amazon Transcribe Streaming
-- PT-BR e EN-US
+### 🎤 Transcrição de Áudio
+- **Amazon Transcribe Streaming**
+- Suporte a **PT-BR** e **EN-US**
 - Latência < 3 segundos
-- Identificação de até 5 falantes
-- Armazenamento no S3
+- Identificação de até **5 falantes**
+- Legendas em tempo real
 
-### ✅ Análise de IA
-- Amazon Bedrock (Claude 3 Sonnet)
+### 🤖 Análise de IA
+- **Amazon Bedrock** (Claude 3 Sonnet)
 - Resumos automáticos
 - Análise de sentimento
 - Extração de action items
 - Busca semântica
 
-### ✅ Gerenciamento
-- Criar/deletar salas
-- Adicionar/remover participantes
-- Controle de permissões
-- Autenticação via Cognito
-
 ---
 
 ## 🏗️ Arquitetura
 
-### Frontend
-- React + TypeScript
-- Tailwind CSS
-- WebSocket client
-- WebRTC para áudio
-- CloudFront + S3
+```
+┌─────────────────────────────────────────┐
+│  Usuários (WebRTC + WebSocket)          │
+└────────────────┬────────────────────────┘
+                 │
+                 ▼
+┌─────────────────────────────────────────┐
+│  CloudFront + Route53 + SSL             │
+│  livechat.ai.udstec.io                  │
+└────────────────┬────────────────────────┘
+                 │
+        ┌────────┴────────┐
+        ▼                 ▼
+┌──────────────┐  ┌──────────────────┐
+│  S3 Bucket   │  │  API Gateway     │
+│  (Frontend)  │  │  WebSocket       │
+└──────────────┘  └────────┬─────────┘
+                           │
+                           ▼
+                  ┌─────────────────┐
+                  │ Lambda Functions│
+                  │  (6 funções)    │
+                  └────────┬────────┘
+                           │
+        ┌──────────────────┼──────────────────┐
+        ▼                  ▼                  ▼
+┌──────────────┐  ┌──────────────┐  ┌──────────────┐
+│  DynamoDB    │  │  Transcribe  │  │   Bedrock    │
+│  (5 tabelas) │  │  Streaming   │  │   (Claude)   │
+└──────────────┘  └──────────────┘  └──────────────┘
+```
 
-### Backend
-- 6 Lambda Functions (Node.js 18.x)
-- 5 DynamoDB Tables
-- API Gateway WebSocket
-- S3 para áudio
-- Cognito para auth
+### Backend (AWS Serverless)
+- **6 Lambda Functions** (Node.js 18.x)
+  - connection-handler
+  - message-handler (com suporte WebRTC)
+  - audio-stream-processor
+  - transcription-aggregator
+  - ai-analysis
+  - room-manager
+- **5 DynamoDB Tables**
+  - Users, ChatRooms, Messages, Transcriptions, Connections
+- **API Gateway WebSocket**
+- **S3** para áudio e frontend
+- **CloudFront** para CDN
+- **Cognito** para autenticação
 
-### IA e Transcrição
-- Amazon Transcribe Streaming
-- Amazon Bedrock (Claude)
-- CloudWatch Logs
+### Frontend (React + TypeScript)
+- **React 18** + **TypeScript**
+- **Tailwind CSS** para estilização
+- **WebRTC** para vídeo P2P
+- **WebSocket** para sinalização
+- Componentes modulares
 
 ---
 
-## 📊 Estrutura do Projeto
+## 🚀 Deploy
 
+### Pré-requisitos
+- AWS CLI configurado
+- SAM CLI instalado
+- Node.js 18.x
+- Domínio no Route53 (opcional)
+
+### Deploy Automático
+
+```bash
+# 1. Clonar repositório
+git clone https://github.com/rafaesapata/chat-colaborativo-video-aws.git
+cd chat-colaborativo-video-aws
+
+# 2. Deploy completo (com domínio)
+./scripts/deploy-complete.sh
 ```
-├── infrastructure/
-│   ├── template.yaml              # CloudFormation básico
-│   └── complete-stack.yaml        # CloudFormation com domínio
-├── backend/
-│   └── lambdas/
-│       ├── connection-handler/    # WebSocket connections
-│       ├── message-handler/       # Mensagens de texto
-│       ├── audio-stream-processor/# Áudio e transcrição
-│       ├── transcription-aggregator/# Agregação
-│       ├── ai-analysis/           # Análise de IA
-│       └── room-manager/          # Gerenciamento de salas
-├── frontend/
-│   ├── src/
-│   │   ├── components/            # Componentes React
-│   │   └── hooks/                 # Custom hooks
-│   └── dist/                      # Build de produção
-├── scripts/
-│   ├── deploy.sh                  # Deploy básico
-│   ├── deploy-complete.sh         # Deploy com domínio
-│   └── test-websocket.js          # Teste de conexão
-└── docs/                          # Documentação técnica
+
+### Deploy Manual
+
+```bash
+# 1. Instalar dependências
+for dir in backend/lambdas/*/; do
+  (cd "$dir" && npm install --production)
+done
+
+# 2. Build SAM
+sam build --template infrastructure/complete-stack.yaml
+
+# 3. Deploy
+sam deploy \
+  --stack-name chat-colaborativo-prod \
+  --region us-east-1 \
+  --capabilities CAPABILITY_IAM \
+  --guided
+
+# 4. Build e deploy frontend
+cd frontend
+npm install
+npm run build
+aws s3 sync dist/ s3://FRONTEND_BUCKET --delete
 ```
+
+---
+
+## 📊 Recursos AWS Criados
+
+- **43 recursos** no total
+- **6 Lambda Functions**
+- **5 DynamoDB Tables**
+- **2 S3 Buckets**
+- **1 CloudFront Distribution**
+- **1 API Gateway WebSocket**
+- **1 Cognito User Pool**
+- **6 IAM Roles**
+- **1 Route53 Record** (se configurado)
 
 ---
 
 ## 💰 Custos Estimados
 
-### Infraestrutura (5 usuários, 8h/dia, 20 dias/mês)
+Para **5 usuários**, **8h/dia**, **20 dias/mês**:
 
 | Serviço | Custo Mensal |
 |---------|--------------|
@@ -147,6 +176,37 @@ npm run dev
 | S3 | $2.50 |
 | Route53 | $0.50 |
 | **TOTAL** | **~$74-78/mês** |
+
+---
+
+## 🧪 Testes
+
+### Testar WebSocket
+```bash
+node test-connection.js
+```
+
+### Testar Frontend Local
+```bash
+cd frontend
+npm run dev
+# Acesse: http://localhost:3000
+```
+
+### Testar Aplicação Deployada
+```bash
+open https://livechat.ai.udstec.io
+```
+
+---
+
+## 📚 Documentação
+
+- **[DEPLOY_AGORA.md](DEPLOY_AGORA.md)** - Guia rápido de deploy
+- **[COMO_USAR.md](COMO_USAR.md)** - Como usar a aplicação
+- **[docs/API.md](docs/API.md)** - Documentação da API WebSocket
+- **[docs/ARCHITECTURE.md](docs/ARCHITECTURE.md)** - Arquitetura detalhada
+- **[COMANDOS_RAPIDOS.md](COMANDOS_RAPIDOS.md)** - Comandos úteis
 
 ---
 
@@ -163,139 +223,108 @@ npm run dev
 
 ---
 
-## 🧪 Testes
+## 🛠️ Tecnologias
 
-### Testar WebSocket
-```bash
-node test-connection.js
-```
-
-### Testar Frontend
-```bash
-cd frontend && npm run dev
-```
-
-### Testar via CLI
-```bash
-wscat -c "wss://xxxxx.execute-api.us-east-1.amazonaws.com/prod?userId=test&roomId=room1"
-```
-
----
-
-## 📦 Recursos Deployados
-
-### Deploy Básico (template.yaml)
-- 6 Lambda Functions
-- 5 DynamoDB Tables
+### Backend
+- Node.js 18.x
+- AWS Lambda
+- DynamoDB
 - API Gateway WebSocket
-- S3 Bucket (áudio)
-- Cognito User Pool
-- IAM Roles
+- Amazon Transcribe
+- Amazon Bedrock (Claude 3)
+- S3
+- CloudFront
+- Route53
+- Cognito
 
-**Total: ~36 recursos**
-
-### Deploy Completo (complete-stack.yaml)
-- Tudo do básico +
-- CloudFront Distribution
-- S3 Bucket (frontend)
-- Route53 Record
-- ACM Certificate
-- CloudFront OAC
-
-**Total: ~45 recursos**
+### Frontend
+- React 18
+- TypeScript
+- Tailwind CSS
+- WebRTC
+- Vite
 
 ---
 
-## 🔄 Atualizações
+## 📝 Estrutura do Projeto
 
-### Atualizar Backend
-```bash
-sam build --template infrastructure/complete-stack.yaml
-sam deploy --stack-name chat-colaborativo-prod --no-confirm-changeset
 ```
-
-### Atualizar Frontend
-```bash
-cd frontend && npm run build
-aws s3 sync dist/ s3://BUCKET_NAME --delete
-aws cloudfront create-invalidation --distribution-id DIST_ID --paths "/*"
-```
-
----
-
-## 🗑️ Limpeza
-
-```bash
-# Esvaziar buckets
-aws s3 rm s3://FRONTEND_BUCKET --recursive
-aws s3 rm s3://AUDIO_BUCKET --recursive
-
-# Deletar stack
-aws cloudformation delete-stack --stack-name chat-colaborativo-prod
-```
-
----
-
-## 🆘 Suporte
-
-### Problemas Comuns
-- **WebSocket não conecta:** Verificar URL e credenciais
-- **Transcrição não funciona:** Verificar logs da Lambda
-- **IA não responde:** Habilitar Bedrock no console
-- **DNS não resolve:** Aguardar propagação (até 1h)
-
-### Ver Logs
-```bash
-sam logs --stack-name chat-colaborativo-prod --tail
-```
-
-### Comandos Úteis
-Ver **COMANDOS_RAPIDOS.md** para lista completa
-
----
-
-## ✅ Checklist de Deploy
-
-- [ ] AWS CLI configurado
-- [ ] SAM CLI instalado
-- [ ] Node.js 18.x instalado
-- [ ] Hosted Zone no Route53 (se usar domínio)
-- [ ] Executar script de deploy
-- [ ] Habilitar Bedrock
-- [ ] Criar usuários teste
-- [ ] Testar aplicação
-
----
-
-## 🎉 Pronto para Usar!
-
-**Deploy com domínio:**
-```bash
-./scripts/deploy-complete.sh
-```
-
-**Deploy básico:**
-```bash
-sam build --template infrastructure/template.yaml
-sam deploy --guided
-```
-
-**Testar localmente:**
-```bash
-cd frontend && npm run dev
+├── backend/
+│   └── lambdas/
+│       ├── connection-handler/
+│       ├── message-handler/
+│       ├── audio-stream-processor/
+│       ├── transcription-aggregator/
+│       ├── ai-analysis/
+│       └── room-manager/
+├── frontend/
+│   └── src/
+│       ├── components/
+│       │   ├── VideoCall.tsx
+│       │   ├── ChatRoom.tsx
+│       │   ├── LiveTranscription.tsx
+│       │   └── ...
+│       └── hooks/
+│           ├── useVideoCall.ts
+│           ├── useWebSocket.ts
+│           └── useAudioStream.ts
+├── infrastructure/
+│   ├── template.yaml
+│   └── complete-stack.yaml
+├── scripts/
+│   ├── deploy-complete.sh
+│   └── deploy.sh
+└── docs/
 ```
 
 ---
 
-## 📞 Links Úteis
+## 🤝 Contribuindo
 
-- **AWS Console:** https://console.aws.amazon.com/
-- **CloudFormation:** https://console.aws.amazon.com/cloudformation/
-- **Bedrock:** https://console.aws.amazon.com/bedrock/
-- **Cognito:** https://console.aws.amazon.com/cognito/
+Contribuições são bem-vindas! Por favor:
+
+1. Fork o projeto
+2. Crie uma branch (`git checkout -b feature/nova-funcionalidade`)
+3. Commit suas mudanças (`git commit -m 'feat: adiciona nova funcionalidade'`)
+4. Push para a branch (`git push origin feature/nova-funcionalidade`)
+5. Abra um Pull Request
+
+---
+
+## 📄 Licença
+
+Este projeto está sob a licença MIT. Veja o arquivo [LICENSE](LICENSE) para mais detalhes.
+
+---
+
+## 👨‍💻 Autor
+
+**Rafael Sapata**
+
+- GitHub: [@rafaesapata](https://github.com/rafaesapata)
+- LinkedIn: [Rafael Sapata](https://linkedin.com/in/rafaelsapata)
+
+---
+
+## 🙏 Agradecimentos
+
+- AWS por fornecer serviços serverless incríveis
+- Comunidade open source
+- Todos os contribuidores
+
+---
+
+## 📞 Suporte
+
+Para dúvidas ou problemas:
+- Abra uma [issue](https://github.com/rafaesapata/chat-colaborativo-video-aws/issues)
+- Consulte a [documentação](docs/)
+- Entre em contato via LinkedIn
+
+---
+
+**⭐ Se este projeto foi útil, considere dar uma estrela!**
 
 ---
 
 *Desenvolvido com ❤️ usando AWS Serverless*
-*100% Funcional e Pronto para Produção*
-*Deploy em 15 minutos*
