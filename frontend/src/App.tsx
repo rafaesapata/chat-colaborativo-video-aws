@@ -1,13 +1,15 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { Amplify } from 'aws-amplify';
 import VideoCall from './components/VideoCall';
 import ChatRoom from './components/ChatRoom';
 import LiveTranscription from './components/LiveTranscription';
 import ParticipantsList from './components/ParticipantsList';
 import AIInsightsPanel from './components/AIInsightsPanel';
+import Toast from './components/Toast';
 import { useWebSocket } from './hooks/useWebSocket';
 import { useVideoCall } from './hooks/useVideoCall';
 import { useAudioStream } from './hooks/useAudioStream';
+import { useToast } from './hooks/useToast';
 
 // Configurar Amplify (substituir com valores reais após deploy)
 Amplify.configure({
@@ -42,6 +44,7 @@ function App() {
   const [messages, setMessages] = useState<Message[]>([]);
   const [transcriptions, setTranscriptions] = useState<Transcription[]>([]);
   const [participants, setParticipants] = useState<string[]>([]);
+  const { toasts, dismissToast, success, error, warning, info } = useToast();
 
   const wsUrl = import.meta.env.VITE_WEBSOCKET_URL || '';
   const { sendMessage, isConnected, onMessage } = useWebSocket(wsUrl, userId, roomId, handleWebSocketMessage);
@@ -54,6 +57,9 @@ function App() {
     isAudioEnabled,
     toggleVideo,
     toggleAudio,
+    speakingUsers,
+    connectionErrors,
+    videoQuality,
   } = useVideoCall({ roomId, userId, sendMessage, onMessage });
 
   function handleWebSocketMessage(data: any) {
@@ -86,8 +92,34 @@ function App() {
     });
   };
 
+  // Monitorar erros de conexão e mostrar toasts
+  useEffect(() => {
+    connectionErrors.forEach((errorMsg, userId) => {
+      error(`Erro com usuário ${userId.substr(-4)}: ${errorMsg}`);
+    });
+  }, [connectionErrors]);
+
+  // Notificar quando usuários entram/saem
+  useEffect(() => {
+    const currentCount = remoteStreams.size;
+    if (currentCount > 0) {
+      info(`${currentCount} participante(s) na sala`);
+    }
+  }, [remoteStreams.size]);
+
+  // Notificar quando conectar/desconectar
+  useEffect(() => {
+    if (isConnected) {
+      success('Conectado ao servidor!');
+    } else {
+      warning('Desconectado do servidor. Tentando reconectar...');
+    }
+  }, [isConnected]);
+
   return (
     <div className="flex h-screen bg-gray-100">
+      <Toast toasts={toasts} onDismiss={dismissToast} />
+      
       <div className="flex-1 flex flex-col">
         <header className="bg-blue-600 text-white p-4">
           <h1 className="text-2xl font-bold">Chat Colaborativo por Vídeo - AWS</h1>
@@ -107,8 +139,14 @@ function App() {
               onToggleAudio={toggleAudio}
               isVideoEnabled={isVideoEnabled}
               isAudioEnabled={isAudioEnabled}
+              speakingUsers={speakingUsers}
+              connectionErrors={connectionErrors}
+              videoQuality={videoQuality}
             />
-            <LiveTranscription transcriptions={transcriptions} />
+            <LiveTranscription 
+              transcriptions={transcriptions} 
+              speakingUsers={speakingUsers}
+            />
           </div>
 
           {/* Sidebar com chat e controles */}

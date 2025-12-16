@@ -7,6 +7,9 @@ interface Props {
   onToggleAudio: () => void;
   isVideoEnabled: boolean;
   isAudioEnabled: boolean;
+  speakingUsers: Set<string>;
+  connectionErrors: Map<string, string>;
+  videoQuality: 'high' | 'medium' | 'low';
 }
 
 export default function VideoCall({
@@ -15,7 +18,10 @@ export default function VideoCall({
   onToggleVideo,
   onToggleAudio,
   isVideoEnabled,
-  isAudioEnabled
+  isAudioEnabled,
+  speakingUsers,
+  connectionErrors,
+  videoQuality
 }: Props) {
   const localVideoRef = useRef<HTMLVideoElement>(null);
   const [remoteVideoRefs] = useState<Map<string, HTMLVideoElement>>(new Map());
@@ -26,28 +32,69 @@ export default function VideoCall({
     }
   }, [localStream]);
 
+  const qualityLabels = {
+    high: '🟢 HD',
+    medium: '🟡 SD',
+    low: '🔴 Baixa'
+  };
+
   return (
     <div className="flex-1 bg-gray-900 relative">
+      {/* Indicador de qualidade */}
+      <div className="absolute top-4 right-4 z-10 bg-black bg-opacity-70 px-3 py-2 rounded-lg text-white text-sm">
+        Qualidade: {qualityLabels[videoQuality]}
+      </div>
+
+      {/* Notificações de erro */}
+      {Array.from(connectionErrors.entries()).map(([userId, error]) => (
+        <div key={userId} className="absolute top-16 right-4 z-10 bg-red-600 text-white px-4 py-2 rounded-lg shadow-lg max-w-xs">
+          <div className="flex items-center gap-2">
+            <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8v4m0 4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
+            </svg>
+            <span className="text-sm">{error}</span>
+          </div>
+        </div>
+      ))}
+
       {/* Grid de vídeos remotos */}
       <div className="grid grid-cols-2 gap-2 p-4 h-full">
-        {Array.from(remoteStreams.entries()).map(([userId, stream]) => (
-          <div key={userId} className="relative bg-gray-800 rounded-lg overflow-hidden">
-            <video
-              ref={(el) => {
-                if (el) {
-                  el.srcObject = stream;
-                  remoteVideoRefs.set(userId, el);
-                }
-              }}
-              autoPlay
-              playsInline
-              className="w-full h-full object-cover"
-            />
-            <div className="absolute bottom-2 left-2 bg-black bg-opacity-50 px-2 py-1 rounded text-white text-sm">
-              Usuário {userId.substr(-4)}
+        {Array.from(remoteStreams.entries()).map(([userId, stream]) => {
+          const isSpeaking = speakingUsers.has(userId);
+          return (
+            <div 
+              key={userId} 
+              className={`relative bg-gray-800 rounded-lg overflow-hidden transition-all duration-200 ${
+                isSpeaking ? 'ring-4 ring-green-500 shadow-lg shadow-green-500/50' : ''
+              }`}
+            >
+              <video
+                ref={(el) => {
+                  if (el) {
+                    el.srcObject = stream;
+                    remoteVideoRefs.set(userId, el);
+                  }
+                }}
+                autoPlay
+                playsInline
+                className="w-full h-full object-cover"
+              />
+              <div className="absolute bottom-2 left-2 bg-black bg-opacity-70 px-3 py-1 rounded-full text-white text-sm flex items-center gap-2">
+                {isSpeaking && (
+                  <span className="flex items-center">
+                    <span className="animate-pulse">🎤</span>
+                  </span>
+                )}
+                <span>Usuário {userId.substr(-4)}</span>
+              </div>
+              {isSpeaking && (
+                <div className="absolute inset-0 pointer-events-none">
+                  <div className="absolute inset-0 bg-green-500 opacity-10 animate-pulse"></div>
+                </div>
+              )}
             </div>
-          </div>
-        ))}
+          );
+        })}
         
         {remoteStreams.size === 0 && (
           <div className="col-span-2 flex items-center justify-center text-gray-400">
@@ -62,7 +109,9 @@ export default function VideoCall({
       </div>
 
       {/* Vídeo local (picture-in-picture) */}
-      <div className="absolute bottom-4 right-4 w-48 h-36 bg-gray-800 rounded-lg overflow-hidden shadow-lg border-2 border-gray-700">
+      <div className={`absolute bottom-4 right-4 w-48 h-36 bg-gray-800 rounded-lg overflow-hidden shadow-lg transition-all duration-200 ${
+        speakingUsers.has('local') ? 'ring-4 ring-green-500 shadow-green-500/50' : 'border-2 border-gray-700'
+      }`}>
         <video
           ref={localVideoRef}
           autoPlay
@@ -70,9 +119,19 @@ export default function VideoCall({
           muted
           className="w-full h-full object-cover mirror"
         />
-        <div className="absolute bottom-2 left-2 bg-black bg-opacity-50 px-2 py-1 rounded text-white text-xs">
-          Você
+        <div className="absolute bottom-2 left-2 bg-black bg-opacity-70 px-3 py-1 rounded-full text-white text-xs flex items-center gap-1">
+          {speakingUsers.has('local') && (
+            <span className="animate-pulse">🎤</span>
+          )}
+          <span>Você</span>
         </div>
+        {!isVideoEnabled && (
+          <div className="absolute inset-0 bg-gray-900 flex items-center justify-center">
+            <svg className="w-12 h-12 text-gray-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M18.364 18.364A9 9 0 005.636 5.636m12.728 12.728A9 9 0 015.636 5.636m12.728 12.728L5.636 5.636" />
+            </svg>
+          </div>
+        )}
       </div>
 
       {/* Controles de vídeo */}
