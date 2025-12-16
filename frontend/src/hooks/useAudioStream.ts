@@ -12,20 +12,21 @@ export function useAudioStream(onAudioData: (data: string) => void) {
         mimeType: 'audio/webm;codecs=opus'
       });
 
-      mediaRecorder.ondataavailable = (event) => {
+      mediaRecorder.ondataavailable = async (event) => {
         if (event.data.size > 0) {
-          chunksRef.current.push(event.data);
+          console.log('[AudioStream] Chunk capturado:', event.data.size, 'bytes');
+          const base64Audio = await blobToBase64(event.data);
+          console.log('[AudioStream] Enviando chunk base64, tamanho:', base64Audio.length);
+          onAudioData(base64Audio);
         }
       };
 
-      mediaRecorder.onstop = async () => {
-        const audioBlob = new Blob(chunksRef.current, { type: 'audio/webm' });
-        const base64Audio = await blobToBase64(audioBlob);
-        onAudioData(base64Audio);
-        chunksRef.current = [];
+      mediaRecorder.onstop = () => {
+        console.log('[AudioStream] Gravação parada');
       };
 
       mediaRecorder.start(1000); // Capturar chunks a cada 1 segundo
+      console.log('[AudioStream] Gravação iniciada');
       mediaRecorderRef.current = mediaRecorder;
       setIsRecording(true);
     } catch (error) {

@@ -302,8 +302,8 @@ Resources:
             Cookies:
               Forward: none
           MinTTL: 0
-          DefaultTTL: 86400
-          MaxTTL: 31536000
+          DefaultTTL: 0
+          MaxTTL: 0
         CustomErrorResponses:
           - ErrorCode: 403
             ResponseCode: 200
