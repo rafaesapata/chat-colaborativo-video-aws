@@ -42,14 +42,33 @@ export function useTranscription({
   const handleTranscriptionMessage = useCallback((data: any) => {
     if ((data.type === 'transcription' || data.data?.type === 'transcription') && (data.roomId === roomId || data.data?.roomId === roomId)) {
       const transcriptionData = data.data || data;
+      
+      // Determinar o nome do locutor corretamente
+      const speakerId = transcriptionData.userId;
+      const isLocalUser = speakerId === userId;
+      
+      // Usar o nome que veio na mensagem, ou "Você" se for o usuário local
+      let speakerName = transcriptionData.userName || transcriptionData.speakerLabel;
+      if (isLocalUser) {
+        speakerName = 'Você';
+      } else if (!speakerName) {
+        speakerName = `Participante ${speakerId.substring(speakerId.length - 4)}`;
+      }
+      
       const newTranscription: Transcription = {
         transcriptionId: transcriptionData.transcriptionId || `trans_${Date.now()}_${Math.random().toString(36).substring(2, 9)}`,
-        userId: transcriptionData.userId,
+        userId: speakerId,
         transcribedText: transcriptionData.transcribedText || transcriptionData.text,
         timestamp: transcriptionData.timestamp || Date.now(),
-        speakerLabel: transcriptionData.speakerLabel || transcriptionData.userName,
+        speakerLabel: speakerName,
         isPartial: transcriptionData.isPartial || false
       };
+
+      console.log('[Transcription] Nova transcrição recebida:', {
+        from: speakerName,
+        isLocal: isLocalUser,
+        text: newTranscription.transcribedText?.substring(0, 50)
+      });
 
       setTranscriptions(prev => {
         // Se é uma transcrição parcial, substituir a última parcial do mesmo usuário
@@ -63,7 +82,7 @@ export function useTranscription({
         return [...filtered, newTranscription];
       });
     }
-  }, [roomId]);
+  }, [roomId, userId]);
 
   // Inicializar Speech Recognition
   const initializeSpeechRecognition = useCallback(() => {
