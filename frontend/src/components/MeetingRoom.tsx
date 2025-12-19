@@ -7,6 +7,8 @@ import ChatSidebar from './ChatSidebar';
 import TranscriptionPanel from './TranscriptionPanel';
 import MeetingSetupModal from './MeetingSetupModal';
 import InterviewSuggestions from './InterviewSuggestions';
+import EndMeetingModal from './EndMeetingModal';
+import InterviewReportModal from './InterviewReportModal';
 import { useWebSocket } from '../hooks/useWebSocket';
 import { useVideoCall } from '../hooks/useVideoCall';
 import { useTranscription } from '../hooks/useTranscription';
@@ -14,10 +16,11 @@ import { useInterviewAssistant } from '../hooks/useInterviewAssistant';
 import { useMobile } from '../hooks/useMobile';
 import { useAuth } from '../contexts/AuthContext';
 import { meetingHistoryService } from '../services/meetingHistoryService';
+import { interviewAIService, InterviewReport } from '../services/interviewAIService';
 
 // Versão do aplicativo - atualizar a cada deploy
-const APP_VERSION = '2.12.0';
-const BUILD_DATE = '2025-12-20 01:00';
+const APP_VERSION = '2.13.0';
+const BUILD_DATE = '2025-12-20 02:30';
 
 interface Participant {
   id: string;
@@ -73,6 +76,10 @@ export default function MeetingRoom({ darkMode }: { darkMode: boolean }) {
   const [meetingType, setMeetingType] = useState('REUNIAO');
   const [meetingTopic, setMeetingTopic] = useState('');
   const [hasSetupCompleted, setHasSetupCompleted] = useState(false);
+  const [showEndModal, setShowEndModal] = useState(false);
+  const [showReportModal, setShowReportModal] = useState(false);
+  const [isGeneratingReport, setIsGeneratingReport] = useState(false);
+  const [interviewReport, setInterviewReport] = useState<InterviewReport | null>(null);
   
   const controlsTimeoutRef = useRef<number>();
   const mouseAreaRef = useRef<HTMLDivElement>(null);
@@ -398,6 +405,62 @@ export default function MeetingRoom({ darkMode }: { darkMode: boolean }) {
   }, [toggleScreenShare]);
 
   const handleLeaveMeeting = useCallback(() => {
+    // Para usuários autenticados, mostrar modal de opções
+    if (isAuthenticated) {
+      setShowEndModal(true);
+      return;
+    }
+    
+    // Para convidados, sair diretamente
+    sessionStorage.removeItem(`video-chat-userId-${roomId}`);
+    navigate('/');
+  }, [navigate, roomId, isAuthenticated]);
+
+  // Handler para apenas sair (sem encerrar sala)
+  const handleLeaveOnly = useCallback(() => {
+    // Finalizar reunião no histórico
+    if (isAuthenticated && user?.login && currentMeetingId) {
+      meetingHistoryService.endMeeting(user.login, currentMeetingId);
+    }
+    
+    sessionStorage.removeItem(`video-chat-userId-${roomId}`);
+    setShowEndModal(false);
+    navigate('/');
+  }, [navigate, roomId, isAuthenticated, user?.login, currentMeetingId]);
+
+  // Handler para encerrar sala (gera relatório se for entrevista)
+  const handleEndRoom = useCallback(async () => {
+    // Se for entrevista, gerar relatório
+    if (meetingType === 'ENTREVISTA' && transcriptions.length > 0) {
+      setIsGeneratingReport(true);
+      
+      // Simular tempo de processamento da IA
+      await new Promise(resolve => setTimeout(resolve, 2000));
+      
+      // Gerar relatório
+      const report = interviewAIService.generateInterviewReport(
+        meetingTopic,
+        transcriptions.map(t => ({
+          text: t.transcribedText,
+          speaker: t.speakerLabel || 'Desconhecido',
+          timestamp: t.timestamp
+        }))
+      );
+      
+      setInterviewReport(report);
+      setIsGeneratingReport(false);
+      setShowEndModal(false);
+      setShowReportModal(true);
+    } else {
+      // Não é entrevista, apenas sair
+      handleLeaveOnly();
+    }
+  }, [meetingType, meetingTopic, transcriptions, handleLeaveOnly]);
+
+  // Handler para fechar relatório e sair
+  const handleCloseReport = useCallback(() => {
+    setShowReportModal(false);
+    
     // Finalizar reunião no histórico
     if (isAuthenticated && user?.login && currentMeetingId) {
       meetingHistoryService.endMeeting(user.login, currentMeetingId);
@@ -545,6 +608,26 @@ export default function MeetingRoom({ darkMode }: { darkMode: boolean }) {
           meetingTopic={meetingTopic}
         />
       )}
+
+      {/* End Meeting Modal - só para usuários autenticados */}
+      <EndMeetingModal
+        isOpen={showEndModal}
+        onClose={() => setShowEndModal(false)}
+        onLeave={handleLeaveOnly}
+        onEndRoom={handleEndRoom}
+        isAuthenticated={isAuthenticated}
+        isGeneratingReport={isGeneratingReport}
+        meetingType={meetingType}
+        darkMode={darkMode}
+      />
+
+      {/* Interview Report Modal */}
+      <InterviewReportModal
+        isOpen={showReportModal}
+        onClose={handleCloseReport}
+        report={interviewReport}
+        darkMode={darkMode}
+      />
 
       {/* Version Info Button */}
       <button
