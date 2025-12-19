@@ -2,250 +2,205 @@ const { DynamoDBClient } = require('@aws-sdk/client-dynamodb');
 const { DynamoDBDocumentClient, PutCommand, DeleteCommand, UpdateCommand, GetCommand, QueryCommand } = require('@aws-sdk/lib-dynamodb');
 const { ApiGatewayManagementApiClient, PostToConnectionCommand } = require('@aws-sdk/client-apigatewaymanagementapi');
 
-const { createLogger } = require('../../shared/lib/logger');
-const { validateInput, connectionSchema, ValidationError } = require('../../shared/lib/validation');
-const { sanitizeUserName } = require('../../shared/lib/sanitizer');
-const { metrics } = require('../../shared/lib/metrics');
-const { withRetry, withTimeout } = require('../../shared/lib/resilience');
-
 const client = new DynamoDBClient({});
 const ddb = DynamoDBDocumentClient.from(client);
 
 const CONNECTIONS_TABLE = process.env.CONNECTIONS_TABLE;
 const USERS_TABLE = process.env.USERS_TABLE;
 
-const logger = createLogger();
+// Logger simples
+const logger = {
+  info: (msg, data) => console.log(`[INFO] ${msg}`, data || ''),
+  error: (msg, error) => console.error(`[ERROR] ${msg}`, error || ''),
+  warn: (msg, data) => console.warn(`[WARN] ${msg}`, data || '')
+};
 
 exports.handler = async (event) => {
   const { connectionId, eventType, routeKey, requestId } = event.requestContext;
   
-  logger.info({ connectionId, eventType, routeKey, requestId }, 'Connection event received');
+  logger.info('Connection handler invoked', { 
+    connectionId, 
+    eventType, 
+    routeKey,
+    requestId 
+  });
 
   try {
-    if (routeKey === '$connect') {
-      return await handleConnect(event);
-    } else if (routeKey === '$disconnect') {
-      return await handleDisconnect(event);
+    switch (eventType) {
+      case 'CONNECT':
+        return await handleConnect(event);
+      case 'DISCONNECT':
+        return await handleDisconnect(event);
+      default:
+        logger.warn('Unknown event type', { eventType });
+        return { statusCode: 400, body: 'Unknown event type' };
     }
-    
-    return { statusCode: 200, body: 'OK' };
   } catch (error) {
-    logger.error({ error: error.message, connectionId, requestId }, 'Connection handler failed');
-    metrics.connectionErrors();
-    
-    if (error instanceof ValidationError) {
-      return {
-        statusCode: 400,
-        body: JSON.stringify({
-          error: error.message,
-          code: 'VALIDATION_ERROR',
-          requestId
-        })
-      };
-    }
-    
-    return { 
-      statusCode: 500, 
-      body: JSON.stringify({
-        error: 'Internal Server Error',
-        requestId
-      })
-    };
+    logger.error('Handler error', error);
+    return { statusCode: 500, body: 'Internal server error' };
   }
 };
 
 async function handleConnect(event) {
-  const { connectionId, requestId } = event.requestContext;
+  const { connectionId } = event.requestContext;
   const queryParams = event.queryStringParameters || {};
-  
-  // Validar parâmetros de conexão
-  const validatedParams = await validateInput(queryParams, connectionSchema);
-  const { userId, roomId } = validatedParams;
+  const { userId, roomId } = queryParams;
 
-  const timestamp = Date.now();
+  logger.info('Handling connect', { connectionId, userId, roomId });
 
-  logger.info({ userId, roomId, connectionId }, 'User connecting');
+  if (!userId || !roomId) {
+    logger.error('Missing required parameters', { userId, roomId });
+    return { statusCode: 400, body: 'Missing userId or roomId' };
+  }
 
-  // Salvar conexão com retry
-  await withRetry(async () => {
+  try {
+    // Salvar conexão
     await ddb.send(new PutCommand({
       TableName: CONNECTIONS_TABLE,
       Item: {
         connectionId,
         userId,
-        roomId: roomId || null,
-        connectedAt: timestamp,
+        roomId,
+        connectedAt: Date.now(),
         ttl: Math.floor(Date.now() / 1000) + 86400 // 24 horas
       }
     }));
-  });
 
-  // Atualizar status do usuário para online com retry
-  await withRetry(async () => {
-    await ddb.send(new UpdateCommand({
+    // Salvar/atualizar usuário
+    await ddb.send(new PutCommand({
       TableName: USERS_TABLE,
-      Key: { userId },
-      UpdateExpression: 'SET #status = :status, lastSeen = :timestamp, connectionId = :connectionId',
-      ExpressionAttributeNames: {
-        '#status': 'status'
-      },
-      ExpressionAttributeValues: {
-        ':status': 'online',
-        ':timestamp': timestamp,
-        ':connectionId': connectionId
+      Item: {
+        userId,
+        connectionId,
+        roomId,
+        status: 'online',
+        lastSeen: Date.now(),
+        ttl: Math.floor(Date.now() / 1000) + 86400
       }
     }));
-  });
 
-  logger.info({ userId, connectionId }, 'User connected successfully');
-  metrics.activeConnections(1);
+    // Notificar outros usuários na sala
+    await notifyRoomUsers(roomId, {
+      type: 'room_event',
+      data: {
+        eventType: 'user_joined',
+        userId,
+        roomId,
+        timestamp: Date.now()
+      }
+    }, connectionId);
 
-  // Notificar outros participantes da sala se roomId foi fornecido
-  if (roomId) {
-    await notifyRoomParticipants(event, roomId, userId, 'user_joined');
+    logger.info('Connection established successfully', { connectionId, userId, roomId });
+    return { statusCode: 200, body: 'Connected' };
+
+  } catch (error) {
+    logger.error('Error handling connect', error);
+    return { statusCode: 500, body: 'Failed to connect' };
   }
-
-  return { 
-    statusCode: 200, 
-    body: JSON.stringify({ 
-      success: true, 
-      connectionId,
-      requestId 
-    }) 
-  };
 }
 
 async function handleDisconnect(event) {
-  const { connectionId, requestId } = event.requestContext;
+  const { connectionId } = event.requestContext;
 
-  logger.info({ connectionId }, 'User disconnecting');
+  logger.info('Handling disconnect', { connectionId });
 
-  // Buscar informações da conexão com timeout
-  const connection = await withTimeout(async () => {
-    return await ddb.send(new GetCommand({
+  try {
+    // Buscar informações da conexão
+    const connectionResult = await ddb.send(new GetCommand({
       TableName: CONNECTIONS_TABLE,
       Key: { connectionId }
     }));
-  }, 5000);
 
-  if (connection.Item) {
-    const { userId, roomId } = connection.Item;
+    if (connectionResult.Item) {
+      const { userId, roomId } = connectionResult.Item;
 
-    // Remover conexão com retry
-    await withRetry(async () => {
+      // Remover conexão
       await ddb.send(new DeleteCommand({
         TableName: CONNECTIONS_TABLE,
         Key: { connectionId }
       }));
-    });
 
-    // Atualizar status do usuário para offline com retry
-    await withRetry(async () => {
+      // Atualizar status do usuário
       await ddb.send(new UpdateCommand({
         TableName: USERS_TABLE,
         Key: { userId },
-        UpdateExpression: 'SET #status = :status, lastSeen = :timestamp REMOVE connectionId',
-        ExpressionAttributeNames: {
-          '#status': 'status'
-        },
+        UpdateExpression: 'SET #status = :status, lastSeen = :lastSeen',
+        ExpressionAttributeNames: { '#status': 'status' },
         ExpressionAttributeValues: {
           ':status': 'offline',
-          ':timestamp': Date.now()
+          ':lastSeen': Date.now()
         }
       }));
-    });
 
-    logger.info({ userId, connectionId }, 'User disconnected successfully');
-    metrics.activeConnections(-1);
+      // Notificar outros usuários na sala
+      await notifyRoomUsers(roomId, {
+        type: 'room_event',
+        data: {
+          eventType: 'user_left',
+          userId,
+          roomId,
+          timestamp: Date.now()
+        }
+      }, connectionId);
 
-    // Notificar outros participantes da sala
-    if (roomId) {
-      await notifyRoomParticipants(event, roomId, userId, 'user_left');
+      logger.info('Disconnection handled successfully', { connectionId, userId, roomId });
     }
-  } else {
-    logger.warn({ connectionId }, 'Connection not found in database');
-  }
 
-  return { 
-    statusCode: 200, 
-    body: JSON.stringify({ 
-      success: true, 
-      requestId 
-    }) 
-  };
+    return { statusCode: 200, body: 'Disconnected' };
+
+  } catch (error) {
+    logger.error('Error handling disconnect', error);
+    return { statusCode: 500, body: 'Failed to disconnect' };
+  }
 }
 
-async function notifyRoomParticipants(event, roomId, userId, eventType) {
+async function notifyRoomUsers(roomId, message, excludeConnectionId = null) {
   try {
-    const { domainName, stage } = event.requestContext;
-    const apigwClient = new ApiGatewayManagementApiClient({
-      endpoint: `https://${domainName}/${stage}`
+    // Buscar todas as conexões da sala
+    const result = await ddb.send(new QueryCommand({
+      TableName: CONNECTIONS_TABLE,
+      IndexName: 'RoomConnectionsIndex',
+      KeyConditionExpression: 'roomId = :roomId',
+      ExpressionAttributeValues: { ':roomId': roomId }
+    }));
+
+    const connections = result.Items || [];
+    logger.info('Notifying room users', { roomId, connectionCount: connections.length });
+
+    // Criar cliente API Gateway
+    const apiGateway = new ApiGatewayManagementApiClient({
+      endpoint: `https://${process.env.API_GATEWAY_DOMAIN_NAME}/${process.env.STAGE}`
     });
 
-    logger.info({ roomId, userId, eventType }, 'Notifying room participants');
-
-    // Buscar todas as conexões da sala com timeout
-    const connections = await withTimeout(async () => {
-      return await ddb.send(new QueryCommand({
-        TableName: CONNECTIONS_TABLE,
-        IndexName: 'RoomConnectionsIndex',
-        KeyConditionExpression: 'roomId = :roomId',
-        ExpressionAttributeValues: {
-          ':roomId': roomId
-        }
-      }));
-    }, 5000);
-
-    // Criar lista de participantes ativos
-    const participants = connections.Items.map(conn => conn.userId);
-
-    // Notificar todos os participantes
-    const message = {
-      type: 'room_event',
-      data: {
-        eventType,
-        userId,
-        roomId,
-        participants,
-        timestamp: Date.now()
-      }
-    };
-
-    const postCalls = connections.Items.map(async ({ connectionId: targetConnectionId }) => {
-      try {
-        await apigwClient.send(new PostToConnectionCommand({
-          ConnectionId: targetConnectionId,
-          Data: JSON.stringify(message)
-        }));
-      } catch (error) {
-        if (error.statusCode === 410) {
-          logger.info({ connectionId: targetConnectionId }, 'Stale connection detected during notification');
-          // Remover conexão obsoleta
-          try {
+    // Enviar mensagem para cada conexão
+    const promises = connections
+      .filter(conn => conn.connectionId !== excludeConnectionId)
+      .map(async (connection) => {
+        try {
+          await apiGateway.send(new PostToConnectionCommand({
+            ConnectionId: connection.connectionId,
+            Data: JSON.stringify(message)
+          }));
+        } catch (error) {
+          if (error.statusCode === 410) {
+            // Conexão morta, remover do banco
+            logger.info('Removing stale connection', { connectionId: connection.connectionId });
             await ddb.send(new DeleteCommand({
               TableName: CONNECTIONS_TABLE,
-              Key: { connectionId: targetConnectionId }
+              Key: { connectionId: connection.connectionId }
             }));
-          } catch (deleteError) {
-            logger.error({ error: deleteError.message }, 'Failed to delete stale connection');
+          } else {
+            logger.error('Error sending message to connection', { 
+              connectionId: connection.connectionId, 
+              error: error.message 
+            });
           }
-        } else {
-          logger.error({ 
-            error: error.message, 
-            connectionId: targetConnectionId 
-          }, 'Error posting to connection');
         }
-      }
-    });
+      });
 
-    await Promise.all(postCalls);
-    logger.info({ 
-      participantCount: connections.Items.length, 
-      eventType, 
-      userId 
-    }, 'Room participants notified');
-    
+    await Promise.allSettled(promises);
+
   } catch (error) {
-    logger.error({ error: error.message, roomId, userId, eventType }, 'Error notifying room participants');
+    logger.error('Error notifying room users', error);
   }
 }

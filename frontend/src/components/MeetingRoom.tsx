@@ -3,8 +3,10 @@ import { useParams, useSearchParams, useNavigate } from 'react-router-dom';
 import VideoGrid from './VideoGrid';
 import ControlBar from './ControlBar';
 import ChatSidebar from './ChatSidebar';
+import TranscriptionPanel from './TranscriptionPanel';
 import { useWebSocket } from '../hooks/useWebSocket';
 import { useVideoCall } from '../hooks/useVideoCall';
+import { useTranscription } from '../hooks/useTranscription';
 
 interface Participant {
   id: string;
@@ -46,6 +48,7 @@ export default function MeetingRoom({ darkMode }: { darkMode: boolean }) {
   
   const [messages, setMessages] = useState<Message[]>([]);
   const [isChatOpen, setIsChatOpen] = useState(false);
+  const [isTranscriptionOpen, setIsTranscriptionOpen] = useState(false);
   const [unreadCount, setUnreadCount] = useState(0);
   const [controlsVisible, setControlsVisible] = useState(false);
   const [isMuted, setIsMuted] = useState(false);
@@ -118,11 +121,28 @@ export default function MeetingRoom({ darkMode }: { darkMode: boolean }) {
     toggleVideo,
     toggleAudio,
     connectionErrors,
+    speakingUsers,
   } = useVideoCall({ 
     roomId: roomId || '', 
     userId, 
     sendMessage, 
     addMessageHandler 
+  });
+
+  const {
+    transcriptions,
+    isTranscriptionEnabled,
+    isRecording,
+    toggleTranscription,
+    addTestTranscription,
+    isSpeechRecognitionSupported
+  } = useTranscription({
+    roomId: roomId || '',
+    userId,
+    userName,
+    sendMessage,
+    addMessageHandler,
+    localStream
   });
 
   // Controle de visibilidade dos controles
@@ -185,6 +205,10 @@ export default function MeetingRoom({ darkMode }: { darkMode: boolean }) {
       }
       return !prev;
     });
+  }, []);
+
+  const handleToggleTranscription = useCallback(() => {
+    setIsTranscriptionOpen(prev => !prev);
   }, []);
 
   // Verificar se há erro de permissão
@@ -250,7 +274,10 @@ export default function MeetingRoom({ darkMode }: { darkMode: boolean }) {
         onToggleScreenShare={handleToggleScreenShare}
         onLeaveMeeting={handleLeaveMeeting}
         onToggleChat={handleToggleChat}
+        onToggleTranscription={handleToggleTranscription}
         unreadCount={unreadCount}
+        transcriptionCount={transcriptions.length}
+        isTranscriptionEnabled={isTranscriptionEnabled}
         darkMode={darkMode}
       />
 
@@ -260,6 +287,19 @@ export default function MeetingRoom({ darkMode }: { darkMode: boolean }) {
         messages={messages}
         onSendMessage={handleSendMessage}
         darkMode={darkMode}
+      />
+
+      <TranscriptionPanel
+        isOpen={isTranscriptionOpen}
+        onClose={() => setIsTranscriptionOpen(false)}
+        transcriptions={transcriptions}
+        isTranscriptionEnabled={isTranscriptionEnabled}
+        isRecording={isRecording}
+        onToggleTranscription={toggleTranscription}
+        onAddTestTranscription={addTestTranscription}
+        speakingUsers={speakingUsers || new Set()}
+        darkMode={darkMode}
+        isSpeechRecognitionSupported={isSpeechRecognitionSupported}
       />
     </div>
   );

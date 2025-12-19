@@ -1,8 +1,9 @@
 import { useState } from 'react';
-import { BrowserRouter, Routes, Route, useNavigate } from 'react-router-dom';
+import { BrowserRouter, Routes, Route, useNavigate, useParams, useSearchParams } from 'react-router-dom';
 import { Amplify } from 'aws-amplify';
 import Toast from './components/Toast';
 import MeetingRoom from './components/MeetingRoom';
+import NameEntry from './components/NameEntry';
 import { useToast } from './hooks/useToast';
 
 // Configurar Amplify
@@ -157,8 +158,24 @@ function HomePage() {
   );
 }
 
+// Componente wrapper para verificar se o usuário tem nome
+function MeetingWrapper({ darkMode }: { darkMode: boolean }) {
+  const { roomId } = useParams<{ roomId: string }>();
+  const [searchParams] = useSearchParams();
+  
+  const userName = searchParams.get('name');
+  
+  // Se não tem nome, mostrar tela de entrada de nome
+  if (!userName) {
+    return <NameEntry darkMode={darkMode} />;
+  }
+  
+  // Se tem nome, mostrar a sala
+  return <MeetingRoom darkMode={darkMode} />;
+}
+
 function App() {
-  const [darkMode, setDarkMode] = useState(false);
+  const [darkMode] = useState(false);
   const { toasts, dismissToast } = useToast();
 
   return (
@@ -167,7 +184,7 @@ function App() {
       <BrowserRouter>
         <Routes>
           <Route path="/" element={<HomePage />} />
-          <Route path="/meeting/:roomId" element={<MeetingRoom darkMode={darkMode} />} />
+          <Route path="/meeting/:roomId" element={<MeetingWrapper darkMode={darkMode} />} />
         </Routes>
       </BrowserRouter>
     </div>

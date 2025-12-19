@@ -41,6 +41,8 @@ Globals:
         CONNECTIONS_TABLE: !Ref ConnectionsTable
         AUDIO_BUCKET: !Ref AudioBucket
         WEBSOCKET_ENDPOINT: !Sub 'https://${WebSocketApi}.execute-api.${AWS::Region}.amazonaws.com/${Stage}'
+        API_GATEWAY_DOMAIN_NAME: !Sub '${WebSocketApi}.execute-api.${AWS::Region}.amazonaws.com'
+        STAGE: !Ref Stage
 
 Resources:
   # ==================== DynamoDB Tables ====================
@@ -444,6 +446,12 @@ Resources:
       FunctionName: !Sub '${AWS::StackName}-message-handler'
       CodeUri: ../backend/lambdas/message-handler/
       Handler: index.handler
+      Environment:
+        Variables:
+          MESSAGES_TABLE: !Ref MessagesTable
+          CONNECTIONS_TABLE: !Ref ConnectionsTable
+          API_GATEWAY_DOMAIN_NAME: !Sub '${WebSocketApi}.execute-api.${AWS::Region}.amazonaws.com'
+          STAGE: !Ref Stage
       Policies:
         - DynamoDBCrudPolicy:
             TableName: !Ref MessagesTable

@@ -1,0 +1,10 @@
+{
+  "requestContext": {
+    "eventType": "CONNECT",
+    "connectionId": "test123",
+    "routeKey": "$connect"
+  },
+  "headers": {
+    "Host": "kb09dca09l.execute-api.us-east-1.amazonaws.com"
+  }
+}

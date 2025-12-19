@@ -23,10 +23,14 @@ const messageSchema = Joi.object({
   content: Joi.string()
     .min(1)
     .max(5000)
-    .when('action', {
-      is: 'sendMessage',
-      then: Joi.required(),
-      otherwise: Joi.optional()
+    .when('type', {
+      is: 'transcription',
+      then: Joi.optional(),
+      otherwise: Joi.when('action', {
+        is: 'sendMessage',
+        then: Joi.required(),
+        otherwise: Joi.optional()
+      })
     }),
   userName: Joi.string()
     .min(1)
@@ -36,7 +40,17 @@ const messageSchema = Joi.object({
     .pattern(/^user_[a-z0-9]{9}$/)
     .optional(),
   signal: Joi.object().optional(),
-  type: Joi.string().optional()
+  type: Joi.string().valid('transcription', 'user-joined', 'offer', 'answer', 'ice-candidate').optional(),
+  transcribedText: Joi.string()
+    .min(1)
+    .max(5000)
+    .when('type', {
+      is: 'transcription',
+      then: Joi.required(),
+      otherwise: Joi.optional()
+    }),
+  isPartial: Joi.boolean().optional(),
+  timestamp: Joi.number().optional()
 });
 
 const connectionSchema = Joi.object({

@@ -1,4 +1,4 @@
-import { Mic, MicOff, Video, VideoOff, Monitor, PhoneOff, MessageCircle } from 'lucide-react';
+import { Mic, MicOff, Video, VideoOff, Monitor, PhoneOff, MessageCircle, FileText } from 'lucide-react';
 
 interface ControlBarProps {
   visible: boolean;
@@ -10,7 +10,10 @@ interface ControlBarProps {
   onToggleScreenShare: () => void;
   onLeaveMeeting: () => void;
   onToggleChat: () => void;
+  onToggleTranscription: () => void;
   unreadCount: number;
+  transcriptionCount: number;
+  isTranscriptionEnabled: boolean;
   darkMode: boolean;
 }
 
@@ -24,7 +27,10 @@ export default function ControlBar({
   onToggleScreenShare,
   onLeaveMeeting,
   onToggleChat,
+  onToggleTranscription,
   unreadCount,
+  transcriptionCount,
+  isTranscriptionEnabled,
   darkMode
 }: ControlBarProps) {
   return (
@@ -96,12 +102,36 @@ export default function ControlBar({
         </div>
       </div>
 
-      {/* Chat Button */}
+      {/* Side Buttons */}
       <div
-        className={`fixed bottom-6 right-6 transition-all duration-300 cubic-bezier(0.4, 0, 0.2, 1) ${
+        className={`fixed bottom-6 right-6 flex flex-col gap-3 transition-all duration-300 cubic-bezier(0.4, 0, 0.2, 1) ${
           visible ? 'translate-y-0 opacity-100' : 'translate-y-full opacity-0'
         }`}
       >
+        {/* Transcription Button */}
+        <button
+          onClick={onToggleTranscription}
+          className={`relative w-13 h-13 rounded-full flex items-center justify-center transition-all duration-150 hover:scale-105 active:scale-95 shadow-lg ${
+            isTranscriptionEnabled
+              ? 'bg-green-500 text-white border border-green-400/50'
+              : darkMode 
+              ? 'bg-gray-800/95 text-white border border-gray-700/50' 
+              : 'bg-white/95 text-gray-700 border border-gray-200/50'
+          }`}
+          style={{ backdropFilter: 'blur(12px)' }}
+          title={isTranscriptionEnabled ? 'Parar transcrição' : 'Iniciar transcrição'}
+        >
+          <FileText size={20} />
+          
+          {/* Transcription Badge */}
+          {transcriptionCount > 0 && (
+            <div className="absolute -top-1 -right-1 w-5 h-5 bg-purple-500 text-white text-xs rounded-full flex items-center justify-center font-medium">
+              {transcriptionCount > 9 ? '9+' : transcriptionCount}
+            </div>
+          )}
+        </button>
+
+        {/* Chat Button */}
         <button
           onClick={onToggleChat}
           className={`relative w-13 h-13 rounded-full flex items-center justify-center transition-all duration-150 hover:scale-105 active:scale-95 shadow-lg ${

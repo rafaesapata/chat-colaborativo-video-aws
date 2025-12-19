@@ -1,0 +1,14 @@
+{
+  "requestContext": {
+    "eventType": "CONNECT",
+    "connectionId": "test123",
+    "routeKey": "$connect"
+  },
+  "queryStringParameters": {
+    "userId": "user_test123",
+    "roomId": "room_test456"
+  },
+  "headers": {
+    "Host": "kb09dca09l.execute-api.us-east-1.amazonaws.com"
+  }
+}

@@ -66,6 +66,21 @@ export function useWebSocket(
             const data = JSON.parse(event.data);
             console.log('[WebSocket] 📨 Mensagem recebida:', data);
             
+            // Se receber mensagem de erro, logar detalhes e tratar como erro
+            if (data.error || data.message === 'Forbidden' || data.message === 'Internal server error') {
+              console.error('[WebSocket] ❌ Erro do servidor:', data);
+              console.log('[WebSocket] URL usada:', wsUrl);
+              console.log('[WebSocket] Parâmetros:', { userId, roomId });
+              console.log('[WebSocket] Stack trace:', new Error().stack);
+              
+              // Se for Forbidden, desconectar e tentar reconectar
+              if (data.message === 'Forbidden') {
+                console.warn('[WebSocket] Forbidden - fechando conexão para reconectar');
+                ws.close(1006, 'Forbidden error - reconnecting');
+              }
+              return;
+            }
+            
             // Ignorar mensagens de pong
             if (data.type === 'pong') return;
             
@@ -79,6 +94,9 @@ export function useWebSocket(
 
         ws.onerror = (error) => {
           console.error('[WebSocket] ❌ Erro de conexão:', error);
+          console.log('[WebSocket] URL tentada:', wsUrl);
+          console.log('[WebSocket] Parâmetros enviados:', { userId, roomId });
+          console.log('[WebSocket] Estado da conexão:', ws.readyState);
         };
 
         ws.onclose = (event) => {
@@ -134,10 +152,11 @@ export function useWebSocket(
 
   const sendMessage = useCallback((message: any) => {
     if (wsRef.current?.readyState === WebSocket.OPEN) {
+      console.log('[WebSocket] 📤 Enviando mensagem:', message);
       wsRef.current.send(JSON.stringify(message));
       return true;
     }
-    console.warn('[WebSocket] Tentativa de enviar mensagem com conexão fechada');
+    console.warn('[WebSocket] Tentativa de enviar mensagem com conexão fechada:', message);
     return false;
   }, []);
 
