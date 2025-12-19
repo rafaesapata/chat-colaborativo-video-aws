@@ -12,8 +12,8 @@ import { useMobile } from '../hooks/useMobile';
 import { useAuth } from '../contexts/AuthContext';
 
 // Versão do aplicativo - atualizar a cada deploy
-const APP_VERSION = '2.9.0';
-const BUILD_DATE = '2025-12-19 23:15';
+const APP_VERSION = '2.10.0';
+const BUILD_DATE = '2025-12-19 23:45';
 
 interface Participant {
   id: string;
@@ -390,6 +390,7 @@ export default function MeetingRoom({ darkMode }: { darkMode: boolean }) {
           darkMode={darkMode}
           speakingUsers={speakingUsers}
           localUserId={userId}
+          isLocalVideoEnabled={!isVideoOff}
         />
       </div>
 

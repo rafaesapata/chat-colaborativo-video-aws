@@ -24,6 +24,7 @@ interface VideoCardProps {
   isSpotlight: boolean;
   onToggleSpotlight: () => void;
   onTogglePiP: () => void;
+  isVideoEnabled: boolean;
 }
 
 // MOVER PARA FORA DO COMPONENTE E USAR memo
@@ -40,7 +41,8 @@ const VideoCard = memo(function VideoCard({
   isSpeaking,
   isSpotlight,
   onToggleSpotlight,
-  onTogglePiP
+  onTogglePiP,
+  isVideoEnabled
 }: VideoCardProps) {
   const videoRef = useRef<HTMLVideoElement>(null);
 
@@ -69,9 +71,12 @@ const VideoCard = memo(function VideoCard({
     return name.split(' ').map(n => n[0]).join('').toUpperCase().slice(0, 2);
   };
 
+  // Verificar se deve mostrar vídeo ou avatar
+  const showVideo = stream && isVideoEnabled && participant.hasVideo;
+
   return (
     <div
-      className={`relative rounded-xl overflow-hidden transition-all duration-300 ${
+      className={`relative rounded-xl overflow-hidden transition-all duration-300 group ${
         darkMode ? 'bg-gray-800' : 'bg-gray-100'
       } ${isSpanning || isSpotlight ? 'row-span-2 col-span-2' : ''} ${
         isSpeaking ? 'speaking-indicator' : ''
@@ -85,8 +90,23 @@ const VideoCard = memo(function VideoCard({
           <div className="absolute inset-0 rounded-xl border-2 border-green-400 animate-speaking-pulse" />
         </div>
       )}
+
+      {/* Botão de Pin no canto superior direito */}
+      {!isMobile && stream && (
+        <button
+          onClick={onToggleSpotlight}
+          className={`absolute top-2 right-2 z-20 p-1.5 rounded-lg transition-all ${
+            isSpotlight 
+              ? 'bg-blue-500 text-white opacity-100' 
+              : 'bg-black/40 text-white/80 hover:bg-black/60 opacity-0 group-hover:opacity-100'
+          } ${isHovered ? 'opacity-100' : ''}`}
+          title={isSpotlight ? 'Remover destaque' : 'Destacar participante'}
+        >
+          {isSpotlight ? <PinOff size={14} /> : <Pin size={14} />}
+        </button>
+      )}
       
-      {participant.hasVideo && stream ? (
+      {showVideo ? (
         <video
           ref={videoRef}
           autoPlay
@@ -96,10 +116,10 @@ const VideoCard = memo(function VideoCard({
         />
       ) : (
         <div className={`w-full h-full flex items-center justify-center ${
-          darkMode ? 'bg-gray-700' : 'bg-gray-200'
+          darkMode ? 'bg-gray-700' : 'bg-gray-300'
         }`}>
-          <div className={`${isMobile ? 'w-12 h-12 text-base' : 'w-16 h-16 text-xl'} rounded-full flex items-center justify-center font-semibold ${
-            darkMode ? 'bg-gray-600 text-white' : 'bg-gray-300 text-gray-700'
+          <div className={`${isMobile ? 'w-16 h-16 text-xl' : 'w-24 h-24 text-3xl'} rounded-full flex items-center justify-center font-bold ${
+            darkMode ? 'bg-gray-600 text-white' : 'bg-gray-400 text-gray-700'
           } ${isSpeaking ? 'ring-2 ring-green-400 ring-offset-2 ring-offset-gray-700' : ''}`}>
             {getParticipantInitials(participant.name)}
           </div>
@@ -107,14 +127,14 @@ const VideoCard = memo(function VideoCard({
       )}
 
       {participant.isMuted && (
-        <div className={`absolute top-2 right-2 ${isMobile ? 'w-6 h-6' : 'w-8 h-8'} bg-red-500 rounded-full flex items-center justify-center`}>
+        <div className={`absolute top-2 ${!isMobile && stream ? 'right-12' : 'right-2'} ${isMobile ? 'w-6 h-6' : 'w-8 h-8'} bg-red-500 rounded-full flex items-center justify-center`}>
           <MicOff size={isMobile ? 12 : 16} className="text-white" />
         </div>
       )}
 
       {/* Indicador de áudio ativo (pequenas barras) */}
       {isSpeaking && !participant.isMuted && (
-        <div className={`absolute top-2 ${participant.isMuted ? 'right-12' : 'right-2'} flex items-end gap-0.5 h-4`}>
+        <div className={`absolute top-2 ${participant.isMuted ? 'right-12' : (!isMobile && stream ? 'right-24' : 'right-12')} flex items-end gap-0.5 h-4`}>
           <div className="w-1 bg-green-400 rounded-full animate-audio-bar-1" style={{ height: '40%' }} />
           <div className="w-1 bg-green-400 rounded-full animate-audio-bar-2" style={{ height: '70%' }} />
           <div className="w-1 bg-green-400 rounded-full animate-audio-bar-3" style={{ height: '50%' }} />
@@ -135,30 +155,15 @@ const VideoCard = memo(function VideoCard({
             )}
           </span>
           
-          {/* Controles de vídeo */}
-          {!isMobile && isHovered && stream && (
-            <div className="flex items-center gap-1">
-              <button
-                onClick={onToggleSpotlight}
-                className={`p-1.5 rounded-lg transition-all ${
-                  isSpotlight 
-                    ? 'bg-blue-500 text-white' 
-                    : 'bg-black/30 text-white/80 hover:bg-black/50'
-                }`}
-                title={isSpotlight ? 'Remover destaque' : 'Destacar participante'}
-              >
-                {isSpotlight ? <PinOff size={14} /> : <Pin size={14} />}
-              </button>
-              {document.pictureInPictureEnabled && (
-                <button
-                  onClick={handlePiP}
-                  className="p-1.5 rounded-lg bg-black/30 text-white/80 hover:bg-black/50 transition-all"
-                  title="Picture-in-Picture"
-                >
-                  <PictureInPicture2 size={14} />
-                </button>
-              )}
-            </div>
+          {/* Controle PiP */}
+          {!isMobile && isHovered && stream && document.pictureInPictureEnabled && (
+            <button
+              onClick={handlePiP}
+              className="p-1.5 rounded-lg bg-black/30 text-white/80 hover:bg-black/50 transition-all"
+              title="Picture-in-Picture"
+            >
+              <PictureInPicture2 size={14} />
+            </button>
           )}
         </div>
       </div>
@@ -173,15 +178,52 @@ interface VideoGridProps {
   darkMode: boolean;
   speakingUsers?: Set<string>;
   localUserId?: string;
+  isLocalVideoEnabled?: boolean;
 }
 
-export default function VideoGrid({ participants, localStream, remoteStreams, darkMode, speakingUsers = new Set(), localUserId }: VideoGridProps) {
+export default function VideoGrid({ participants, localStream, remoteStreams, darkMode, speakingUsers = new Set(), localUserId, isLocalVideoEnabled = true }: VideoGridProps) {
   const [hoveredParticipant, setHoveredParticipant] = useState<string | null>(null);
   const [spotlightParticipant, setSpotlightParticipant] = useState<string | null>(null);
+  const [autoPiPVideoRef, setAutoPiPVideoRef] = useState<HTMLVideoElement | null>(null);
   const { isMobile, isTablet, isLandscape } = useMobile();
 
   const handleToggleSpotlight = useCallback((participantId: string) => {
     setSpotlightParticipant(prev => prev === participantId ? null : participantId);
+  }, []);
+
+  // PiP automático quando a janela perde foco
+  useEffect(() => {
+    if (!document.pictureInPictureEnabled) return;
+
+    const handleVisibilityChange = async () => {
+      // Encontrar o primeiro vídeo com stream disponível
+      const videoElements = document.querySelectorAll('video');
+      const activeVideo = Array.from(videoElements).find(v => v.srcObject && !v.muted);
+      
+      if (document.hidden && activeVideo && !document.pictureInPictureElement) {
+        // Janela perdeu foco - ativar PiP
+        try {
+          await activeVideo.requestPictureInPicture();
+          setAutoPiPVideoRef(activeVideo);
+        } catch (e) {
+          console.log('Auto PiP não disponível:', e);
+        }
+      } else if (!document.hidden && document.pictureInPictureElement) {
+        // Janela ganhou foco - desativar PiP
+        try {
+          await document.exitPictureInPicture();
+          setAutoPiPVideoRef(null);
+        } catch (e) {
+          console.log('Erro ao sair do PiP:', e);
+        }
+      }
+    };
+
+    document.addEventListener('visibilitychange', handleVisibilityChange);
+    
+    return () => {
+      document.removeEventListener('visibilitychange', handleVisibilityChange);
+    };
   }, []);
 
   // Log para debug
@@ -242,6 +284,7 @@ export default function VideoGrid({ participants, localStream, remoteStreams, da
           const isSpeaking = isLocal 
             ? speakingUsers.has(localUserId || participant.id) 
             : speakingUsers.has(participant.id);
+          const isVideoEnabled = isLocal ? isLocalVideoEnabled : participant.hasVideo;
           
           console.log(`[VideoGrid] Renderizando ${participant.name} (${participant.id}):`, stream ? 'com stream' : 'SEM STREAM');
           
@@ -261,6 +304,7 @@ export default function VideoGrid({ participants, localStream, remoteStreams, da
               isSpotlight={spotlightParticipant === participant.id}
               onToggleSpotlight={() => handleToggleSpotlight(participant.id)}
               onTogglePiP={() => {}}
+              isVideoEnabled={isVideoEnabled}
             />
           );
         })}
