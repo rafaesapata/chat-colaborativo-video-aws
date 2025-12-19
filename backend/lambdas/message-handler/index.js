@@ -49,9 +49,14 @@ exports.handler = async (event) => {
 
 async function handleSendMessage(event, body) {
   const { connectionId } = event.requestContext;
-  const { roomId, userId, content, userName } = body;
+  const { roomId, userId, content, userName, type, transcribedText, isPartial, timestamp } = body;
 
-  logger.info('Handling send message', { connectionId, roomId, userId, userName });
+  logger.info('Handling send message', { connectionId, roomId, userId, userName, type });
+
+  // ✅ Suporte para transcrições
+  if (type === 'transcription') {
+    return await handleTranscription(event, body);
+  }
 
   if (!roomId || !userId || !content) {
     return { statusCode: 400, body: 'Missing required fields' };
@@ -59,7 +64,7 @@ async function handleSendMessage(event, body) {
 
   try {
     const messageId = `msg_${Date.now()}_${Math.random().toString(36).substring(2, 11)}`;
-    const timestamp = Date.now();
+    const msgTimestamp = Date.now();
 
     // Salvar mensagem
     await ddb.send(new PutCommand({
@@ -70,7 +75,7 @@ async function handleSendMessage(event, body) {
         userId,
         userName: userName || `User ${userId.substring(userId.length - 4)}`,
         content,
-        timestamp,
+        timestamp: msgTimestamp,
         type: 'text',
         ttl: Math.floor(Date.now() / 1000) + 86400 // 24 horas
       }
@@ -85,7 +90,7 @@ async function handleSendMessage(event, body) {
         userId,
         userName: userName || `User ${userId.substring(userId.length - 4)}`,
         content,
-        timestamp
+        timestamp: msgTimestamp
       }
     });
 
@@ -95,6 +100,43 @@ async function handleSendMessage(event, body) {
   } catch (error) {
     logger.error('Error sending message', error);
     return { statusCode: 500, body: 'Failed to send message' };
+  }
+}
+
+// ✅ NOVO: Handler para transcrições em tempo real
+async function handleTranscription(event, body) {
+  const { connectionId } = event.requestContext;
+  const { roomId, userId, userName, transcribedText, isPartial, timestamp } = body;
+
+  logger.info('Handling transcription', { connectionId, roomId, userId, userName, isPartial });
+
+  if (!roomId || !userId || !transcribedText) {
+    return { statusCode: 400, body: 'Missing required fields for transcription' };
+  }
+
+  try {
+    const transcriptionId = `trans_${Date.now()}_${Math.random().toString(36).substring(2, 11)}`;
+
+    // Enviar transcrição para todos na sala (incluindo o remetente para confirmação)
+    await notifyRoomUsers(roomId, {
+      type: 'transcription',
+      data: {
+        transcriptionId,
+        roomId,
+        userId,
+        userName: userName || `User ${userId.substring(userId.length - 4)}`,
+        transcribedText,
+        isPartial: isPartial || false,
+        timestamp: timestamp || Date.now()
+      }
+    }, null); // Não excluir ninguém - enviar para todos
+
+    logger.info('Transcription broadcast successfully', { transcriptionId, roomId, isPartial });
+    return { statusCode: 200, body: 'Transcription sent' };
+
+  } catch (error) {
+    logger.error('Error sending transcription', error);
+    return { statusCode: 500, body: 'Failed to send transcription' };
   }
 }
 
@@ -118,30 +160,96 @@ async function handleWebRTCSignal(event, body) {
   const { connectionId } = event.requestContext;
   const { roomId, userId, targetUserId, signal, type } = body;
 
-  logger.info('Handling WebRTC signal', { connectionId, roomId, userId, targetUserId, type });
+  logger.info('🎯 Handling WebRTC signal', { 
+    connectionId, 
+    roomId, 
+    userId, 
+    targetUserId, 
+    signalType: type,
+    hasSignal: !!signal,
+    fullBody: JSON.stringify(body)
+  });
 
   try {
-    // Enviar sinal WebRTC para todos na sala ou usuário específico
+    // ✅ NOVO: Tratar request-participants - responder com lista de participantes
+    if (type === 'request-participants' || signal?.type === 'request-participants') {
+      logger.info('📋 Solicitação de participantes recebida de:', userId);
+      
+      // Buscar todos os participantes da sala
+      const participantsResult = await ddb.send(new QueryCommand({
+        TableName: CONNECTIONS_TABLE,
+        IndexName: 'RoomConnectionsIndex',
+        KeyConditionExpression: 'roomId = :roomId',
+        ExpressionAttributeValues: { ':roomId': roomId }
+      }));
+
+      const participants = (participantsResult.Items || []).map(item => item.userId);
+      const existingParticipants = participants.filter(p => p !== userId);
+
+      logger.info('📋 Participantes encontrados:', { 
+        total: participants.length, 
+        existing: existingParticipants.length,
+        existingParticipants 
+      });
+
+      // Enviar resposta diretamente para o usuário que solicitou
+      const apiGateway = new ApiGatewayManagementApiClient({
+        endpoint: `https://${process.env.API_GATEWAY_DOMAIN_NAME}/${process.env.STAGE}`
+      });
+
+      const responseMessage = {
+        type: 'room_event',
+        data: {
+          eventType: 'participants_list',
+          userId,
+          roomId,
+          participants,
+          existingParticipants,
+          timestamp: Date.now()
+        }
+      };
+
+      await apiGateway.send(new PostToConnectionCommand({
+        ConnectionId: connectionId,
+        Data: JSON.stringify(responseMessage)
+      }));
+
+      logger.info('✅ Lista de participantes enviada para:', userId);
+      return { statusCode: 200, body: 'Participants list sent' };
+    }
+
+    // ✅ CORREÇÃO: Manter estrutura consistente com o frontend
     const message = {
       type: 'webrtc-signal',
       roomId,
       userId,
-      signal,
-      signalType: type
+      signal: signal || { type }  // Garantir que signal.type existe
     };
+
+    logger.info('📤 Mensagem WebRTC preparada:', JSON.stringify(message));
 
     if (targetUserId) {
       // Enviar para usuário específico
-      await notifySpecificUser(targetUserId, message);
+      logger.info('🎯 Tentando enviar para usuário específico:', targetUserId);
+      const sent = await notifySpecificUser(targetUserId, message);
+      
+      // ✅ CORREÇÃO: Se não encontrar usuário, fazer broadcast para a sala
+      if (!sent) {
+        logger.warn('⚠️ Target user not found, broadcasting to room', { targetUserId, roomId });
+        await notifyRoomUsers(roomId, message, connectionId);
+      } else {
+        logger.info('✅ Mensagem enviada com sucesso para usuário específico');
+      }
     } else {
-      // Enviar para todos na sala
+      // Broadcast para todos na sala (exceto remetente)
+      logger.info('📢 Broadcasting para toda a sala:', roomId);
       await notifyRoomUsers(roomId, message, connectionId);
     }
 
     return { statusCode: 200, body: 'Signal sent' };
 
   } catch (error) {
-    logger.error('Error handling WebRTC signal', error);
+    logger.error('❌ Error handling WebRTC signal', error);
     return { statusCode: 500, body: 'Failed to send signal' };
   }
 }
@@ -173,6 +281,8 @@ async function handlePing(event, body) {
 
 async function notifyRoomUsers(roomId, message, excludeConnectionId = null) {
   try {
+    logger.info('🔍 Buscando conexões da sala:', roomId);
+    
     // Buscar todas as conexões da sala
     const result = await ddb.send(new QueryCommand({
       TableName: CONNECTIONS_TABLE,
@@ -182,7 +292,11 @@ async function notifyRoomUsers(roomId, message, excludeConnectionId = null) {
     }));
 
     const connections = result.Items || [];
-    logger.info('Notifying room users', { roomId, connectionCount: connections.length });
+    logger.info('📋 Conexões encontradas na sala', { 
+      roomId, 
+      connectionCount: connections.length,
+      connections: connections.map(c => ({ connectionId: c.connectionId, userId: c.userId }))
+    });
 
     // Criar cliente API Gateway
     const apiGateway = new ApiGatewayManagementApiClient({
@@ -191,23 +305,36 @@ async function notifyRoomUsers(roomId, message, excludeConnectionId = null) {
 
     // Enviar mensagem para cada conexão
     const promises = connections
-      .filter(conn => conn.connectionId !== excludeConnectionId)
+      .filter(conn => {
+        const shouldSend = conn.connectionId !== excludeConnectionId;
+        if (!shouldSend) {
+          logger.info('⏭️ Pulando conexão (remetente):', conn.connectionId);
+        }
+        return shouldSend;
+      })
       .map(async (connection) => {
         try {
+          logger.info('📤 Enviando mensagem para conexão:', { 
+            connectionId: connection.connectionId, 
+            userId: connection.userId 
+          });
+          
           await apiGateway.send(new PostToConnectionCommand({
             ConnectionId: connection.connectionId,
             Data: JSON.stringify(message)
           }));
+          
+          logger.info('✅ Mensagem enviada com sucesso para:', connection.connectionId);
         } catch (error) {
           if (error.statusCode === 410) {
             // Conexão morta, remover do banco
-            logger.info('Removing stale connection', { connectionId: connection.connectionId });
+            logger.info('🗑️ Removing stale connection', { connectionId: connection.connectionId });
             await ddb.send(new DeleteCommand({
               TableName: CONNECTIONS_TABLE,
               Key: { connectionId: connection.connectionId }
             }));
           } else {
-            logger.error('Error sending message to connection', { 
+            logger.error('❌ Error sending message to connection', { 
               connectionId: connection.connectionId, 
               error: error.message 
             });
@@ -216,14 +343,17 @@ async function notifyRoomUsers(roomId, message, excludeConnectionId = null) {
       });
 
     await Promise.allSettled(promises);
+    logger.info('✅ Notificação da sala concluída');
 
   } catch (error) {
-    logger.error('Error notifying room users', error);
+    logger.error('❌ Error notifying room users', error);
   }
 }
 
 async function notifySpecificUser(userId, message) {
   try {
+    logger.info('🔍 Buscando conexões do usuário:', userId);
+    
     // Buscar conexão do usuário específico
     const result = await ddb.send(new QueryCommand({
       TableName: CONNECTIONS_TABLE,
@@ -235,32 +365,48 @@ async function notifySpecificUser(userId, message) {
     const connections = result.Items || [];
     
     if (connections.length === 0) {
-      logger.warn('No connections found for user', { userId });
-      return;
+      logger.warn('⚠️ No connections found for user', { userId });
+      return false;  // ✅ RETORNAR false para indicar falha
     }
+
+    logger.info('📋 Found connections for user', { 
+      userId, 
+      count: connections.length,
+      connections: connections.map(c => ({ connectionId: c.connectionId, roomId: c.roomId }))
+    });
 
     // Criar cliente API Gateway
     const apiGateway = new ApiGatewayManagementApiClient({
       endpoint: `https://${process.env.API_GATEWAY_DOMAIN_NAME}/${process.env.STAGE}`
     });
 
+    let successCount = 0;
+
     // Enviar para todas as conexões do usuário
     const promises = connections.map(async (connection) => {
       try {
+        logger.info('📤 Enviando para conexão do usuário:', { 
+          connectionId: connection.connectionId,
+          userId 
+        });
+        
         await apiGateway.send(new PostToConnectionCommand({
           ConnectionId: connection.connectionId,
           Data: JSON.stringify(message)
         }));
+        
+        successCount++;
+        logger.info('✅ Message sent to connection', { connectionId: connection.connectionId });
       } catch (error) {
         if (error.statusCode === 410) {
           // Conexão morta, remover do banco
-          logger.info('Removing stale connection', { connectionId: connection.connectionId });
+          logger.info('🗑️ Removing stale connection', { connectionId: connection.connectionId });
           await ddb.send(new DeleteCommand({
             TableName: CONNECTIONS_TABLE,
             Key: { connectionId: connection.connectionId }
           }));
         } else {
-          logger.error('Error sending message to user connection', { 
+          logger.error('❌ Error sending message to user connection', { 
             connectionId: connection.connectionId, 
             error: error.message 
           });
@@ -269,8 +415,13 @@ async function notifySpecificUser(userId, message) {
     });
 
     await Promise.allSettled(promises);
+    
+    logger.info(`✅ Notificação específica concluída - ${successCount}/${connections.length} enviadas`);
+    
+    return successCount > 0;  // ✅ RETORNAR true se pelo menos uma mensagem foi enviada
 
   } catch (error) {
-    logger.error('Error notifying specific user', error);
+    logger.error('❌ Error notifying specific user', error);
+    return false;  // ✅ RETORNAR false em caso de erro
   }
 }

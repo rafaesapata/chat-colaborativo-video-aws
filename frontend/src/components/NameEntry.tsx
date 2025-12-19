@@ -128,9 +128,6 @@ export default function NameEntry({ darkMode }: NameEntryProps) {
           </div>
         </form>
 
-        <div className={`mt-8 text-center text-sm ${darkMode ? 'text-gray-400' : 'text-gray-500'}`}>
-          <p>🔒 Seu nome será visível para outros participantes</p>
-        </div>
       </div>
     </div>
   );

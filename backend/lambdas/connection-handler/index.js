@@ -79,16 +79,38 @@ async function handleConnect(event) {
       }
     }));
 
-    // Notificar outros usuários na sala
+    // Buscar todos os participantes da sala
+    const participantsResult = await ddb.send(new QueryCommand({
+      TableName: CONNECTIONS_TABLE,
+      IndexName: 'RoomConnectionsIndex',
+      KeyConditionExpression: 'roomId = :roomId',
+      ExpressionAttributeValues: { ':roomId': roomId }
+    }));
+
+    const participants = (participantsResult.Items || []).map(item => item.userId);
+    const existingParticipants = participants.filter(p => p !== userId);
+
+    logger.info('Participantes na sala', { 
+      roomId, 
+      total: participants.length, 
+      existing: existingParticipants.length,
+      participants 
+    });
+
+    // Notificar outros usuários na sala sobre o novo usuário
+    // ✅ IMPORTANTE: Incluir lista de participantes existentes na notificação
+    // O novo usuário receberá isso via broadcast quando os outros responderem
     await notifyRoomUsers(roomId, {
       type: 'room_event',
       data: {
         eventType: 'user_joined',
         userId,
         roomId,
+        participants,
+        existingParticipants, // ✅ Incluir para que o novo usuário saiba quem já está
         timestamp: Date.now()
       }
-    }, connectionId);
+    }, null); // ✅ NÃO excluir ninguém - enviar para TODOS incluindo o novo usuário
 
     logger.info('Connection established successfully', { connectionId, userId, roomId });
     return { statusCode: 200, body: 'Connected' };
@@ -132,6 +154,18 @@ async function handleDisconnect(event) {
         }
       }));
 
+      // Buscar participantes restantes da sala
+      const participantsResult = await ddb.send(new QueryCommand({
+        TableName: CONNECTIONS_TABLE,
+        IndexName: 'RoomConnectionsIndex',
+        KeyConditionExpression: 'roomId = :roomId',
+        ExpressionAttributeValues: { ':roomId': roomId }
+      }));
+
+      const participants = (participantsResult.Items || [])
+        .filter(item => item.connectionId !== connectionId)
+        .map(item => item.userId);
+
       // Notificar outros usuários na sala
       await notifyRoomUsers(roomId, {
         type: 'room_event',
@@ -139,6 +173,7 @@ async function handleDisconnect(event) {
           eventType: 'user_left',
           userId,
           roomId,
+          participants,
           timestamp: Date.now()
         }
       }, connectionId);

@@ -150,9 +150,6 @@ function HomePage() {
           </form>
         </div>
 
-        <div className={`mt-8 text-center text-sm ${darkMode ? 'text-gray-400' : 'text-gray-500'}`}>
-          <p>🔒 Seguro • 🚀 Rápido • 🌐 Gratuito</p>
-        </div>
       </div>
     </div>
   );

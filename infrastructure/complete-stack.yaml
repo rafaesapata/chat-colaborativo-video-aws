@@ -291,13 +291,8 @@ Resources:
         Enabled: true
         Comment: !Sub 'Chat Colaborativo - ${AWS::StackName}'
         DefaultRootObject: index.html
-        Aliases:
-          - !Ref DomainName
         ViewerCertificate:
-          AcmCertificateArn: !If [HasCertificate, !Ref CertificateArn, !Ref AWS::NoValue]
-          SslSupportMethod: !If [HasCertificate, sni-only, !Ref AWS::NoValue]
-          MinimumProtocolVersion: TLSv1.2_2021
-          CloudFrontDefaultCertificate: !If [HasCertificate, !Ref AWS::NoValue, true]
+          CloudFrontDefaultCertificate: true
         Origins:
           - Id: S3Origin
             DomainName: !GetAtt FrontendBucket.RegionalDomainName
@@ -330,17 +325,7 @@ Resources:
 
   # ==================== Route53 ====================
   
-  DNSRecord:
-    Type: AWS::Route53::RecordSet
-    Condition: HasHostedZone
-    Properties:
-      HostedZoneId: !Ref HostedZoneId
-      Name: !Ref DomainName
-      Type: A
-      AliasTarget:
-        DNSName: !GetAtt CloudFrontDistribution.DomainName
-        HostedZoneId: Z2FDTNDATAQYW2 # CloudFront Hosted Zone ID (fixo)
-        EvaluateTargetHealth: false
+
 
   # ==================== Cognito ====================
   
@@ -623,6 +608,20 @@ Resources:
       IntegrationType: AWS_PROXY
       IntegrationUri: !Sub 'arn:aws:apigateway:${AWS::Region}:lambda:path/2015-03-31/functions/${RoomManagerFunction.Arn}/invocations'
 
+  WebRTCRoute:
+    Type: AWS::ApiGatewayV2::Route
+    Properties:
+      ApiId: !Ref WebSocketApi
+      RouteKey: webrtc-signal
+      Target: !Sub 'integrations/${WebRTCIntegration}'
+
+  WebRTCIntegration:
+    Type: AWS::ApiGatewayV2::Integration
+    Properties:
+      ApiId: !Ref WebSocketApi
+      IntegrationType: AWS_PROXY
+      IntegrationUri: !Sub 'arn:aws:apigateway:${AWS::Region}:lambda:path/2015-03-31/functions/${MessageHandlerFunction.Arn}/invocations'
+
   # ==================== Lambda Permissions ====================
   
   ConnectPermission:
@@ -666,10 +665,7 @@ Outputs:
 
   FrontendURL:
     Description: Frontend URL
-    Value: !If 
-      - HasCertificate
-      - !Sub 'https://${DomainName}'
-      - !Sub 'https://${CloudFrontDistribution.DomainName}'
+    Value: !Sub 'https://${CloudFrontDistribution.DomainName}'
     Export:
       Name: !Sub '${AWS::StackName}-FrontendURL'
 

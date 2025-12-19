@@ -1,5 +1,6 @@
 import { useState, useEffect, useRef, useMemo, useCallback } from 'react';
 import { useParams, useSearchParams, useNavigate } from 'react-router-dom';
+import { Info, X } from 'lucide-react';
 import VideoGrid from './VideoGrid';
 import ControlBar from './ControlBar';
 import ChatSidebar from './ChatSidebar';
@@ -7,6 +8,11 @@ import TranscriptionPanel from './TranscriptionPanel';
 import { useWebSocket } from '../hooks/useWebSocket';
 import { useVideoCall } from '../hooks/useVideoCall';
 import { useTranscription } from '../hooks/useTranscription';
+import { useMobile } from '../hooks/useMobile';
+
+// Versão do aplicativo - atualizar a cada deploy
+const APP_VERSION = '2.7.1';
+const BUILD_DATE = '2025-12-19 19:15';
 
 interface Participant {
   id: string;
@@ -28,6 +34,7 @@ export default function MeetingRoom({ darkMode }: { darkMode: boolean }) {
   const { roomId } = useParams<{ roomId: string }>();
   const [searchParams] = useSearchParams();
   const navigate = useNavigate();
+  const { isMobile, isTouch } = useMobile();
   
   const userName = searchParams.get('name') || 'Usuário';
   
@@ -54,6 +61,7 @@ export default function MeetingRoom({ darkMode }: { darkMode: boolean }) {
   const [isMuted, setIsMuted] = useState(false);
   const [isVideoOff, setIsVideoOff] = useState(false);
   const [isScreenSharing, setIsScreenSharing] = useState(false);
+  const [showVersionInfo, setShowVersionInfo] = useState(false);
   
   const controlsTimeoutRef = useRef<number>();
   const mouseAreaRef = useRef<HTMLDivElement>(null);
@@ -66,6 +74,8 @@ export default function MeetingRoom({ darkMode }: { darkMode: boolean }) {
 
   // CORREÇÃO: Handler estável com useCallback
   const handleWebSocketMessage = useCallback((data: any) => {
+    console.log('[MeetingRoom] 📨 Mensagem recebida:', data.type, data);
+    
     if (data.type === 'message') {
       const newMessage: Message = {
         id: data.data.messageId,
@@ -84,22 +94,101 @@ export default function MeetingRoom({ darkMode }: { darkMode: boolean }) {
         setUnreadCount(prev => prev + 1);
       }
     } else if (data.type === 'room_event') {
-      const { eventType, userId: eventUserId, participants: newParticipants } = data.data;
+      const { eventType, userId: eventUserId, participants: roomParticipants, existingParticipants } = data.data;
       
-      if (eventType === 'user_joined' && eventUserId !== userId) {
+      console.log('[MeetingRoom] 🏠 Room event:', eventType, { eventUserId, roomParticipants, existingParticipants });
+      
+      // ✅ NOVO: Resposta à solicitação de participantes (após câmera estar pronta)
+      if (eventType === 'participants_list' && existingParticipants && existingParticipants.length > 0) {
+        console.log('[MeetingRoom] 📋 Lista de participantes recebida:', existingParticipants);
+        
         setParticipants(prev => {
-          if (prev.some(p => p.id === eventUserId)) return prev;
-          return [
-            ...prev,
-            { 
-              id: eventUserId, 
-              name: `Usuário ${eventUserId.substring(eventUserId.length - 4)}`, 
-              isMuted: false, 
-              hasVideo: true 
+          const newParticipants = [...prev];
+          
+          existingParticipants.forEach((participantId: string) => {
+            if (participantId !== userId && !newParticipants.some(p => p.id === participantId)) {
+              console.log('[MeetingRoom] ➕ Adicionando participante:', participantId);
+              newParticipants.push({
+                id: participantId,
+                name: `Usuário ${participantId.substring(participantId.length - 4)}`,
+                isMuted: false,
+                hasVideo: true
+              });
             }
-          ];
+          });
+          
+          console.log('[MeetingRoom] 📋 Total de participantes:', newParticipants.length);
+          return newParticipants;
+        });
+      }
+      else if (eventType === 'user_joined') {
+        // ✅ NOVO: Se EU sou o novo usuário e há participantes existentes, adicionar todos
+        if (eventUserId === userId && existingParticipants && existingParticipants.length > 0) {
+          console.log('[MeetingRoom] 👥 EU entrei! Participantes existentes:', existingParticipants);
+          
+          setParticipants(prev => {
+            const newParticipants = [...prev];
+            
+            existingParticipants.forEach((participantId: string) => {
+              if (participantId !== userId && !newParticipants.some(p => p.id === participantId)) {
+                console.log('[MeetingRoom] ➕ Adicionando participante existente:', participantId);
+                newParticipants.push({
+                  id: participantId,
+                  name: `Usuário ${participantId.substring(participantId.length - 4)}`,
+                  isMuted: false,
+                  hasVideo: true
+                });
+              }
+            });
+            
+            console.log('[MeetingRoom] 📋 Lista atualizada de participantes:', newParticipants.length);
+            return newParticipants;
+          });
+        } 
+        // Se OUTRO usuário entrou
+        else if (eventUserId !== userId) {
+          console.log('[MeetingRoom] ➕ Novo usuário entrou:', eventUserId);
+          
+          setParticipants(prev => {
+            if (prev.some(p => p.id === eventUserId)) {
+              console.log('[MeetingRoom] ⏭️ Usuário já existe na lista');
+              return prev;
+            }
+            return [
+              ...prev,
+              { 
+                id: eventUserId, 
+                name: `Usuário ${eventUserId.substring(eventUserId.length - 4)}`, 
+                isMuted: false, 
+                hasVideo: true
+              }
+            ];
+          });
+        }
+      } else if (eventType === 'existing_participants' && roomParticipants) {
+        // Manter compatibilidade com o evento antigo
+        console.log('[MeetingRoom] 👥 Participantes existentes (evento legado):', roomParticipants);
+        
+        setParticipants(prev => {
+          const newParticipants = [...prev];
+          
+          roomParticipants.forEach((participantId: string) => {
+            if (participantId !== userId && !newParticipants.some(p => p.id === participantId)) {
+              console.log('[MeetingRoom] ➕ Adicionando participante existente:', participantId);
+              newParticipants.push({
+                id: participantId,
+                name: `Usuário ${participantId.substring(participantId.length - 4)}`,
+                isMuted: false,
+                hasVideo: true
+              });
+            }
+          });
+          
+          console.log('[MeetingRoom] 📋 Lista atualizada de participantes:', newParticipants.length);
+          return newParticipants;
         });
       } else if (eventType === 'user_left') {
+        console.log('[MeetingRoom] ➖ Usuário saiu:', eventUserId);
         setParticipants(prev => prev.filter(p => p.id !== eventUserId));
       }
     }
@@ -134,7 +223,6 @@ export default function MeetingRoom({ darkMode }: { darkMode: boolean }) {
     isTranscriptionEnabled,
     isRecording,
     toggleTranscription,
-    addTestTranscription,
     isSpeechRecognitionSupported
   } = useTranscription({
     roomId: roomId || '',
@@ -145,29 +233,64 @@ export default function MeetingRoom({ darkMode }: { darkMode: boolean }) {
     localStream
   });
 
-  // Controle de visibilidade dos controles
+  // Sincronizar streams remotos com participantes
   useEffect(() => {
-    const handleMouseMove = () => {
+    setParticipants(prev => 
+      prev.map(participant => ({
+        ...participant,
+        stream: participant.id === userId ? localStream || undefined : remoteStreams.get(participant.id)
+      }))
+    );
+  }, [remoteStreams, localStream, userId]);
+
+  // Controle de visibilidade dos controles - apenas na parte inferior da tela (desktop)
+  // No mobile/touch, controles são sempre visíveis (gerenciado pelo ControlBar)
+  useEffect(() => {
+    // No mobile/touch, não precisamos do listener de mouse
+    if (isTouch) {
       setControlsVisible(true);
+      return;
+    }
+
+    const handleMouseMove = (e: MouseEvent) => {
+      const windowHeight = window.innerHeight;
+      const bottomThreshold = windowHeight - 150; // 150px da parte inferior
       
+      if (e.clientY >= bottomThreshold) {
+        // Mouse na parte inferior - mostrar controles
+        setControlsVisible(true);
+        
+        if (controlsTimeoutRef.current) {
+          clearTimeout(controlsTimeoutRef.current);
+        }
+        
+        controlsTimeoutRef.current = window.setTimeout(() => {
+          setControlsVisible(false);
+        }, 3000);
+      }
+    };
+
+    const handleMouseLeave = () => {
+      // Mouse saiu da janela - esconder controles após delay
       if (controlsTimeoutRef.current) {
         clearTimeout(controlsTimeoutRef.current);
       }
-      
       controlsTimeoutRef.current = window.setTimeout(() => {
         setControlsVisible(false);
-      }, 3000);
+      }, 1000);
     };
 
     document.addEventListener('mousemove', handleMouseMove);
+    document.addEventListener('mouseleave', handleMouseLeave);
     
     return () => {
       document.removeEventListener('mousemove', handleMouseMove);
+      document.removeEventListener('mouseleave', handleMouseLeave);
       if (controlsTimeoutRef.current) {
         clearTimeout(controlsTimeoutRef.current);
       }
     };
-  }, []);
+  }, [isTouch]);
 
   const handleSendMessage = useCallback((text: string) => {
     sendMessage({
@@ -222,22 +345,22 @@ export default function MeetingRoom({ darkMode }: { darkMode: boolean }) {
     }`}>
       {/* Mostrar aviso de permissão se necessário */}
       {hasPermissionError && (
-        <div className="absolute top-4 left-1/2 transform -translate-x-1/2 z-50">
-          <div className={`px-6 py-3 rounded-lg shadow-lg border ${
+        <div className={`absolute ${isMobile ? 'top-2 left-2 right-2' : 'top-4 left-1/2 transform -translate-x-1/2'} z-50`}>
+          <div className={`${isMobile ? 'px-3 py-2' : 'px-6 py-3'} rounded-lg shadow-lg border ${
             darkMode 
               ? 'bg-red-900/90 border-red-700 text-red-200' 
               : 'bg-red-50 border-red-200 text-red-800'
           }`}>
-            <div className="flex items-center gap-3">
-              <svg className="w-5 h-5 text-red-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <div className={`flex items-center ${isMobile ? 'gap-2' : 'gap-3'}`}>
+              <svg className={`${isMobile ? 'w-4 h-4' : 'w-5 h-5'} text-red-500 flex-shrink-0`} fill="none" stroke="currentColor" viewBox="0 0 24 24">
                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-2.5L13.732 4c-.77-.833-1.964-.833-2.732 0L3.732 16.5c-.77.833.192 2.5 1.732 2.5z" />
               </svg>
-              <span className="text-sm font-medium">
-                Clique no ícone da câmera na barra de endereços para permitir acesso
+              <span className={`${isMobile ? 'text-xs' : 'text-sm'} font-medium flex-1`}>
+                {isMobile ? 'Permita acesso à câmera' : 'Clique no ícone da câmera na barra de endereços para permitir acesso'}
               </span>
               <button
                 onClick={() => window.location.reload()}
-                className={`ml-2 px-3 py-1 text-xs rounded ${
+                className={`${isMobile ? 'px-2 py-0.5 text-[10px]' : 'ml-2 px-3 py-1 text-xs'} rounded ${
                   darkMode 
                     ? 'bg-red-800 hover:bg-red-700 text-red-200' 
                     : 'bg-red-100 hover:bg-red-200 text-red-700'
@@ -250,7 +373,7 @@ export default function MeetingRoom({ darkMode }: { darkMode: boolean }) {
         </div>
       )}
 
-      <div className="h-full p-4">
+      <div className={`h-full ${isMobile ? 'p-1' : 'p-4'}`}>
         <VideoGrid 
           participants={participants}
           localStream={localStream}
@@ -259,10 +382,12 @@ export default function MeetingRoom({ darkMode }: { darkMode: boolean }) {
         />
       </div>
 
-      <div
-        ref={mouseAreaRef}
-        className="fixed bottom-0 left-0 right-0 h-32 pointer-events-none z-10"
-      />
+      {!isTouch && (
+        <div
+          ref={mouseAreaRef}
+          className="fixed bottom-0 left-0 right-0 h-32 pointer-events-none z-10"
+        />
+      )}
 
       <ControlBar
         visible={controlsVisible}
@@ -296,11 +421,80 @@ export default function MeetingRoom({ darkMode }: { darkMode: boolean }) {
         isTranscriptionEnabled={isTranscriptionEnabled}
         isRecording={isRecording}
         onToggleTranscription={toggleTranscription}
-        onAddTestTranscription={addTestTranscription}
         speakingUsers={speakingUsers || new Set()}
         darkMode={darkMode}
         isSpeechRecognitionSupported={isSpeechRecognitionSupported}
       />
+
+      {/* Version Info Button */}
+      <button
+        onClick={() => setShowVersionInfo(true)}
+        className={`fixed ${isMobile ? 'top-2 left-2 w-7 h-7' : 'top-4 left-4 w-8 h-8'} rounded-full flex items-center justify-center transition-all duration-150 hover:scale-110 z-40 backdrop-blur-xl ${
+          darkMode 
+            ? 'bg-gray-900/60 text-white/70 hover:text-white border border-white/10' 
+            : 'bg-white/40 text-gray-500 hover:text-gray-700 border border-white/30'
+        }`}
+        title="Informações da versão"
+      >
+        <Info size={isMobile ? 14 : 16} />
+      </button>
+
+      {/* Version Info Modal */}
+      {showVersionInfo && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 backdrop-blur-sm p-4">
+          <div className={`relative ${isMobile ? 'w-full max-w-xs' : 'w-80'} rounded-2xl shadow-2xl ${isMobile ? 'p-4' : 'p-6'} ${
+            darkMode ? 'bg-gray-800 text-white' : 'bg-white text-gray-900'
+          }`}>
+            <button
+              onClick={() => setShowVersionInfo(false)}
+              className={`absolute ${isMobile ? 'top-2 right-2 w-7 h-7' : 'top-3 right-3 w-8 h-8'} rounded-full flex items-center justify-center transition hover:rotate-90 ${
+                darkMode ? 'hover:bg-gray-700 text-gray-400' : 'hover:bg-gray-100 text-gray-500'
+              }`}
+            >
+              <X size={isMobile ? 16 : 18} />
+            </button>
+            
+            <div className="text-center">
+              <div className={`${isMobile ? 'w-12 h-12' : 'w-16 h-16'} mx-auto mb-3 rounded-2xl bg-gradient-to-br from-blue-500 to-purple-600 flex items-center justify-center`}>
+                <span className={isMobile ? 'text-xl' : 'text-2xl'}>📹</span>
+              </div>
+              
+              <h3 className={`${isMobile ? 'text-lg' : 'text-xl'} font-bold mb-1`}>Video Chat</h3>
+              <p className={`${isMobile ? 'text-xs' : 'text-sm'} mb-3 ${darkMode ? 'text-gray-400' : 'text-gray-500'}`}>
+                Conferência em tempo real
+              </p>
+              
+              <div className={`rounded-xl ${isMobile ? 'p-3' : 'p-4'} mb-3 ${darkMode ? 'bg-gray-700/50' : 'bg-gray-100'}`}>
+                <div className="flex justify-between items-center mb-2">
+                  <span className={`${isMobile ? 'text-xs' : 'text-sm'} ${darkMode ? 'text-gray-400' : 'text-gray-500'}`}>Versão</span>
+                  <span className={`font-mono font-bold text-blue-500 ${isMobile ? 'text-sm' : ''}`}>{APP_VERSION}</span>
+                </div>
+                <div className="flex justify-between items-center mb-2">
+                  <span className={`${isMobile ? 'text-xs' : 'text-sm'} ${darkMode ? 'text-gray-400' : 'text-gray-500'}`}>Build</span>
+                  <span className={`font-mono ${isMobile ? 'text-xs' : 'text-sm'} ${darkMode ? 'text-gray-300' : 'text-gray-600'}`}>{BUILD_DATE}</span>
+                </div>
+                <div className="flex justify-between items-center mb-2">
+                  <span className={`${isMobile ? 'text-xs' : 'text-sm'} ${darkMode ? 'text-gray-400' : 'text-gray-500'}`}>WebSocket</span>
+                  <span className={`${isMobile ? 'text-xs' : 'text-sm'} ${isConnected ? 'text-green-500' : 'text-red-500'}`}>
+                    {isConnected ? '● Conectado' : '○ Desconectado'}
+                  </span>
+                </div>
+                <div className="flex justify-between items-center">
+                  <span className={`${isMobile ? 'text-xs' : 'text-sm'} ${darkMode ? 'text-gray-400' : 'text-gray-500'}`}>Dispositivo</span>
+                  <span className={`${isMobile ? 'text-xs' : 'text-sm'} ${darkMode ? 'text-gray-300' : 'text-gray-600'}`}>
+                    {isMobile ? '📱 Mobile' : '💻 Desktop'}
+                  </span>
+                </div>
+              </div>
+              
+              <div className={`${isMobile ? 'text-[10px]' : 'text-xs'} ${darkMode ? 'text-gray-500' : 'text-gray-400'}`}>
+                <p>Sala: {roomId}</p>
+                <p>Participantes: {participants.length}</p>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

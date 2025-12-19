@@ -13,6 +13,7 @@ export function useWebSocket(
   const reconnectTimeoutRef = useRef<number>();
   const heartbeatIntervalRef = useRef<number>();
   const reconnectAttemptsRef = useRef(0);
+  const pendingMessages = useRef<any[]>([]); // ✅ Fila de mensagens pendentes
   const MAX_RECONNECT_ATTEMPTS = 5;
   const RECONNECT_DELAY = 3000;
   const HEARTBEAT_INTERVAL = 30000; // 30 segundos
@@ -76,7 +77,8 @@ export function useWebSocket(
               // Se for Forbidden, desconectar e tentar reconectar
               if (data.message === 'Forbidden') {
                 console.warn('[WebSocket] Forbidden - fechando conexão para reconectar');
-                ws.close(1006, 'Forbidden error - reconnecting');
+                // Usar código válido: 1000 (normal) ou 3000-4999 (custom)
+                ws.close(3000, 'Forbidden error - reconnecting');
               }
               return;
             }
@@ -86,7 +88,14 @@ export function useWebSocket(
             
             // Usar a ref para evitar dependência
             onMessageRef.current(data);
-            messageHandlers.current.forEach(handler => handler(data));
+            
+            // Se não há handlers registrados ainda, guardar na fila
+            if (messageHandlers.current.size === 0) {
+              console.log('[WebSocket] 📦 Guardando mensagem na fila (sem handlers):', data.type);
+              pendingMessages.current.push(data);
+            } else {
+              messageHandlers.current.forEach(handler => handler(data));
+            }
           } catch (error) {
             console.error('[WebSocket] Error parsing message:', error, 'Raw data:', event.data);
           }
@@ -162,6 +171,18 @@ export function useWebSocket(
 
   const addMessageHandler = useCallback((handler: (data: any) => void) => {
     messageHandlers.current.add(handler);
+    
+    // ✅ Processar mensagens pendentes quando um handler é registrado
+    if (pendingMessages.current.length > 0) {
+      console.log(`[WebSocket] 🔄 Processando ${pendingMessages.current.length} mensagens pendentes`);
+      const messages = [...pendingMessages.current];
+      pendingMessages.current = [];
+      messages.forEach(msg => {
+        console.log('[WebSocket] 📨 Reprocessando mensagem pendente:', msg.type);
+        handler(msg);
+      });
+    }
+    
     return () => messageHandlers.current.delete(handler);
   }, []);
 

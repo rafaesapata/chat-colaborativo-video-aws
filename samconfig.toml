@@ -1,6 +1,10 @@
 version = 0.1
 
+[default.build.parameters]
+template_file = "infrastructure/complete-stack.yaml"
+
 [default.deploy.parameters]
+template_file = "infrastructure/complete-stack.yaml"
 stack_name = "chat-colaborativo-serverless"
 region = "us-east-1"
 capabilities = "CAPABILITY_IAM"
