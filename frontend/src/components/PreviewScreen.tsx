@@ -194,13 +194,15 @@ export default function PreviewScreen({ darkMode }: PreviewScreenProps) {
       streamRef.current.getTracks().forEach(track => track.stop());
     }
     
-    // Salvar preferências
+    // Salvar preferências e nome em sessionStorage (não na URL)
+    sessionStorage.setItem('videochat_user_name', name.trim());
     sessionStorage.setItem('videochat_video_enabled', String(isVideoEnabled));
     sessionStorage.setItem('videochat_audio_enabled', String(isAudioEnabled));
     if (selectedVideoDevice) sessionStorage.setItem('videochat_video_device', selectedVideoDevice);
     if (selectedAudioDevice) sessionStorage.setItem('videochat_audio_device', selectedAudioDevice);
     
-    navigate(`/meeting/${roomId}?name=${encodeURIComponent(name.trim())}`);
+    // Navegar sem o nome na URL
+    navigate(`/meeting/${roomId}`);
   };
 
   const handleGoHome = () => {

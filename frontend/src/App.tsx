@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { BrowserRouter, Routes, Route, useNavigate, useParams, useSearchParams } from 'react-router-dom';
+import { BrowserRouter, Routes, Route, useNavigate, useParams } from 'react-router-dom';
 import { Amplify } from 'aws-amplify';
 import Toast from './components/Toast';
 import MeetingRoom from './components/MeetingRoom';
@@ -256,9 +256,9 @@ function HomePage({ darkMode, onToggleDarkMode }: HomePageProps) {
 // Componente wrapper para verificar se o usuário tem nome
 function MeetingWrapper({ darkMode }: { darkMode: boolean }) {
   const { roomId } = useParams<{ roomId: string }>();
-  const [searchParams] = useSearchParams();
   
-  const userName = searchParams.get('name');
+  // Verificar nome em sessionStorage ao invés de URL
+  const userName = sessionStorage.getItem('videochat_user_name');
   
   // Se não tem nome, mostrar tela de preview com câmera/mic
   if (!userName) {

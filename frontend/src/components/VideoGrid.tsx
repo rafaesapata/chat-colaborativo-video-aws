@@ -193,36 +193,129 @@ export default function VideoGrid({ participants, localStream, remoteStreams, da
 
   // PiP automático quando a janela perde foco
   useEffect(() => {
-    if (!document.pictureInPictureEnabled) return;
+    // Verificar se PiP é suportado
+    if (!document.pictureInPictureEnabled) {
+      console.log('[VideoGrid] PiP não suportado neste navegador');
+      return;
+    }
 
-    const handleVisibilityChange = async () => {
-      // Encontrar o primeiro vídeo com stream disponível
+    let isPiPActive = false;
+
+    const findBestVideoForPiP = (): HTMLVideoElement | null => {
       const videoElements = document.querySelectorAll('video');
-      const activeVideo = Array.from(videoElements).find(v => v.srcObject && !v.muted);
+      // Priorizar vídeo remoto (não mutado), depois local
+      const videos = Array.from(videoElements);
       
-      if (document.hidden && activeVideo && !document.pictureInPictureElement) {
-        // Janela perdeu foco - ativar PiP
-        try {
-          await activeVideo.requestPictureInPicture();
-          setAutoPiPVideoRef(activeVideo);
-        } catch (e) {
-          console.log('Auto PiP não disponível:', e);
+      // Primeiro, tentar encontrar um vídeo remoto com stream
+      const remoteVideo = videos.find(v => 
+        v.srcObject && 
+        !v.muted && 
+        (v.srcObject as MediaStream).getVideoTracks().some(t => t.enabled)
+      );
+      
+      if (remoteVideo) return remoteVideo;
+      
+      // Se não houver remoto, usar o local
+      const localVideo = videos.find(v => 
+        v.srcObject && 
+        (v.srcObject as MediaStream).getVideoTracks().some(t => t.enabled)
+      );
+      
+      return localVideo || null;
+    };
+
+    const enterPiP = async () => {
+      if (isPiPActive || document.pictureInPictureElement) return;
+      
+      const video = findBestVideoForPiP();
+      if (!video) {
+        console.log('[VideoGrid] Nenhum vídeo disponível para PiP');
+        return;
+      }
+
+      try {
+        // Verificar se o vídeo pode entrar em PiP
+        if (video.readyState < 2) {
+          console.log('[VideoGrid] Vídeo não está pronto para PiP');
+          return;
         }
-      } else if (!document.hidden && document.pictureInPictureElement) {
-        // Janela ganhou foco - desativar PiP
-        try {
-          await document.exitPictureInPicture();
-          setAutoPiPVideoRef(null);
-        } catch (e) {
-          console.log('Erro ao sair do PiP:', e);
+        
+        await video.requestPictureInPicture();
+        isPiPActive = true;
+        setAutoPiPVideoRef(video);
+        console.log('[VideoGrid] PiP ativado automaticamente');
+      } catch (e: any) {
+        // Ignorar erros comuns (usuário negou, vídeo não elegível, etc)
+        if (e.name !== 'NotAllowedError') {
+          console.log('[VideoGrid] Erro ao ativar PiP:', e.message);
         }
       }
     };
 
+    const exitPiP = async () => {
+      if (!document.pictureInPictureElement) {
+        isPiPActive = false;
+        return;
+      }
+
+      try {
+        await document.exitPictureInPicture();
+        isPiPActive = false;
+        setAutoPiPVideoRef(null);
+        console.log('[VideoGrid] PiP desativado automaticamente');
+      } catch (e: any) {
+        console.log('[VideoGrid] Erro ao sair do PiP:', e.message);
+      }
+    };
+
+    const handleVisibilityChange = () => {
+      if (document.hidden) {
+        // Pequeno delay para evitar ativação acidental
+        setTimeout(() => {
+          if (document.hidden) {
+            enterPiP();
+          }
+        }, 300);
+      } else {
+        exitPiP();
+      }
+    };
+
+    const handleWindowBlur = () => {
+      // Ativar PiP quando a janela perde foco (troca de aba/app)
+      setTimeout(() => {
+        if (!document.hasFocus()) {
+          enterPiP();
+        }
+      }, 500);
+    };
+
+    const handleWindowFocus = () => {
+      // Desativar PiP quando a janela ganha foco
+      exitPiP();
+    };
+
+    // Listener para quando o PiP é fechado manualmente pelo usuário
+    const handlePiPClose = () => {
+      isPiPActive = false;
+      setAutoPiPVideoRef(null);
+    };
+
     document.addEventListener('visibilitychange', handleVisibilityChange);
+    window.addEventListener('blur', handleWindowBlur);
+    window.addEventListener('focus', handleWindowFocus);
+    document.addEventListener('leavepictureinpicture', handlePiPClose);
     
     return () => {
       document.removeEventListener('visibilitychange', handleVisibilityChange);
+      window.removeEventListener('blur', handleWindowBlur);
+      window.removeEventListener('focus', handleWindowFocus);
+      document.removeEventListener('leavepictureinpicture', handlePiPClose);
+      
+      // Limpar PiP ao desmontar
+      if (document.pictureInPictureElement) {
+        document.exitPictureInPicture().catch(() => {});
+      }
     };
   }, []);
 

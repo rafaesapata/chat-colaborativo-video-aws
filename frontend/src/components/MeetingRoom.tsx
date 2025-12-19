@@ -1,5 +1,5 @@
 import { useState, useEffect, useRef, useMemo, useCallback } from 'react';
-import { useParams, useSearchParams, useNavigate } from 'react-router-dom';
+import { useParams, useNavigate } from 'react-router-dom';
 import { Info, X, ShieldCheck, User, Wifi, WifiOff } from 'lucide-react';
 import VideoGrid from './VideoGrid';
 import ControlBar from './ControlBar';
@@ -19,8 +19,8 @@ import { meetingHistoryService } from '../services/meetingHistoryService';
 import { interviewAIService, InterviewReport } from '../services/interviewAIService';
 
 // Versão do aplicativo - atualizar a cada deploy
-const APP_VERSION = '2.13.1';
-const BUILD_DATE = '2025-12-20 03:00';
+const APP_VERSION = '2.14.0';
+const BUILD_DATE = '2025-12-20 04:00';
 
 interface Participant {
   id: string;
@@ -40,12 +40,12 @@ interface Message {
 
 export default function MeetingRoom({ darkMode }: { darkMode: boolean }) {
   const { roomId } = useParams<{ roomId: string }>();
-  const [searchParams] = useSearchParams();
   const navigate = useNavigate();
   const { isMobile, isTouch } = useMobile();
   const { isAuthenticated, user, isGuest } = useAuth();
   
-  const userName = searchParams.get('name') || 'Usuário';
+  // Ler nome de sessionStorage ao invés de URL
+  const userName = sessionStorage.getItem('videochat_user_name') || 'Usuário';
   
   // CORREÇÃO: userId estável usando useMemo + sessionStorage
   const userId = useMemo(() => {
@@ -413,6 +413,7 @@ export default function MeetingRoom({ darkMode }: { darkMode: boolean }) {
     
     // Para convidados, sair diretamente
     sessionStorage.removeItem(`video-chat-userId-${roomId}`);
+    sessionStorage.removeItem('videochat_user_name');
     navigate('/');
   }, [navigate, roomId, isAuthenticated]);
 
@@ -423,7 +424,9 @@ export default function MeetingRoom({ darkMode }: { darkMode: boolean }) {
       meetingHistoryService.endMeeting(user.login, currentMeetingId);
     }
     
+    // Limpar dados da sessão
     sessionStorage.removeItem(`video-chat-userId-${roomId}`);
+    sessionStorage.removeItem('videochat_user_name');
     setShowEndModal(false);
     navigate('/');
   }, [navigate, roomId, isAuthenticated, user?.login, currentMeetingId]);
@@ -466,7 +469,9 @@ export default function MeetingRoom({ darkMode }: { darkMode: boolean }) {
       meetingHistoryService.endMeeting(user.login, currentMeetingId);
     }
     
+    // Limpar dados da sessão
     sessionStorage.removeItem(`video-chat-userId-${roomId}`);
+    sessionStorage.removeItem('videochat_user_name');
     navigate('/');
   }, [navigate, roomId, isAuthenticated, user?.login, currentMeetingId]);
 
