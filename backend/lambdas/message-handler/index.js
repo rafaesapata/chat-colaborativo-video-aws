@@ -2,6 +2,11 @@ const { DynamoDBClient } = require('@aws-sdk/client-dynamodb');
 const { DynamoDBDocumentClient, PutCommand, QueryCommand, DeleteCommand } = require('@aws-sdk/lib-dynamodb');
 const { ApiGatewayManagementApiClient, PostToConnectionCommand } = require('@aws-sdk/client-apigatewaymanagementapi');
 
+// SEC-003: Importar sanitização e validação
+const { sanitizeContent, sanitizeUserName } = require('../../shared/lib/sanitizer');
+const { validateInput, messageSchema, ValidationError } = require('../../shared/lib/validation');
+const { withRetry } = require('../../shared/lib/resilience');
+
 const ddbClient = new DynamoDBClient({});
 const ddb = DynamoDBDocumentClient.from(ddbClient);
 
@@ -61,37 +66,43 @@ async function handleSendMessage(event, body) {
   }
 
   if (!roomId || !userId || !content) {
-    return { statusCode: 400, body: 'Missing required fields' };
+    return { statusCode: 400, body: JSON.stringify({ error: 'Missing required fields' }) };
   }
 
   try {
+    // SEC-003: SANITIZAÇÃO OBRIGATÓRIA
+    const sanitizedContent = sanitizeContent(content);
+    const sanitizedUserName = sanitizeUserName(userName);
+
     const messageId = `msg_${Date.now()}_${Math.random().toString(36).substring(2, 11)}`;
     const msgTimestamp = Date.now();
 
-    // Salvar mensagem
-    await ddb.send(new PutCommand({
-      TableName: MESSAGES_TABLE,
-      Item: {
-        messageId,
-        roomId,
-        userId,
-        userName: userName || `User ${userId.substring(userId.length - 4)}`,
-        content,
-        timestamp: msgTimestamp,
-        type: 'text',
-        ttl: Math.floor(Date.now() / 1000) + 86400 // 24 horas
-      }
-    }));
+    // RES-004: Salvar mensagem com retry
+    await withRetry(async () => {
+      await ddb.send(new PutCommand({
+        TableName: MESSAGES_TABLE,
+        Item: {
+          messageId,
+          roomId,
+          userId,
+          userName: sanitizedUserName,
+          content: sanitizedContent,
+          timestamp: msgTimestamp,
+          type: 'text',
+          ttl: Math.floor(Date.now() / 1000) + 86400 // 24 horas
+        }
+      }));
+    }, { retries: 3 });
 
-    // Enviar para todos na sala
+    // Enviar para todos na sala com conteúdo sanitizado
     await notifyRoomUsers(roomId, {
       type: 'message',
       data: {
         messageId,
         roomId,
         userId,
-        userName: userName || `User ${userId.substring(userId.length - 4)}`,
-        content,
+        userName: sanitizedUserName,
+        content: sanitizedContent,
         timestamp: msgTimestamp
       }
     });
@@ -100,8 +111,12 @@ async function handleSendMessage(event, body) {
     return { statusCode: 200, body: 'Message sent' };
 
   } catch (error) {
+    if (error instanceof ValidationError) {
+      logger.warn('Validation error', { error: error.message });
+      return { statusCode: 400, body: JSON.stringify({ error: error.message }) };
+    }
     logger.error('Error sending message', error);
-    return { statusCode: 500, body: 'Failed to send message' };
+    return { statusCode: 500, body: JSON.stringify({ error: 'Internal server error', requestId: event.requestContext.requestId }) };
   }
 }
 

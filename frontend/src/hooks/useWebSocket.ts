@@ -128,13 +128,18 @@ export function useWebSocket(
             return;
           }
           
+          // RES-001: Exponential backoff com jitter
           if (!shouldNotReconnect && reconnectAttemptsRef.current < MAX_RECONNECT_ATTEMPTS) {
             reconnectAttemptsRef.current++;
-            const delay = RECONNECT_DELAY * reconnectAttemptsRef.current; // Backoff exponencial
-            console.log(`[WebSocket] Tentando reconectar (${reconnectAttemptsRef.current}/${MAX_RECONNECT_ATTEMPTS}) em ${delay}ms...`);
+            const baseDelay = RECONNECT_DELAY * Math.pow(2, reconnectAttemptsRef.current - 1);
+            const jitter = Math.random() * 1000;
+            const delay = Math.min(baseDelay + jitter, 30000); // Max 30 segundos
+            console.log(`[WebSocket] Tentando reconectar (${reconnectAttemptsRef.current}/${MAX_RECONNECT_ATTEMPTS}) em ${Math.round(delay)}ms...`);
             reconnectTimeoutRef.current = window.setTimeout(connect, delay);
           } else if (reconnectAttemptsRef.current >= MAX_RECONNECT_ATTEMPTS) {
             console.log('[WebSocket] ❌ Máximo de tentativas de reconexão atingido');
+            // Notificar usuário
+            window.dispatchEvent(new CustomEvent('websocket-max-retries'));
           }
         };
 

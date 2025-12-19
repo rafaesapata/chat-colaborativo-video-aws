@@ -1,5 +1,17 @@
 import { useState, useEffect, useRef, useCallback } from 'react';
 
+// SEC-004: Sanitização básica de texto (sem dependência externa)
+const sanitizeText = (text: string): string => {
+  if (typeof text !== 'string') return '';
+  return text
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;')
+    .replace(/'/g, '&#x27;')
+    .replace(/\//g, '&#x2F;')
+    .substring(0, 5000); // Limitar tamanho
+};
+
 interface Transcription {
   transcriptionId: string;
   userId: string;
@@ -58,9 +70,10 @@ export function useTranscription({
       const newTranscription: Transcription = {
         transcriptionId: transcriptionData.transcriptionId || `trans_${Date.now()}_${Math.random().toString(36).substring(2, 9)}`,
         userId: speakerId,
-        transcribedText: transcriptionData.transcribedText || transcriptionData.text,
+        // SEC-004: SANITIZAÇÃO OBRIGATÓRIA
+        transcribedText: sanitizeText(transcriptionData.transcribedText || transcriptionData.text || ''),
         timestamp: transcriptionData.timestamp || Date.now(),
-        speakerLabel: speakerName,
+        speakerLabel: sanitizeText(speakerName),
         isPartial: transcriptionData.isPartial || false
       };
 
@@ -152,21 +165,34 @@ export function useTranscription({
       }
     };
 
+    // BUG-002: Corrigir loop de restart com limite de tentativas
+    let restartAttempts = 0;
+    const MAX_RESTART_ATTEMPTS = 5;
+
     recognition.onend = () => {
       console.log('[Transcription] Speech recognition ended');
       setIsRecording(false);
       
-      // Reiniciar se ainda estiver habilitado
-      if (isTranscriptionEnabled) {
+      // Reiniciar se ainda estiver habilitado (com limite)
+      if (isTranscriptionEnabled && restartAttempts < MAX_RESTART_ATTEMPTS) {
+        restartAttempts++;
         setTimeout(() => {
           if (recognitionRef.current && isTranscriptionEnabled) {
             try {
               recognitionRef.current.start();
+              // Reset contador após start bem-sucedido
+              setTimeout(() => { restartAttempts = 0; }, 5000);
             } catch (error) {
               console.error('[Transcription] Error restarting recognition:', error);
+              if (!(error as Error).message?.includes('already started')) {
+                restartAttempts++;
+              }
             }
           }
         }, 100);
+      } else if (restartAttempts >= MAX_RESTART_ATTEMPTS) {
+        console.error('[Transcription] Max restart attempts reached, disabling');
+        setIsTranscriptionEnabled(false);
       }
     };
 

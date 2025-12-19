@@ -19,8 +19,8 @@ import { meetingHistoryService } from '../services/meetingHistoryService';
 import { interviewAIService, InterviewReport } from '../services/interviewAIService';
 
 // Versão do aplicativo - atualizar a cada deploy
-const APP_VERSION = '2.14.0';
-const BUILD_DATE = '2025-12-20 04:00';
+const APP_VERSION = '2.15.0';
+const BUILD_DATE = '2025-12-20 05:00';
 
 interface Participant {
   id: string;

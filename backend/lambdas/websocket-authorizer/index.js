@@ -3,8 +3,15 @@ const { createLogger } = require('../../shared/lib/logger');
 
 const logger = createLogger();
 
-// Chave secreta do JWT (em produção, usar AWS Secrets Manager)
-const JWT_SECRET = process.env.JWT_SECRET || 'your-secret-key';
+// SEC-001: Validação obrigatória do JWT_SECRET
+const JWT_SECRET = process.env.JWT_SECRET;
+if (!JWT_SECRET || JWT_SECRET === 'your-secret-key' || JWT_SECRET === 'your-secret-key-change-in-production') {
+  console.error('FATAL: JWT_SECRET não configurado ou usando valor padrão inseguro');
+  // Em produção, isso deve falhar. Em dev, permitir com aviso
+  if (process.env.STAGE === 'prod') {
+    throw new Error('JWT_SECRET must be configured in production');
+  }
+}
 
 exports.handler = async (event) => {
   logger.info({ event }, 'WebSocket authorization request');

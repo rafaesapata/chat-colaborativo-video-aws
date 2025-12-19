@@ -6,6 +6,7 @@ import MeetingRoom from './components/MeetingRoom';
 import PreviewScreen from './components/PreviewScreen';
 import LoginScreen from './components/LoginScreen';
 import MeetingHistory from './components/MeetingHistory';
+import ErrorBoundary from './components/ErrorBoundary';
 import { useToast } from './hooks/useToast';
 import { AuthProvider, useAuth } from './contexts/AuthContext';
 
@@ -307,12 +308,14 @@ function App() {
   const { toasts, dismissToast } = useToast();
 
   return (
-    <AuthProvider>
-      <Toast toasts={toasts} onDismiss={dismissToast} />
-      <BrowserRouter>
-        <AuthenticatedRoutes />
-      </BrowserRouter>
-    </AuthProvider>
+    <ErrorBoundary>
+      <AuthProvider>
+        <Toast toasts={toasts} onDismiss={dismissToast} />
+        <BrowserRouter>
+          <AuthenticatedRoutes />
+        </BrowserRouter>
+      </AuthProvider>
+    </ErrorBoundary>
   );
 }
 
