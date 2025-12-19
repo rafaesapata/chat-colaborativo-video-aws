@@ -1,0 +1,204 @@
+AWSTemplateFormatVersion: '2010-09-09'
+Description: Observability Dashboard - Padrão Ouro
+
+Parameters:
+  StackName:
+    Type: String
+    Description: Nome do stack principal
+  Stage:
+    Type: String
+    Default: prod
+    Description: Ambiente de deployment
+
+Resources:
+  ChatDashboard:
+    Type: AWS::CloudWatch::Dashboard
+    Properties:
+      DashboardName: !Sub '${StackName}-overview'
+      DashboardBody: !Sub |
+        {
+          "widgets": [
+            {
+              "type": "metric",
+              "x": 0,
+              "y": 0,
+              "width": 12,
+              "height": 6,
+              "properties": {
+                "title": "Mensagens Enviadas (por minuto)",
+                "metrics": [
+                  ["ChatColaborativo", "MessagesSent", "Environment", "${Stage}"]
+                ],
+                "period": 60,
+                "stat": "Sum",
+                "region": "${AWS::Region}",
+                "view": "timeSeries"
+              }
+            },
+            {
+              "type": "metric",
+              "x": 12,
+              "y": 0,
+              "width": 12,
+              "height": 6,
+              "properties": {
+                "title": "Conexões Ativas",
+                "metrics": [
+                  ["ChatColaborativo", "ActiveConnections", "Environment", "${Stage}"]
+                ],
+                "period": 60,
+                "stat": "Maximum",
+                "region": "${AWS::Region}",
+                "view": "timeSeries"
+              }
+            },
+            {
+              "type": "metric",
+              "x": 0,
+              "y": 6,
+              "width": 8,
+              "height": 6,
+              "properties": {
+                "title": "Latência de Mensagens (p99)",
+                "metrics": [
+                  ["ChatColaborativo", "MessageLatency", "Environment", "${Stage}"]
+                ],
+                "period": 300,
+                "stat": "p99",
+                "region": "${AWS::Region}",
+                "view": "timeSeries"
+              }
+            },
+            {
+              "type": "metric",
+              "x": 8,
+              "y": 6,
+              "width": 8,
+              "height": 6,
+              "properties": {
+                "title": "Latência de Transcrição (p99)",
+                "metrics": [
+                  ["ChatColaborativo", "TranscriptionLatency", "Environment", "${Stage}"]
+                ],
+                "period": 300,
+                "stat": "p99",
+                "region": "${AWS::Region}",
+                "view": "timeSeries"
+              }
+            },
+            {
+              "type": "metric",
+              "x": 16,
+              "y": 6,
+              "width": 8,
+              "height": 6,
+              "properties": {
+                "title": "Erros de Validação",
+                "metrics": [
+                  ["ChatColaborativo", "ValidationErrors", "Environment", "${Stage}"],
+                  [".", "ConnectionErrors", ".", "."]
+                ],
+                "period": 300,
+                "stat": "Sum",
+                "region": "${AWS::Region}",
+                "view": "timeSeries"
+              }
+            },
+            {
+              "type": "metric",
+              "x": 0,
+              "y": 12,
+              "width": 12,
+              "height": 6,
+              "properties": {
+                "title": "Erros de Lambda",
+                "metrics": [
+                  ["AWS/Lambda", "Errors", "FunctionName", "${StackName}-connection-handler"],
+                  ["...", "${StackName}-message-handler"],
+                  ["...", "${StackName}-audio-stream-processor"],
+                  ["...", "${StackName}-ai-analysis"]
+                ],
+                "period": 300,
+                "stat": "Sum",
+                "region": "${AWS::Region}",
+                "view": "timeSeries"
+              }
+            },
+            {
+              "type": "metric",
+              "x": 12,
+              "y": 12,
+              "width": 12,
+              "height": 6,
+              "properties": {
+                "title": "Duração de Lambda (p99)",
+                "metrics": [
+                  ["AWS/Lambda", "Duration", "FunctionName", "${StackName}-connection-handler"],
+                  ["...", "${StackName}-message-handler"],
+                  ["...", "${StackName}-audio-stream-processor"],
+                  ["...", "${StackName}-ai-analysis"]
+                ],
+                "period": 300,
+                "stat": "p99",
+                "region": "${AWS::Region}",
+                "view": "timeSeries"
+              }
+            },
+            {
+              "type": "metric",
+              "x": 0,
+              "y": 18,
+              "width": 12,
+              "height": 6,
+              "properties": {
+                "title": "DynamoDB Throttles",
+                "metrics": [
+                  ["AWS/DynamoDB", "ThrottledRequests", "TableName", "${StackName}-Messages"],
+                  ["...", "${StackName}-Connections"],
+                  ["...", "${StackName}-Transcriptions"]
+                ],
+                "period": 300,
+                "stat": "Sum",
+                "region": "${AWS::Region}",
+                "view": "timeSeries"
+              }
+            },
+            {
+              "type": "metric",
+              "x": 12,
+              "y": 18,
+              "width": 12,
+              "height": 6,
+              "properties": {
+                "title": "WebSocket Connections",
+                "metrics": [
+                  ["AWS/ApiGateway", "ConnectCount", "ApiName", "${StackName}-websocket"],
+                  [".", "DisconnectCount", ".", "."],
+                  [".", "MessageCount", ".", "."]
+                ],
+                "period": 300,
+                "stat": "Sum",
+                "region": "${AWS::Region}",
+                "view": "timeSeries"
+              }
+            },
+            {
+              "type": "log",
+              "x": 0,
+              "y": 24,
+              "width": 24,
+              "height": 6,
+              "properties": {
+                "title": "Erros Recentes",
+                "query": "SOURCE '/aws/lambda/${StackName}-connection-handler' | SOURCE '/aws/lambda/${StackName}-message-handler' | filter level = \"ERROR\" | fields timestamp, msg, error | sort timestamp desc | limit 20",
+                "region": "${AWS::Region}",
+                "view": "table"
+              }
+            }
+          ]
+        }
+
+Outputs:
+  DashboardURL:
+    Description: URL do Dashboard CloudWatch
+    Value: !Sub 'https://${AWS::Region}.console.aws.amazon.com/cloudwatch/home?region=${AWS::Region}#dashboards:name=${StackName}-overview'

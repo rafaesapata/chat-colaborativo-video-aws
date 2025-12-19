@@ -20,7 +20,7 @@ export default function Sidebar({
   const [searchQuery, setSearchQuery] = useState('');
 
   const getInitials = (userId: string) => {
-    return userId.substr(-2).toUpperCase();
+    return userId.substring(userId.length - 2).toUpperCase();
   };
 
   const getStatusColor = (userId: string) => {
@@ -131,7 +131,7 @@ export default function Sidebar({
                 className={`flex items-center gap-3 p-2 hover:bg-slate-700 rounded-lg transition cursor-pointer ${
                   isCollapsed ? 'justify-center' : ''
                 }`}
-                title={isCollapsed ? `Usuário ${userId.substr(-4)}` : ''}
+                title={isCollapsed ? `Usuário ${userId.substring(userId.length - 4)}` : ''}
               >
                 {isCollapsed ? (
                   <div className="relative">
@@ -150,7 +150,7 @@ export default function Sidebar({
                     </div>
                     <div className="flex-1 min-w-0">
                       <div className="font-medium truncate text-sm">
-                        {userId === currentUserId ? 'Você' : `Usuário ${userId.substr(-4)}`}
+                        {userId === currentUserId ? 'Você' : `Usuário ${userId.substring(userId.length - 4)}`}
                       </div>
                       <div className="text-xs text-slate-400">
                         {userId === currentUserId ? 'Online' : 'Ativo'}
@@ -190,7 +190,7 @@ export default function Sidebar({
               </div>
               <div className="flex-1 min-w-0">
                 <div className="font-medium truncate text-sm">
-                  Usuário {currentUserId.substr(-4)}
+                  Usuário {currentUserId.substring(currentUserId.length - 4)}
                 </div>
                 <div className="text-xs text-green-400">
                   🟢 Online

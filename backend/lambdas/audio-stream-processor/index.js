@@ -1,5 +1,5 @@
 const { DynamoDBClient } = require('@aws-sdk/client-dynamodb');
-const { DynamoDBDocumentClient, PutCommand } = require('@aws-sdk/lib-dynamodb');
+const { DynamoDBDocumentClient, PutCommand, QueryCommand } = require('@aws-sdk/lib-dynamodb');
 const { S3Client, PutObjectCommand } = require('@aws-sdk/client-s3');
 const { TranscribeStreamingClient, StartStreamTranscriptionCommand } = require('@aws-sdk/client-transcribe-streaming');
 const { ApiGatewayManagementApiClient, PostToConnectionCommand } = require('@aws-sdk/client-apigatewaymanagementapi');
@@ -9,6 +9,7 @@ const ddb = DynamoDBDocumentClient.from(ddbClient);
 const s3Client = new S3Client({});
 
 const TRANSCRIPTIONS_TABLE = process.env.TRANSCRIPTIONS_TABLE;
+const CONNECTIONS_TABLE = process.env.CONNECTIONS_TABLE;
 const AUDIO_BUCKET = process.env.AUDIO_BUCKET;
 
 exports.handler = async (event) => {
@@ -68,16 +69,38 @@ exports.handler = async (event) => {
         Item: transcriptionItem
       }));
 
-      // Enviar transcrição em tempo real via WebSocket
+      // Buscar todas as conexões da sala
+      const connections = await ddb.send(new QueryCommand({
+        TableName: CONNECTIONS_TABLE,
+        IndexName: 'RoomConnectionsIndex',
+        KeyConditionExpression: 'roomId = :roomId',
+        ExpressionAttributeValues: {
+          ':roomId': roomId
+        }
+      }));
+
+      // Enviar transcrição para todos os participantes da sala
       const message = {
         type: 'transcription',
         data: transcriptionItem
       };
 
-      await apigwClient.send(new PostToConnectionCommand({
-        ConnectionId: connectionId,
-        Data: JSON.stringify(message)
-      }));
+      const postCalls = connections.Items.map(async ({ connectionId: targetConnectionId }) => {
+        try {
+          await apigwClient.send(new PostToConnectionCommand({
+            ConnectionId: targetConnectionId,
+            Data: JSON.stringify(message)
+          }));
+        } catch (error) {
+          if (error.statusCode === 410) {
+            console.log(`Stale connection: ${targetConnectionId}`);
+          } else {
+            console.error(`Error posting to ${targetConnectionId}:`, error);
+          }
+        }
+      });
+
+      await Promise.all(postCalls);
 
       console.log('Transcription saved:', transcriptionId);
     }

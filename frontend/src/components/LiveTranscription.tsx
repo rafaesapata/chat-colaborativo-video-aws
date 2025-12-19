@@ -31,7 +31,7 @@ export default function LiveTranscription({ transcriptions, speakingUsers }: Pro
   }, []);
 
   const getUserName = (userId: string) => {
-    return `Usuário ${userId.substr(-4)}`;
+    return `Usuário ${userId.substring(userId.length - 4)}`;
   };
 
   const formatTimestamp = (timestamp: number) => {

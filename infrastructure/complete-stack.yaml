@@ -175,6 +175,8 @@ Resources:
           AttributeType: S
         - AttributeName: userId
           AttributeType: S
+        - AttributeName: roomId
+          AttributeType: S
         - AttributeName: connectedAt
           AttributeType: N
       KeySchema:
@@ -184,6 +186,14 @@ Resources:
         - IndexName: UserConnectionsIndex
           KeySchema:
             - AttributeName: userId
+              KeyType: HASH
+            - AttributeName: connectedAt
+              KeyType: RANGE
+          Projection:
+            ProjectionType: ALL
+        - IndexName: RoomConnectionsIndex
+          KeySchema:
+            - AttributeName: roomId
               KeyType: HASH
             - AttributeName: connectedAt
               KeyType: RANGE

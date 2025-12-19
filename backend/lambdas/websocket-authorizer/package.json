@@ -1,0 +1,11 @@
+{
+  "name": "websocket-authorizer",
+  "version": "1.0.0",
+  "description": "WebSocket Lambda Authorizer",
+  "main": "index.js",
+  "dependencies": {
+    "jsonwebtoken": "^9.0.2",
+    "pino": "^8.16.2",
+    "uuid": "^9.0.1"
+  }
+}

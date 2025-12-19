@@ -10,7 +10,7 @@ export default function ParticipantsList({ participants }: Props) {
         {participants.map((userId) => (
           <div key={userId} className="flex items-center gap-2">
             <div className="w-2 h-2 bg-green-500 rounded-full"></div>
-            <span className="text-sm">User {userId.substr(-4)}</span>
+            <span className="text-sm">User {userId.substring(userId.length - 4)}</span>
           </div>
         ))}
         {participants.length === 0 && (

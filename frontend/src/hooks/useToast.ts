@@ -9,7 +9,7 @@ export function useToast() {
     message: string,
     duration?: number
   ) => {
-    const id = `toast_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
+    const id = `toast_${Date.now()}_${Math.random().toString(36).substring(2, 11)}`;
     const newToast: ToastMessage = { id, type, message, duration };
     
     setToasts(prev => [...prev, newToast]);

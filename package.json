@@ -1,22 +1,40 @@
 {
   "name": "chat-colaborativo-serverless",
   "version": "1.0.0",
-  "description": "Chat colaborativo serverless com transcrição em tempo real",
+  "description": "Chat colaborativo serverless com transcrição em tempo real - Padrão Ouro",
   "scripts": {
     "deploy": "bash scripts/deploy.sh",
+    "deploy:secure": "bash scripts/deploy-secure.sh",
+    "test": "cd backend/lambdas/tests && npm test",
+    "test:coverage": "cd backend/lambdas/tests && npm run test:coverage",
     "test:websocket": "node scripts/test-websocket.js",
-    "install:lambdas": "for dir in backend/lambdas/*/; do (cd $dir && npm install); done"
+    "install:all": "npm run install:lambdas && npm run install:tests",
+    "install:lambdas": "for dir in backend/lambdas/*/; do (cd $dir && npm install); done",
+    "install:tests": "cd backend/lambdas/tests && npm install",
+    "lint": "echo 'Linting not configured yet'",
+    "build": "sam build --template-file infrastructure/template.yaml",
+    "validate": "sam validate --template-file infrastructure/template.yaml",
+    "local:start": "sam local start-api --template-file infrastructure/template.yaml"
   },
   "keywords": [
     "aws",
     "serverless",
     "chat",
     "transcription",
-    "websocket"
+    "websocket",
+    "security",
+    "observability",
+    "resilience"
   ],
-  "author": "",
+  "author": "Chat Colaborativo Team",
   "license": "MIT",
   "dependencies": {
     "ws": "^8.18.3"
+  },
+  "devDependencies": {
+    "aws-sam-cli": "^1.0.0"
+  },
+  "engines": {
+    "node": ">=18.0.0"
   }
 }

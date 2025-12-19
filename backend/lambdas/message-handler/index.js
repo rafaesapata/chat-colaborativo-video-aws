@@ -2,67 +2,90 @@ const { DynamoDBClient } = require('@aws-sdk/client-dynamodb');
 const { DynamoDBDocumentClient, PutCommand, QueryCommand } = require('@aws-sdk/lib-dynamodb');
 const { ApiGatewayManagementApiClient, PostToConnectionCommand } = require('@aws-sdk/client-apigatewaymanagementapi');
 
+const { createLogger } = require('../../shared/lib/logger');
+const { validateInput, messageSchema, ValidationError } = require('../../shared/lib/validation');
+const { sanitizeContent, sanitizeUserName } = require('../../shared/lib/sanitizer');
+const { metrics } = require('../../shared/lib/metrics');
+const { withRetry, withTimeout } = require('../../shared/lib/resilience');
+
 const ddbClient = new DynamoDBClient({});
 const ddb = DynamoDBDocumentClient.from(ddbClient);
 
 const MESSAGES_TABLE = process.env.MESSAGES_TABLE;
 const CONNECTIONS_TABLE = process.env.CONNECTIONS_TABLE;
 
+const logger = createLogger();
+
 exports.handler = async (event) => {
+  const startTime = Date.now();
   const { connectionId, domainName, stage } = event.requestContext;
+  const requestId = event.requestContext.requestId;
+  
+  logger.info({ connectionId, requestId }, 'Message handler invoked');
   
   const apigwClient = new ApiGatewayManagementApiClient({
     endpoint: `https://${domainName}/${stage}`
   });
 
   try {
-    const body = JSON.parse(event.body);
-    const { action, roomId, userId, content, userName } = body;
+    // Validação de entrada com schema
+    const validatedInput = await validateInput(event.body, messageSchema);
+    const { action, roomId, userId, content, userName } = validatedInput;
 
     if (action === 'webrtc-signal') {
       // Encaminhar sinalização WebRTC
-      return await handleWebRTCSignal(body, apigwClient);
+      return await handleWebRTCSignal(validatedInput, apigwClient);
     }
     
     if (action !== 'sendMessage') {
-      return { statusCode: 400, body: 'Invalid action' };
-    }
-
-    if (!roomId || !userId || !content) {
-      return { statusCode: 400, body: 'Missing required fields' };
+      metrics.validationErrors();
+      return { 
+        statusCode: 400, 
+        body: JSON.stringify({ error: 'Invalid action', requestId }) 
+      };
     }
 
     // Sanitizar conteúdo
     const sanitizedContent = sanitizeContent(content);
+    const sanitizedUserName = sanitizeUserName(userName);
+    
+    metrics.sanitizationEvents();
 
     const messageId = `msg_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
     const timestamp = Date.now();
 
-    // Salvar mensagem no DynamoDB
+    // Salvar mensagem no DynamoDB com retry
     const message = {
       messageId,
       roomId,
       userId,
-      userName: userName || 'Anonymous',
+      userName: sanitizedUserName,
       content: sanitizedContent,
       timestamp,
-      type: 'text'
+      type: 'text',
+      requestId
     };
 
-    await ddb.send(new PutCommand({
-      TableName: MESSAGES_TABLE,
-      Item: message
-    }));
+    await withRetry(async () => {
+      await ddb.send(new PutCommand({
+        TableName: MESSAGES_TABLE,
+        Item: message
+      }));
+    });
 
-    // Buscar todas as conexões da sala
-    const connections = await ddb.send(new QueryCommand({
-      TableName: CONNECTIONS_TABLE,
-      IndexName: 'UserConnectionsIndex',
-      KeyConditionExpression: 'userId = :userId',
-      ExpressionAttributeValues: {
-        ':userId': userId
-      }
-    }));
+    logger.info({ messageId, roomId }, 'Message saved to DynamoDB');
+
+    // Buscar todas as conexões da sala com timeout
+    const connections = await withTimeout(async () => {
+      return await ddb.send(new QueryCommand({
+        TableName: CONNECTIONS_TABLE,
+        IndexName: 'RoomConnectionsIndex',
+        KeyConditionExpression: 'roomId = :roomId',
+        ExpressionAttributeValues: {
+          ':roomId': roomId
+        }
+      }));
+    }, 5000);
 
     // Broadcast para todos os participantes
     const broadcastMessage = {
@@ -70,46 +93,65 @@ exports.handler = async (event) => {
       data: message
     };
 
-    const postCalls = connections.Items.map(async ({ connectionId: targetConnectionId }) => {
-      try {
-        await apigwClient.send(new PostToConnectionCommand({
-          ConnectionId: targetConnectionId,
-          Data: JSON.stringify(broadcastMessage)
-        }));
-      } catch (error) {
-        if (error.statusCode === 410) {
-          console.log(`Stale connection: ${targetConnectionId}`);
-        } else {
-          console.error(`Error posting to ${targetConnectionId}:`, error);
-        }
-      }
-    });
+    await broadcastToConnections(connections.Items, broadcastMessage, apigwClient);
 
-    await Promise.all(postCalls);
+    // Métricas
+    metrics.messagesSent();
+    metrics.messagesPerRoom(roomId);
+    metrics.messageLatency(Date.now() - startTime);
 
-    return { statusCode: 200, body: 'Message sent' };
+    logger.info({ messageId, participantCount: connections.Items.length }, 'Message broadcast completed');
+
+    return { 
+      statusCode: 200, 
+      body: JSON.stringify({ 
+        success: true, 
+        messageId,
+        requestId 
+      }) 
+    };
+    
   } catch (error) {
-    console.error('Error handling message:', error);
-    return { statusCode: 500, body: 'Internal Server Error' };
+    logger.error({ error: error.message, requestId }, 'Message handler failed');
+    
+    if (error instanceof ValidationError) {
+      metrics.validationErrors();
+      return {
+        statusCode: 400,
+        body: JSON.stringify({
+          error: error.message,
+          code: 'VALIDATION_ERROR',
+          requestId
+        })
+      };
+    }
+
+    return {
+      statusCode: 500,
+      body: JSON.stringify({
+        error: 'Internal Server Error',
+        requestId
+      })
+    };
   }
 };
 
 async function handleWebRTCSignal(body, apigwClient) {
   const { roomId, userId, targetUserId, signal, type } = body;
 
-  if (!roomId || !userId) {
-    return { statusCode: 400, body: 'Missing required fields' };
-  }
+  logger.info({ roomId, userId, targetUserId, signalType: type }, 'Handling WebRTC signal');
 
-  // Buscar conexões da sala
-  const connections = await ddb.send(new QueryCommand({
-    TableName: CONNECTIONS_TABLE,
-    IndexName: 'UserConnectionsIndex',
-    KeyConditionExpression: 'userId = :userId',
-    ExpressionAttributeValues: {
-      ':userId': userId
-    }
-  }));
+  // Buscar conexões da sala com timeout
+  const connections = await withTimeout(async () => {
+    return await ddb.send(new QueryCommand({
+      TableName: CONNECTIONS_TABLE,
+      IndexName: 'RoomConnectionsIndex',
+      KeyConditionExpression: 'roomId = :roomId',
+      ExpressionAttributeValues: {
+        ':roomId': roomId
+      }
+    }));
+  }, 5000);
 
   // Se tem targetUserId, enviar apenas para ele, senão broadcast
   const message = {
@@ -118,36 +160,53 @@ async function handleWebRTCSignal(body, apigwClient) {
     userId,
     targetUserId,
     signal,
-    signalType: type
+    signalType: type,
+    timestamp: Date.now()
   };
 
-  const postCalls = connections.Items
-    .filter(conn => !targetUserId || conn.userId === targetUserId)
-    .map(async ({ connectionId: targetConnectionId }) => {
-      try {
-        await apigwClient.send(new PostToConnectionCommand({
-          ConnectionId: targetConnectionId,
-          Data: JSON.stringify(message)
-        }));
-      } catch (error) {
-        if (error.statusCode === 410) {
-          console.log(`Stale connection: ${targetConnectionId}`);
-        } else {
-          console.error(`Error posting to ${targetConnectionId}:`, error);
-        }
-      }
-    });
+  const targetConnections = connections.Items
+    .filter(conn => !targetUserId || conn.userId === targetUserId);
 
-  await Promise.all(postCalls);
+  await broadcastToConnections(targetConnections, message, apigwClient);
 
-  return { statusCode: 200, body: 'Signal sent' };
+  metrics.webrtcSignalingEvents(type);
+
+  logger.info({ targetCount: targetConnections.length }, 'WebRTC signal sent');
+
+  return { 
+    statusCode: 200, 
+    body: JSON.stringify({ success: true, targetCount: targetConnections.length }) 
+  };
 }
 
-function sanitizeContent(content) {
-  // Remover scripts e tags HTML perigosas
-  return content
-    .replace(/<script\b[^<]*(?:(?!<\/script>)<[^<]*)*<\/script>/gi, '')
-    .replace(/<iframe\b[^<]*(?:(?!<\/iframe>)<[^<]*)*<\/iframe>/gi, '')
-    .trim()
-    .substring(0, 5000); // Limitar tamanho
+// Função auxiliar para broadcast com tratamento de conexões obsoletas
+async function broadcastToConnections(connections, message, apigwClient) {
+  const postCalls = connections.map(async ({ connectionId: targetConnectionId }) => {
+    try {
+      await apigwClient.send(new PostToConnectionCommand({
+        ConnectionId: targetConnectionId,
+        Data: JSON.stringify(message)
+      }));
+    } catch (error) {
+      if (error.statusCode === 410) {
+        logger.info({ connectionId: targetConnectionId }, 'Stale connection detected');
+        // Remover conexão obsoleta
+        try {
+          await ddb.send(new DeleteCommand({
+            TableName: CONNECTIONS_TABLE,
+            Key: { connectionId: targetConnectionId }
+          }));
+        } catch (deleteError) {
+          logger.error({ error: deleteError.message }, 'Failed to delete stale connection');
+        }
+      } else {
+        logger.error({ 
+          error: error.message, 
+          connectionId: targetConnectionId 
+        }, 'Error posting to connection');
+      }
+    }
+  });
+
+  await Promise.all(postCalls);
 }

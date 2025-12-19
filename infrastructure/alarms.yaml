@@ -1,0 +1,186 @@
+AWSTemplateFormatVersion: '2010-09-09'
+Description: Alertas Automatizados - Padrão Ouro
+
+Parameters:
+  StackName:
+    Type: String
+    Description: Nome do stack principal
+  Stage:
+    Type: String
+    Default: prod
+    Description: Ambiente de deployment
+  AlertEmail:
+    Type: String
+    Description: Email para receber alertas
+    Default: admin@example.com
+
+Resources:
+  AlertSNSTopic:
+    Type: AWS::SNS::Topic
+    Properties:
+      TopicName: !Sub '${StackName}-alerts'
+      DisplayName: Chat Colaborativo Alerts
+
+  AlertEmailSubscription:
+    Type: AWS::SNS::Subscription
+    Properties:
+      Protocol: email
+      TopicArn: !Ref AlertSNSTopic
+      Endpoint: !Ref AlertEmail
+
+  # Alarmes de Lambda
+  HighErrorRateAlarm:
+    Type: AWS::CloudWatch::Alarm
+    Properties:
+      AlarmName: !Sub '${StackName}-high-error-rate'
+      AlarmDescription: Taxa de erros acima de 5%
+      MetricName: Errors
+      Namespace: AWS/Lambda
+      Statistic: Sum
+      Period: 300
+      EvaluationPeriods: 2
+      Threshold: 10
+      ComparisonOperator: GreaterThanThreshold
+      AlarmActions:
+        - !Ref AlertSNSTopic
+      Dimensions:
+        - Name: FunctionName
+          Value: !Sub '${StackName}-message-handler'
+
+  ConnectionHandlerErrorAlarm:
+    Type: AWS::CloudWatch::Alarm
+    Properties:
+      AlarmName: !Sub '${StackName}-connection-handler-errors'
+      AlarmDescription: Erros no connection handler
+      MetricName: Errors
+      Namespace: AWS/Lambda
+      Statistic: Sum
+      Period: 300
+      EvaluationPeriods: 2
+      Threshold: 5
+      ComparisonOperator: GreaterThanThreshold
+      AlarmActions:
+        - !Ref AlertSNSTopic
+      Dimensions:
+        - Name: FunctionName
+          Value: !Sub '${StackName}-connection-handler'
+
+  # Alarmes de Latência
+  MessageLatencyAlarm:
+    Type: AWS::CloudWatch::Alarm
+    Properties:
+      AlarmName: !Sub '${StackName}-message-latency'
+      AlarmDescription: Latência de mensagens acima de 2 segundos
+      MetricName: MessageLatency
+      Namespace: ChatColaborativo
+      ExtendedStatistic: p99
+      Period: 300
+      EvaluationPeriods: 3
+      Threshold: 2000
+      ComparisonOperator: GreaterThanThreshold
+      AlarmActions:
+        - !Ref AlertSNSTopic
+      Dimensions:
+        - Name: Environment
+          Value: !Ref Stage
+
+  TranscriptionLatencyAlarm:
+    Type: AWS::CloudWatch::Alarm
+    Properties:
+      AlarmName: !Sub '${StackName}-transcription-latency'
+      AlarmDescription: Latência de transcrição acima de 5 segundos
+      MetricName: TranscriptionLatency
+      Namespace: ChatColaborativo
+      ExtendedStatistic: p99
+      Period: 300
+      EvaluationPeriods: 3
+      Threshold: 5000
+      ComparisonOperator: GreaterThanThreshold
+      AlarmActions:
+        - !Ref AlertSNSTopic
+      Dimensions:
+        - Name: Environment
+          Value: !Ref Stage
+
+  # Alarmes de DynamoDB
+  DynamoDBThrottleAlarm:
+    Type: AWS::CloudWatch::Alarm
+    Properties:
+      AlarmName: !Sub '${StackName}-dynamodb-throttle'
+      AlarmDescription: Throttling detectado no DynamoDB
+      MetricName: ThrottledRequests
+      Namespace: AWS/DynamoDB
+      Statistic: Sum
+      Period: 60
+      EvaluationPeriods: 1
+      Threshold: 1
+      ComparisonOperator: GreaterThanOrEqualToThreshold
+      AlarmActions:
+        - !Ref AlertSNSTopic
+      Dimensions:
+        - Name: TableName
+          Value: !Sub '${StackName}-Messages'
+
+  # Alarmes de WebSocket
+  WebSocketConnectionDropAlarm:
+    Type: AWS::CloudWatch::Alarm
+    Properties:
+      AlarmName: !Sub '${StackName}-websocket-drops'
+      AlarmDescription: Alto número de desconexões WebSocket
+      MetricName: DisconnectCount
+      Namespace: AWS/ApiGateway
+      Statistic: Sum
+      Period: 300
+      EvaluationPeriods: 2
+      Threshold: 100
+      ComparisonOperator: GreaterThanThreshold
+      AlarmActions:
+        - !Ref AlertSNSTopic
+      Dimensions:
+        - Name: ApiName
+          Value: !Sub '${StackName}-websocket'
+
+  # Alarmes de Validação
+  ValidationErrorsAlarm:
+    Type: AWS::CloudWatch::Alarm
+    Properties:
+      AlarmName: !Sub '${StackName}-validation-errors'
+      AlarmDescription: Alto número de erros de validação
+      MetricName: ValidationErrors
+      Namespace: ChatColaborativo
+      Statistic: Sum
+      Period: 300
+      EvaluationPeriods: 2
+      Threshold: 50
+      ComparisonOperator: GreaterThanThreshold
+      AlarmActions:
+        - !Ref AlertSNSTopic
+      Dimensions:
+        - Name: Environment
+          Value: !Ref Stage
+
+  # Alarme de Dead Letter Queue
+  DLQMessagesAlarm:
+    Type: AWS::CloudWatch::Alarm
+    Properties:
+      AlarmName: !Sub '${StackName}-dlq-messages'
+      AlarmDescription: Mensagens na Dead Letter Queue
+      MetricName: ApproximateNumberOfVisibleMessages
+      Namespace: AWS/SQS
+      Statistic: Maximum
+      Period: 300
+      EvaluationPeriods: 1
+      Threshold: 1
+      ComparisonOperator: GreaterThanOrEqualToThreshold
+      AlarmActions:
+        - !Ref AlertSNSTopic
+      Dimensions:
+        - Name: QueueName
+          Value: !Sub '${StackName}-message-handler-dlq'
+
+Outputs:
+  SNSTopicArn:
+    Description: ARN do tópico SNS para alertas
+    Value: !Ref AlertSNSTopic
+    Export:
+      Name: !Sub '${StackName}-AlertTopic'

@@ -85,7 +85,7 @@ export default function VideoCall({
                     <span className="animate-pulse">🎤</span>
                   </span>
                 )}
-                <span>Usuário {userId.substr(-4)}</span>
+                <span>Usuário {userId.substring(userId.length - 4)}</span>
               </div>
               {isSpeaking && (
                 <div className="absolute inset-0 pointer-events-none">

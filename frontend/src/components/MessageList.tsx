@@ -28,7 +28,7 @@ export default function MessageList({ messages, currentUserId, speakingUsers }: 
   };
 
   const getInitials = (userId: string) => {
-    return userId.substr(-2).toUpperCase();
+    return userId.substring(userId.length - 2).toUpperCase();
   };
 
   const getUserColor = (userId: string) => {
