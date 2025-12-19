@@ -7,6 +7,7 @@ const ddb = DynamoDBDocumentClient.from(client);
 
 const CONNECTIONS_TABLE = process.env.CONNECTIONS_TABLE;
 const USERS_TABLE = process.env.USERS_TABLE;
+const ROOM_EVENTS_TABLE = process.env.ROOM_EVENTS_TABLE;
 
 // Logger simples
 const logger = {
@@ -97,6 +98,28 @@ async function handleConnect(event) {
       participants 
     });
 
+    // ✅ SALVAR EVENTO DE ENTRADA NO DYNAMODB
+    if (ROOM_EVENTS_TABLE) {
+      try {
+        const eventId = `evt_${Date.now()}_${Math.random().toString(36).substring(2, 11)}`;
+        await ddb.send(new PutCommand({
+          TableName: ROOM_EVENTS_TABLE,
+          Item: {
+            eventId,
+            roomId,
+            eventType: 'user_joined',
+            userId,
+            timestamp: Date.now(),
+            participantCount: participants.length,
+            ttl: Math.floor(Date.now() / 1000) + (30 * 24 * 60 * 60) // 30 dias
+          }
+        }));
+        logger.info('✅ Room event saved to DynamoDB', { eventId, eventType: 'user_joined' });
+      } catch (dbError) {
+        logger.error('❌ Error saving room event to DynamoDB', dbError);
+      }
+    }
+
     // Notificar outros usuários na sala sobre o novo usuário
     // ✅ IMPORTANTE: Incluir lista de participantes existentes na notificação
     // O novo usuário receberá isso via broadcast quando os outros responderem
@@ -165,6 +188,28 @@ async function handleDisconnect(event) {
       const participants = (participantsResult.Items || [])
         .filter(item => item.connectionId !== connectionId)
         .map(item => item.userId);
+
+      // ✅ SALVAR EVENTO DE SAÍDA NO DYNAMODB
+      if (ROOM_EVENTS_TABLE) {
+        try {
+          const eventId = `evt_${Date.now()}_${Math.random().toString(36).substring(2, 11)}`;
+          await ddb.send(new PutCommand({
+            TableName: ROOM_EVENTS_TABLE,
+            Item: {
+              eventId,
+              roomId,
+              eventType: 'user_left',
+              userId,
+              timestamp: Date.now(),
+              participantCount: participants.length,
+              ttl: Math.floor(Date.now() / 1000) + (30 * 24 * 60 * 60) // 30 dias
+            }
+          }));
+          logger.info('✅ Room event saved to DynamoDB', { eventId, eventType: 'user_left' });
+        } catch (dbError) {
+          logger.error('❌ Error saving room event to DynamoDB', dbError);
+        }
+      }
 
       // Notificar outros usuários na sala
       await notifyRoomUsers(roomId, {

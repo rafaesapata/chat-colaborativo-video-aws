@@ -1,6 +1,6 @@
 import { useState, useEffect, useRef, useMemo, useCallback } from 'react';
 import { useParams, useSearchParams, useNavigate } from 'react-router-dom';
-import { Info, X } from 'lucide-react';
+import { Info, X, ShieldCheck, User, Wifi, WifiOff } from 'lucide-react';
 import VideoGrid from './VideoGrid';
 import ControlBar from './ControlBar';
 import ChatSidebar from './ChatSidebar';
@@ -9,10 +9,11 @@ import { useWebSocket } from '../hooks/useWebSocket';
 import { useVideoCall } from '../hooks/useVideoCall';
 import { useTranscription } from '../hooks/useTranscription';
 import { useMobile } from '../hooks/useMobile';
+import { useAuth } from '../contexts/AuthContext';
 
 // Versão do aplicativo - atualizar a cada deploy
-const APP_VERSION = '2.7.1';
-const BUILD_DATE = '2025-12-19 19:15';
+const APP_VERSION = '2.8.0';
+const BUILD_DATE = '2025-12-19 22:30';
 
 interface Participant {
   id: string;
@@ -35,6 +36,7 @@ export default function MeetingRoom({ darkMode }: { darkMode: boolean }) {
   const [searchParams] = useSearchParams();
   const navigate = useNavigate();
   const { isMobile, isTouch } = useMobile();
+  const { isAuthenticated, user, isGuest } = useAuth();
   
   const userName = searchParams.get('name') || 'Usuário';
   
@@ -148,6 +150,7 @@ export default function MeetingRoom({ darkMode }: { darkMode: boolean }) {
         // Se OUTRO usuário entrou
         else if (eventUserId !== userId) {
           console.log('[MeetingRoom] ➕ Novo usuário entrou:', eventUserId);
+          const eventUserName = data.data.userName;
           
           setParticipants(prev => {
             if (prev.some(p => p.id === eventUserId)) {
@@ -158,7 +161,7 @@ export default function MeetingRoom({ darkMode }: { darkMode: boolean }) {
               ...prev,
               { 
                 id: eventUserId, 
-                name: `Usuário ${eventUserId.substring(eventUserId.length - 4)}`, 
+                name: eventUserName || `Usuário ${eventUserId.substring(eventUserId.length - 4)}`, 
                 isMuted: false, 
                 hasVideo: true
               }
@@ -207,13 +210,18 @@ export default function MeetingRoom({ darkMode }: { darkMode: boolean }) {
     remoteStreams,
     isVideoEnabled,
     isAudioEnabled,
+    isScreenSharing: screenShareActive,
     toggleVideo,
     toggleAudio,
+    toggleScreenShare,
     connectionErrors,
     speakingUsers,
+    overallQuality,
+    participantNames,
   } = useVideoCall({ 
     roomId: roomId || '', 
-    userId, 
+    userId,
+    userName,
     sendMessage, 
     addMessageHandler 
   });
@@ -312,9 +320,10 @@ export default function MeetingRoom({ darkMode }: { darkMode: boolean }) {
     setIsVideoOff(prev => !prev);
   }, [toggleVideo]);
 
-  const handleToggleScreenShare = useCallback(() => {
+  const handleToggleScreenShare = useCallback(async () => {
+    await toggleScreenShare();
     setIsScreenSharing(prev => !prev);
-  }, []);
+  }, [toggleScreenShare]);
 
   const handleLeaveMeeting = useCallback(() => {
     sessionStorage.removeItem(`video-chat-userId-${roomId}`);
@@ -379,6 +388,8 @@ export default function MeetingRoom({ darkMode }: { darkMode: boolean }) {
           localStream={localStream}
           remoteStreams={remoteStreams}
           darkMode={darkMode}
+          speakingUsers={speakingUsers}
+          localUserId={userId}
         />
       </div>
 
@@ -438,6 +449,64 @@ export default function MeetingRoom({ darkMode }: { darkMode: boolean }) {
       >
         <Info size={isMobile ? 14 : 16} />
       </button>
+
+      {/* Auth Status Badge */}
+      <div
+        className={`fixed ${isMobile ? 'top-2 left-11' : 'top-4 left-14'} z-40 flex items-center gap-2 ${isMobile ? 'px-2 py-1' : 'px-3 py-1.5'} rounded-full backdrop-blur-xl transition-all duration-150 ${
+          isAuthenticated
+            ? darkMode 
+              ? 'bg-green-900/60 text-green-400 border border-green-700/50' 
+              : 'bg-green-100/80 text-green-700 border border-green-300/50'
+            : darkMode 
+              ? 'bg-gray-900/60 text-gray-400 border border-gray-700/50' 
+              : 'bg-gray-100/80 text-gray-500 border border-gray-300/50'
+        }`}
+        title={isAuthenticated ? `Autenticado como ${user?.login}` : 'Modo Convidado'}
+      >
+        {isAuthenticated ? (
+          <>
+            <ShieldCheck size={isMobile ? 12 : 14} className="text-green-500" />
+            <span className={`${isMobile ? 'text-[10px]' : 'text-xs'} font-medium`}>
+              {isMobile ? user?.login?.substring(0, 8) : user?.login}
+            </span>
+          </>
+        ) : (
+          <>
+            <User size={isMobile ? 12 : 14} />
+            <span className={`${isMobile ? 'text-[10px]' : 'text-xs'} font-medium`}>
+              Convidado
+            </span>
+          </>
+        )}
+      </div>
+
+      {/* Connection Quality Indicator */}
+      <div
+        className={`fixed ${isMobile ? 'top-2 right-2' : 'top-4 right-4'} z-40 flex items-center gap-2 ${isMobile ? 'px-2 py-1' : 'px-3 py-1.5'} rounded-full backdrop-blur-xl transition-all duration-150 ${
+          darkMode 
+            ? 'bg-gray-900/60 border border-white/10' 
+            : 'bg-white/40 border border-white/30'
+        }`}
+        title={`Qualidade: ${overallQuality}`}
+      >
+        {overallQuality === 'excellent' && <Wifi size={isMobile ? 12 : 14} className="text-green-500" />}
+        {overallQuality === 'good' && <Wifi size={isMobile ? 12 : 14} className="text-green-400" />}
+        {overallQuality === 'fair' && <Wifi size={isMobile ? 12 : 14} className="text-yellow-500" />}
+        {overallQuality === 'poor' && <WifiOff size={isMobile ? 12 : 14} className="text-red-500" />}
+        {overallQuality === 'unknown' && <Wifi size={isMobile ? 12 : 14} className="text-gray-400" />}
+        <span className={`${isMobile ? 'text-[10px]' : 'text-xs'} font-medium ${
+          overallQuality === 'excellent' ? 'text-green-500' :
+          overallQuality === 'good' ? 'text-green-400' :
+          overallQuality === 'fair' ? 'text-yellow-500' :
+          overallQuality === 'poor' ? 'text-red-500' :
+          darkMode ? 'text-gray-400' : 'text-gray-500'
+        }`}>
+          {overallQuality === 'excellent' ? 'Excelente' :
+           overallQuality === 'good' ? 'Boa' :
+           overallQuality === 'fair' ? 'Regular' :
+           overallQuality === 'poor' ? 'Ruim' : '...'}
+        </span>
+      </div>
 
       {/* Version Info Modal */}
       {showVersionInfo && (

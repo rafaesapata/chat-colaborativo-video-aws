@@ -7,6 +7,8 @@ const ddb = DynamoDBDocumentClient.from(ddbClient);
 
 const MESSAGES_TABLE = process.env.MESSAGES_TABLE;
 const CONNECTIONS_TABLE = process.env.CONNECTIONS_TABLE;
+const TRANSCRIPTIONS_TABLE = process.env.TRANSCRIPTIONS_TABLE;
+const ROOM_EVENTS_TABLE = process.env.ROOM_EVENTS_TABLE;
 
 // Logger simples
 const logger = {
@@ -116,6 +118,30 @@ async function handleTranscription(event, body) {
 
   try {
     const transcriptionId = `trans_${Date.now()}_${Math.random().toString(36).substring(2, 11)}`;
+    const transcriptionTimestamp = timestamp || Date.now();
+
+    // ✅ SALVAR TRANSCRIÇÃO NO DYNAMODB (apenas transcrições finais, não parciais)
+    if (!isPartial && TRANSCRIPTIONS_TABLE) {
+      try {
+        await ddb.send(new PutCommand({
+          TableName: TRANSCRIPTIONS_TABLE,
+          Item: {
+            transcriptionId,
+            roomId,
+            userId,
+            userName: userName || `User ${userId.substring(userId.length - 4)}`,
+            text: transcribedText,
+            timestamp: transcriptionTimestamp,
+            type: 'speech',
+            ttl: Math.floor(Date.now() / 1000) + (30 * 24 * 60 * 60) // 30 dias
+          }
+        }));
+        logger.info('✅ Transcription saved to DynamoDB', { transcriptionId, roomId });
+      } catch (dbError) {
+        logger.error('❌ Error saving transcription to DynamoDB', dbError);
+        // Continuar mesmo se falhar o salvamento
+      }
+    }
 
     // Enviar transcrição para todos na sala (incluindo o remetente para confirmação)
     await notifyRoomUsers(roomId, {
@@ -127,7 +153,7 @@ async function handleTranscription(event, body) {
         userName: userName || `User ${userId.substring(userId.length - 4)}`,
         transcribedText,
         isPartial: isPartial || false,
-        timestamp: timestamp || Date.now()
+        timestamp: transcriptionTimestamp
       }
     }, null); // Não excluir ninguém - enviar para todos
 

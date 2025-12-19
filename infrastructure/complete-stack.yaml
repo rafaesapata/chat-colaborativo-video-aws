@@ -163,6 +163,42 @@ Resources:
         StreamViewType: NEW_AND_OLD_IMAGES
       PointInTimeRecoverySpecification:
         PointInTimeRecoveryEnabled: true
+      TimeToLiveSpecification:
+        AttributeName: ttl
+        Enabled: true
+      Tags:
+        - Key: Application
+          Value: ChatColaborativo
+
+  RoomEventsTable:
+    Type: AWS::DynamoDB::Table
+    Properties:
+      TableName: !Sub '${AWS::StackName}-RoomEvents'
+      BillingMode: PAY_PER_REQUEST
+      AttributeDefinitions:
+        - AttributeName: eventId
+          AttributeType: S
+        - AttributeName: roomId
+          AttributeType: S
+        - AttributeName: timestamp
+          AttributeType: N
+      KeySchema:
+        - AttributeName: eventId
+          KeyType: HASH
+      GlobalSecondaryIndexes:
+        - IndexName: RoomEventsIndex
+          KeySchema:
+            - AttributeName: roomId
+              KeyType: HASH
+            - AttributeName: timestamp
+              KeyType: RANGE
+          Projection:
+            ProjectionType: ALL
+      TimeToLiveSpecification:
+        AttributeName: ttl
+        Enabled: true
+      PointInTimeRecoverySpecification:
+        PointInTimeRecoveryEnabled: true
       Tags:
         - Key: Application
           Value: ChatColaborativo
@@ -412,11 +448,20 @@ Resources:
       FunctionName: !Sub '${AWS::StackName}-connection-handler'
       CodeUri: ../backend/lambdas/connection-handler/
       Handler: index.handler
+      Environment:
+        Variables:
+          CONNECTIONS_TABLE: !Ref ConnectionsTable
+          USERS_TABLE: !Ref UsersTable
+          ROOM_EVENTS_TABLE: !Ref RoomEventsTable
+          API_GATEWAY_DOMAIN_NAME: !Sub '${WebSocketApi}.execute-api.${AWS::Region}.amazonaws.com'
+          STAGE: !Ref Stage
       Policies:
         - DynamoDBCrudPolicy:
             TableName: !Ref ConnectionsTable
         - DynamoDBCrudPolicy:
             TableName: !Ref UsersTable
+        - DynamoDBCrudPolicy:
+            TableName: !Ref RoomEventsTable
         - Statement:
             - Effect: Allow
               Action:
@@ -435,6 +480,8 @@ Resources:
         Variables:
           MESSAGES_TABLE: !Ref MessagesTable
           CONNECTIONS_TABLE: !Ref ConnectionsTable
+          TRANSCRIPTIONS_TABLE: !Ref TranscriptionsTable
+          ROOM_EVENTS_TABLE: !Ref RoomEventsTable
           API_GATEWAY_DOMAIN_NAME: !Sub '${WebSocketApi}.execute-api.${AWS::Region}.amazonaws.com'
           STAGE: !Ref Stage
       Policies:
@@ -442,6 +489,10 @@ Resources:
             TableName: !Ref MessagesTable
         - DynamoDBCrudPolicy:
             TableName: !Ref ConnectionsTable
+        - DynamoDBCrudPolicy:
+            TableName: !Ref TranscriptionsTable
+        - DynamoDBCrudPolicy:
+            TableName: !Ref RoomEventsTable
         - Statement:
             - Effect: Allow
               Action:
