@@ -117,6 +117,7 @@ export default function MeetingRoom({ darkMode }: { darkMode: boolean }) {
     isAudioEnabled,
     toggleVideo,
     toggleAudio,
+    connectionErrors,
   } = useVideoCall({ 
     roomId: roomId || '', 
     userId, 
@@ -186,10 +187,45 @@ export default function MeetingRoom({ darkMode }: { darkMode: boolean }) {
     });
   }, []);
 
+  // Verificar se há erro de permissão
+  const hasPermissionError = Array.from(connectionErrors.entries()).some(([key, error]) => 
+    key === 'local' && error.includes('Permissão negada')
+  );
+
   return (
     <div className={`h-screen w-screen overflow-hidden transition-colors duration-300 ${
       darkMode ? 'bg-gray-900' : 'bg-gray-50'
     }`}>
+      {/* Mostrar aviso de permissão se necessário */}
+      {hasPermissionError && (
+        <div className="absolute top-4 left-1/2 transform -translate-x-1/2 z-50">
+          <div className={`px-6 py-3 rounded-lg shadow-lg border ${
+            darkMode 
+              ? 'bg-red-900/90 border-red-700 text-red-200' 
+              : 'bg-red-50 border-red-200 text-red-800'
+          }`}>
+            <div className="flex items-center gap-3">
+              <svg className="w-5 h-5 text-red-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-2.5L13.732 4c-.77-.833-1.964-.833-2.732 0L3.732 16.5c-.77.833.192 2.5 1.732 2.5z" />
+              </svg>
+              <span className="text-sm font-medium">
+                Clique no ícone da câmera na barra de endereços para permitir acesso
+              </span>
+              <button
+                onClick={() => window.location.reload()}
+                className={`ml-2 px-3 py-1 text-xs rounded ${
+                  darkMode 
+                    ? 'bg-red-800 hover:bg-red-700 text-red-200' 
+                    : 'bg-red-100 hover:bg-red-200 text-red-700'
+                }`}
+              >
+                Recarregar
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
       <div className="h-full p-4">
         <VideoGrid 
           participants={participants}

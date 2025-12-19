@@ -263,7 +263,13 @@ export function useVideoCall({ roomId, userId, sendMessage, addMessageHandler }:
       try {
         initAudioContext();
 
+        // Verificar se as permissões já foram concedidas
+        const permissions = await navigator.permissions.query({ name: 'camera' as PermissionName });
+        console.log('[VideoCall] Permissão da câmera:', permissions.state);
+
         const settings = qualitySettings[videoQuality];
+        
+        console.log('[VideoCall] Solicitando acesso à mídia...');
         const stream = await navigator.mediaDevices.getUserMedia({
           video: {
             width: { ideal: settings.width },
@@ -278,6 +284,7 @@ export function useVideoCall({ roomId, userId, sendMessage, addMessageHandler }:
           },
         });
 
+        console.log('[VideoCall] ✅ Acesso à mídia concedido!');
         localStreamRef.current = stream;
         setLocalStream(stream);
         setupAudioAnalyser(stream, userId);
@@ -290,24 +297,50 @@ export function useVideoCall({ roomId, userId, sendMessage, addMessageHandler }:
         });
       } catch (error) {
         console.error('Erro ao acessar mídia:', error);
-        setConnectionErrors(prev => new Map(prev).set('local', 
-          'Não foi possível acessar câmera/microfone. Verifique as permissões.'));
+        
+        let errorMessage = 'Erro desconhecido ao acessar mídia.';
+        
+        if (error instanceof Error) {
+          switch (error.name) {
+            case 'NotAllowedError':
+              errorMessage = 'Permissão negada. Clique no ícone da câmera na barra de endereços e permita o acesso.';
+              break;
+            case 'NotFoundError':
+              errorMessage = 'Câmera ou microfone não encontrados. Verifique se estão conectados.';
+              break;
+            case 'NotReadableError':
+              errorMessage = 'Câmera ou microfone já estão sendo usados por outro aplicativo.';
+              break;
+            case 'OverconstrainedError':
+              errorMessage = 'Configurações de vídeo não suportadas pelo dispositivo.';
+              break;
+            case 'SecurityError':
+              errorMessage = 'Acesso negado por questões de segurança. Use HTTPS.';
+              break;
+            default:
+              errorMessage = `Erro: ${error.message}`;
+          }
+        }
+        
+        setConnectionErrors(prev => new Map(prev).set('local', errorMessage));
       }
     };
 
-    initialize();
+    // Aguardar um pouco antes de solicitar permissões para dar tempo da UI carregar
+    const timeoutId = setTimeout(initialize, 1000);
 
     // Registrar handler de mensagens
     const unsubscribe = addMessageHandler(handleSignalingMessage);
 
     return () => {
+      clearTimeout(timeoutId);
       unsubscribe();
       stopLocalStream();
       closeAllConnections();
       cleanupAudioContext();
       isInitializedRef.current = false;
     };
-  }, [roomId, userId]); // Dependências mínimas necessárias
+  }, [roomId, userId, addMessageHandler, handleSignalingMessage]); // Dependências mínimas necessárias
 
   const toggleVideo = useCallback(() => {
     if (localStreamRef.current) {

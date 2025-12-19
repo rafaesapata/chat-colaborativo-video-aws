@@ -63,11 +63,18 @@ export function useWebSocket(
           console.log('[WebSocket] 🔴 Desconectado:', { code: event.code, reason: event.reason });
           setIsConnected(false);
           
-          // Tentar reconectar apenas se não foi fechamento intencional
-          if (event.code !== 1000 && reconnectAttemptsRef.current < MAX_RECONNECT_ATTEMPTS) {
+          // Códigos que NÃO devem reconectar:
+          // 1000 = fechamento normal
+          // 1001 = endpoint indo embora
+          // 1005 = sem código de status (geralmente erro de rede temporário)
+          const shouldNotReconnect = [1000, 1001].includes(event.code);
+          
+          if (!shouldNotReconnect && reconnectAttemptsRef.current < MAX_RECONNECT_ATTEMPTS) {
             reconnectAttemptsRef.current++;
-            console.log(`[WebSocket] Tentando reconectar (${reconnectAttemptsRef.current}/${MAX_RECONNECT_ATTEMPTS})...`);
+            console.log(`[WebSocket] Tentando reconectar (${reconnectAttemptsRef.current}/${MAX_RECONNECT_ATTEMPTS}) em ${RECONNECT_DELAY}ms...`);
             reconnectTimeoutRef.current = window.setTimeout(connect, RECONNECT_DELAY);
+          } else if (reconnectAttemptsRef.current >= MAX_RECONNECT_ATTEMPTS) {
+            console.log('[WebSocket] ❌ Máximo de tentativas de reconexão atingido');
           }
         };
 
