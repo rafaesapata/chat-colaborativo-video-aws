@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useRef, useState, useCallback } from 'react';
 
 export function useWebSocket(
   url: string,
@@ -9,6 +9,16 @@ export function useWebSocket(
   const [isConnected, setIsConnected] = useState(false);
   const wsRef = useRef<WebSocket | null>(null);
   const messageHandlers = useRef<Set<(data: any) => void>>(new Set());
+  const onMessageRef = useRef(onMessage);
+  const reconnectTimeoutRef = useRef<number>();
+  const reconnectAttemptsRef = useRef(0);
+  const MAX_RECONNECT_ATTEMPTS = 5;
+  const RECONNECT_DELAY = 3000;
+
+  // Atualizar a ref quando onMessage mudar, sem causar re-render
+  useEffect(() => {
+    onMessageRef.current = onMessage;
+  }, [onMessage]);
 
   useEffect(() => {
     if (!url || !userId) {
@@ -16,52 +26,82 @@ export function useWebSocket(
       return;
     }
 
-    const wsUrl = `${url}?userId=${userId}&roomId=${roomId}`;
-    console.log('[WebSocket] Conectando em:', wsUrl);
-    const ws = new WebSocket(wsUrl);
+    const connect = () => {
+      // Limpar conexão anterior se existir
+      if (wsRef.current) {
+        wsRef.current.close();
+      }
 
-    ws.onopen = () => {
-      console.log('[WebSocket] ✅ Conectado com sucesso!');
-      setIsConnected(true);
-    };
-
-    ws.onmessage = (event) => {
+      const wsUrl = `${url}?userId=${userId}&roomId=${roomId}`;
+      console.log('[WebSocket] Conectando em:', wsUrl);
+      
       try {
-        const data = JSON.parse(event.data);
-        onMessage(data);
-        // Notificar handlers adicionais (para WebRTC)
-        messageHandlers.current.forEach(handler => handler(data));
+        const ws = new WebSocket(wsUrl);
+
+        ws.onopen = () => {
+          console.log('[WebSocket] ✅ Conectado com sucesso!');
+          setIsConnected(true);
+          reconnectAttemptsRef.current = 0;
+        };
+
+        ws.onmessage = (event) => {
+          try {
+            const data = JSON.parse(event.data);
+            // Usar a ref para evitar dependência
+            onMessageRef.current(data);
+            messageHandlers.current.forEach(handler => handler(data));
+          } catch (error) {
+            console.error('[WebSocket] Error parsing message:', error);
+          }
+        };
+
+        ws.onerror = (error) => {
+          console.error('[WebSocket] ❌ Erro:', error);
+        };
+
+        ws.onclose = (event) => {
+          console.log('[WebSocket] 🔴 Desconectado:', { code: event.code, reason: event.reason });
+          setIsConnected(false);
+          
+          // Tentar reconectar apenas se não foi fechamento intencional
+          if (event.code !== 1000 && reconnectAttemptsRef.current < MAX_RECONNECT_ATTEMPTS) {
+            reconnectAttemptsRef.current++;
+            console.log(`[WebSocket] Tentando reconectar (${reconnectAttemptsRef.current}/${MAX_RECONNECT_ATTEMPTS})...`);
+            reconnectTimeoutRef.current = window.setTimeout(connect, RECONNECT_DELAY);
+          }
+        };
+
+        wsRef.current = ws;
       } catch (error) {
-        console.error('Error parsing message:', error);
+        console.error('[WebSocket] Erro ao criar conexão:', error);
       }
     };
 
-    ws.onerror = (error) => {
-      console.error('[WebSocket] ❌ Erro:', error);
-    };
-
-    ws.onclose = (event) => {
-      console.log('[WebSocket] 🔴 Desconectado:', { code: event.code, reason: event.reason });
-      setIsConnected(false);
-    };
-
-    wsRef.current = ws;
+    connect();
 
     return () => {
-      ws.close();
+      if (reconnectTimeoutRef.current) {
+        clearTimeout(reconnectTimeoutRef.current);
+      }
+      if (wsRef.current) {
+        wsRef.current.close(1000, 'Component unmounting');
+      }
     };
-  }, [url, userId, roomId]);
+  }, [url, userId, roomId]); // NÃO incluir onMessage aqui!
 
-  const sendMessage = (message: any) => {
+  const sendMessage = useCallback((message: any) => {
     if (wsRef.current?.readyState === WebSocket.OPEN) {
       wsRef.current.send(JSON.stringify(message));
+      return true;
     }
-  };
+    console.warn('[WebSocket] Tentativa de enviar mensagem com conexão fechada');
+    return false;
+  }, []);
 
-  const addMessageHandler = (handler: (data: any) => void) => {
+  const addMessageHandler = useCallback((handler: (data: any) => void) => {
     messageHandlers.current.add(handler);
     return () => messageHandlers.current.delete(handler);
-  };
+  }, []);
 
-  return { sendMessage, isConnected, onMessage: addMessageHandler };
+  return { sendMessage, isConnected, addMessageHandler };
 }

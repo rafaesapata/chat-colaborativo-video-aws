@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef } from 'react';
+import { useState, useEffect, useRef, useMemo, useCallback } from 'react';
 import { useParams, useSearchParams, useNavigate } from 'react-router-dom';
 import VideoGrid from './VideoGrid';
 import ControlBar from './ControlBar';
@@ -28,9 +28,19 @@ export default function MeetingRoom({ darkMode }: { darkMode: boolean }) {
   const navigate = useNavigate();
   
   const userName = searchParams.get('name') || 'Usuário';
-  const userId = 'user_' + Math.random().toString(36).substring(2, 11);
   
-  const [participants, setParticipants] = useState<Participant[]>([
+  // CORREÇÃO: userId estável usando useMemo + sessionStorage
+  const userId = useMemo(() => {
+    const storageKey = `video-chat-userId-${roomId}`;
+    const storedId = sessionStorage.getItem(storageKey);
+    if (storedId) return storedId;
+    
+    const newId = 'user_' + Math.random().toString(36).substring(2, 11);
+    sessionStorage.setItem(storageKey, newId);
+    return newId;
+  }, [roomId]);
+  
+  const [participants, setParticipants] = useState<Participant[]>(() => [
     { id: userId, name: 'Você', isMuted: false, hasVideo: true }
   ]);
   
@@ -44,20 +54,15 @@ export default function MeetingRoom({ darkMode }: { darkMode: boolean }) {
   
   const controlsTimeoutRef = useRef<number>();
   const mouseAreaRef = useRef<HTMLDivElement>(null);
+  const isChatOpenRef = useRef(isChatOpen);
 
-  const wsUrl = import.meta.env.VITE_WEBSOCKET_URL || '';
-  const { sendMessage, isConnected } = useWebSocket(wsUrl, userId, roomId || '', handleWebSocketMessage);
-  
-  const {
-    localStream,
-    remoteStreams,
-    isVideoEnabled,
-    isAudioEnabled,
-    toggleVideo,
-    toggleAudio,
-  } = useVideoCall({ roomId: roomId || '', userId, sendMessage, onMessage: () => {} });
+  // Manter ref atualizada
+  useEffect(() => {
+    isChatOpenRef.current = isChatOpen;
+  }, [isChatOpen]);
 
-  function handleWebSocketMessage(data: any) {
+  // CORREÇÃO: Handler estável com useCallback
+  const handleWebSocketMessage = useCallback((data: any) => {
     if (data.type === 'message') {
       const newMessage: Message = {
         id: data.data.messageId,
@@ -72,27 +77,52 @@ export default function MeetingRoom({ darkMode }: { darkMode: boolean }) {
       
       setMessages(prev => [...prev, newMessage]);
       
-      if (!isChatOpen && data.data.userId !== userId) {
+      if (!isChatOpenRef.current && data.data.userId !== userId) {
         setUnreadCount(prev => prev + 1);
       }
     } else if (data.type === 'room_event') {
       const { eventType, userId: eventUserId, participants: newParticipants } = data.data;
       
       if (eventType === 'user_joined' && eventUserId !== userId) {
-        setParticipants(prev => [
-          ...prev,
-          { 
-            id: eventUserId, 
-            name: `Usuário ${eventUserId.substring(eventUserId.length - 4)}`, 
-            isMuted: false, 
-            hasVideo: true 
-          }
-        ]);
+        setParticipants(prev => {
+          if (prev.some(p => p.id === eventUserId)) return prev;
+          return [
+            ...prev,
+            { 
+              id: eventUserId, 
+              name: `Usuário ${eventUserId.substring(eventUserId.length - 4)}`, 
+              isMuted: false, 
+              hasVideo: true 
+            }
+          ];
+        });
       } else if (eventType === 'user_left') {
         setParticipants(prev => prev.filter(p => p.id !== eventUserId));
       }
     }
-  }
+  }, [userId]);
+
+  const wsUrl = import.meta.env.VITE_WEBSOCKET_URL || '';
+  const { sendMessage, isConnected, addMessageHandler } = useWebSocket(
+    wsUrl, 
+    userId, 
+    roomId || '', 
+    handleWebSocketMessage
+  );
+  
+  const {
+    localStream,
+    remoteStreams,
+    isVideoEnabled,
+    isAudioEnabled,
+    toggleVideo,
+    toggleAudio,
+  } = useVideoCall({ 
+    roomId: roomId || '', 
+    userId, 
+    sendMessage, 
+    addMessageHandler 
+  });
 
   // Controle de visibilidade dos controles
   useEffect(() => {
@@ -103,46 +133,22 @@ export default function MeetingRoom({ darkMode }: { darkMode: boolean }) {
         clearTimeout(controlsTimeoutRef.current);
       }
       
-      controlsTimeoutRef.current = setTimeout(() => {
+      controlsTimeoutRef.current = window.setTimeout(() => {
         setControlsVisible(false);
       }, 3000);
     };
 
-    const handleMouseEnterBottom = () => {
-      setControlsVisible(true);
-    };
-
-    const handleMouseLeaveBottom = () => {
-      if (controlsTimeoutRef.current) {
-        clearTimeout(controlsTimeoutRef.current);
-      }
-      
-      controlsTimeoutRef.current = setTimeout(() => {
-        setControlsVisible(false);
-      }, 1500);
-    };
-
     document.addEventListener('mousemove', handleMouseMove);
     
-    const mouseArea = mouseAreaRef.current;
-    if (mouseArea) {
-      mouseArea.addEventListener('mouseenter', handleMouseEnterBottom);
-      mouseArea.addEventListener('mouseleave', handleMouseLeaveBottom);
-    }
-
     return () => {
       document.removeEventListener('mousemove', handleMouseMove);
-      if (mouseArea) {
-        mouseArea.removeEventListener('mouseenter', handleMouseEnterBottom);
-        mouseArea.removeEventListener('mouseleave', handleMouseLeaveBottom);
-      }
       if (controlsTimeoutRef.current) {
         clearTimeout(controlsTimeoutRef.current);
       }
     };
   }, []);
 
-  const handleSendMessage = (text: string) => {
+  const handleSendMessage = useCallback((text: string) => {
     sendMessage({
       action: 'sendMessage',
       roomId: roomId || '',
@@ -150,39 +156,40 @@ export default function MeetingRoom({ darkMode }: { darkMode: boolean }) {
       content: text,
       userName
     });
-  };
+  }, [sendMessage, roomId, userId, userName]);
 
-  const handleToggleMute = () => {
+  const handleToggleMute = useCallback(() => {
     toggleAudio();
-    setIsMuted(!isAudioEnabled);
-  };
+    setIsMuted(prev => !prev);
+  }, [toggleAudio]);
 
-  const handleToggleVideo = () => {
+  const handleToggleVideo = useCallback(() => {
     toggleVideo();
-    setIsVideoOff(!isVideoEnabled);
-  };
+    setIsVideoOff(prev => !prev);
+  }, [toggleVideo]);
 
-  const handleToggleScreenShare = () => {
-    setIsScreenSharing(!isScreenSharing);
-    // Implementar lógica de compartilhamento de tela
-  };
+  const handleToggleScreenShare = useCallback(() => {
+    setIsScreenSharing(prev => !prev);
+  }, []);
 
-  const handleLeaveMeeting = () => {
+  const handleLeaveMeeting = useCallback(() => {
+    sessionStorage.removeItem(`video-chat-userId-${roomId}`);
     navigate('/');
-  };
+  }, [navigate, roomId]);
 
-  const handleToggleChat = () => {
-    setIsChatOpen(!isChatOpen);
-    if (!isChatOpen) {
-      setUnreadCount(0);
-    }
-  };
+  const handleToggleChat = useCallback(() => {
+    setIsChatOpen(prev => {
+      if (!prev) {
+        setUnreadCount(0);
+      }
+      return !prev;
+    });
+  }, []);
 
   return (
     <div className={`h-screen w-screen overflow-hidden transition-colors duration-300 ${
       darkMode ? 'bg-gray-900' : 'bg-gray-50'
     }`}>
-      {/* Video Grid */}
       <div className="h-full p-4">
         <VideoGrid 
           participants={participants}
@@ -192,13 +199,11 @@ export default function MeetingRoom({ darkMode }: { darkMode: boolean }) {
         />
       </div>
 
-      {/* Mouse Detection Area for Controls */}
       <div
         ref={mouseAreaRef}
-        className="fixed bottom-0 left-0 right-0 h-30 pointer-events-none z-10"
+        className="fixed bottom-0 left-0 right-0 h-32 pointer-events-none z-10"
       />
 
-      {/* Control Bar */}
       <ControlBar
         visible={controlsVisible}
         isMuted={isMuted}
@@ -213,7 +218,6 @@ export default function MeetingRoom({ darkMode }: { darkMode: boolean }) {
         darkMode={darkMode}
       />
 
-      {/* Chat Sidebar */}
       <ChatSidebar
         isOpen={isChatOpen}
         onClose={() => setIsChatOpen(false)}
