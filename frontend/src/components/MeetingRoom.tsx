@@ -5,16 +5,19 @@ import VideoGrid from './VideoGrid';
 import ControlBar from './ControlBar';
 import ChatSidebar from './ChatSidebar';
 import TranscriptionPanel from './TranscriptionPanel';
+import MeetingSetupModal from './MeetingSetupModal';
+import InterviewSuggestions from './InterviewSuggestions';
 import { useWebSocket } from '../hooks/useWebSocket';
 import { useVideoCall } from '../hooks/useVideoCall';
 import { useTranscription } from '../hooks/useTranscription';
+import { useInterviewAssistant } from '../hooks/useInterviewAssistant';
 import { useMobile } from '../hooks/useMobile';
 import { useAuth } from '../contexts/AuthContext';
 import { meetingHistoryService } from '../services/meetingHistoryService';
 
 // Versão do aplicativo - atualizar a cada deploy
-const APP_VERSION = '2.11.0';
-const BUILD_DATE = '2025-12-20 00:30';
+const APP_VERSION = '2.12.0';
+const BUILD_DATE = '2025-12-20 01:00';
 
 interface Participant {
   id: string;
@@ -66,6 +69,10 @@ export default function MeetingRoom({ darkMode }: { darkMode: boolean }) {
   const [isScreenSharing, setIsScreenSharing] = useState(false);
   const [showVersionInfo, setShowVersionInfo] = useState(false);
   const [currentMeetingId, setCurrentMeetingId] = useState<string | null>(null);
+  const [showMeetingSetup, setShowMeetingSetup] = useState(false);
+  const [meetingType, setMeetingType] = useState('REUNIAO');
+  const [meetingTopic, setMeetingTopic] = useState('');
+  const [hasSetupCompleted, setHasSetupCompleted] = useState(false);
   
   const controlsTimeoutRef = useRef<number>();
   const mouseAreaRef = useRef<HTMLDivElement>(null);
@@ -242,6 +249,39 @@ export default function MeetingRoom({ darkMode }: { darkMode: boolean }) {
     addMessageHandler,
     localStream
   });
+
+  // Hook do assistente de entrevista
+  const {
+    suggestions: interviewSuggestions,
+    unreadSuggestions,
+    isGenerating: isGeneratingSuggestions,
+    markAsRead: markSuggestionAsRead,
+    dismissSuggestion,
+  } = useInterviewAssistant({
+    isEnabled: isAuthenticated && meetingType === 'ENTREVISTA' && hasSetupCompleted,
+    meetingType,
+    topic: meetingTopic,
+    transcriptions,
+  });
+
+  // Mostrar modal de configuração para usuários autenticados
+  useEffect(() => {
+    if (isAuthenticated && !hasSetupCompleted && localStream) {
+      // Aguardar um pouco para o usuário se situar
+      const timer = setTimeout(() => {
+        setShowMeetingSetup(true);
+      }, 1500);
+      return () => clearTimeout(timer);
+    }
+  }, [isAuthenticated, hasSetupCompleted, localStream]);
+
+  // Handler para configuração da reunião
+  const handleMeetingSetup = useCallback((type: string, topic: string) => {
+    setMeetingType(type);
+    setMeetingTopic(topic);
+    setHasSetupCompleted(true);
+    setShowMeetingSetup(false);
+  }, []);
 
   // Criar registro de reunião para usuários autenticados
   useEffect(() => {
@@ -480,6 +520,31 @@ export default function MeetingRoom({ darkMode }: { darkMode: boolean }) {
         darkMode={darkMode}
         isSpeechRecognitionSupported={isSpeechRecognitionSupported}
       />
+
+      {/* Meeting Setup Modal - só para usuários autenticados */}
+      {isAuthenticated && (
+        <MeetingSetupModal
+          isOpen={showMeetingSetup}
+          onClose={() => {
+            setShowMeetingSetup(false);
+            setHasSetupCompleted(true);
+          }}
+          onConfirm={handleMeetingSetup}
+          darkMode={darkMode}
+        />
+      )}
+
+      {/* Interview Suggestions - só para entrevistas */}
+      {isAuthenticated && meetingType === 'ENTREVISTA' && hasSetupCompleted && (
+        <InterviewSuggestions
+          suggestions={interviewSuggestions}
+          isGenerating={isGeneratingSuggestions}
+          onMarkAsRead={markSuggestionAsRead}
+          onDismiss={dismissSuggestion}
+          darkMode={darkMode}
+          meetingTopic={meetingTopic}
+        />
+      )}
 
       {/* Version Info Button */}
       <button
