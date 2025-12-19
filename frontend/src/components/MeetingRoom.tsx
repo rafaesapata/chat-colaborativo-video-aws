@@ -10,10 +10,11 @@ import { useVideoCall } from '../hooks/useVideoCall';
 import { useTranscription } from '../hooks/useTranscription';
 import { useMobile } from '../hooks/useMobile';
 import { useAuth } from '../contexts/AuthContext';
+import { meetingHistoryService } from '../services/meetingHistoryService';
 
 // Versão do aplicativo - atualizar a cada deploy
-const APP_VERSION = '2.10.0';
-const BUILD_DATE = '2025-12-19 23:45';
+const APP_VERSION = '2.11.0';
+const BUILD_DATE = '2025-12-20 00:30';
 
 interface Participant {
   id: string;
@@ -64,6 +65,7 @@ export default function MeetingRoom({ darkMode }: { darkMode: boolean }) {
   const [isVideoOff, setIsVideoOff] = useState(false);
   const [isScreenSharing, setIsScreenSharing] = useState(false);
   const [showVersionInfo, setShowVersionInfo] = useState(false);
+  const [currentMeetingId, setCurrentMeetingId] = useState<string | null>(null);
   
   const controlsTimeoutRef = useRef<number>();
   const mouseAreaRef = useRef<HTMLDivElement>(null);
@@ -241,6 +243,36 @@ export default function MeetingRoom({ darkMode }: { darkMode: boolean }) {
     localStream
   });
 
+  // Criar registro de reunião para usuários autenticados
+  useEffect(() => {
+    if (isAuthenticated && user?.login && roomId && !currentMeetingId) {
+      const meeting = meetingHistoryService.createMeeting(user.login, roomId, [userName]);
+      setCurrentMeetingId(meeting.id);
+      
+      // Ativar transcrição automaticamente para usuários autenticados
+      if (isSpeechRecognitionSupported && localStream && !isTranscriptionEnabled) {
+        setTimeout(() => {
+          toggleTranscription();
+        }, 2000); // Aguardar stream estar pronto
+      }
+    }
+  }, [isAuthenticated, user?.login, roomId, localStream, isSpeechRecognitionSupported]);
+
+  // Salvar transcrições no histórico
+  useEffect(() => {
+    if (isAuthenticated && user?.login && currentMeetingId && transcriptions.length > 0) {
+      const lastTranscription = transcriptions[transcriptions.length - 1];
+      if (!lastTranscription.isPartial) {
+        meetingHistoryService.addTranscription(user.login, currentMeetingId, {
+          id: lastTranscription.transcriptionId,
+          text: lastTranscription.transcribedText,
+          speaker: lastTranscription.speakerLabel || 'Desconhecido',
+          timestamp: lastTranscription.timestamp
+        });
+      }
+    }
+  }, [transcriptions, isAuthenticated, user?.login, currentMeetingId]);
+
   // Sincronizar streams remotos com participantes
   useEffect(() => {
     setParticipants(prev => 
@@ -326,9 +358,14 @@ export default function MeetingRoom({ darkMode }: { darkMode: boolean }) {
   }, [toggleScreenShare]);
 
   const handleLeaveMeeting = useCallback(() => {
+    // Finalizar reunião no histórico
+    if (isAuthenticated && user?.login && currentMeetingId) {
+      meetingHistoryService.endMeeting(user.login, currentMeetingId);
+    }
+    
     sessionStorage.removeItem(`video-chat-userId-${roomId}`);
     navigate('/');
-  }, [navigate, roomId]);
+  }, [navigate, roomId, isAuthenticated, user?.login, currentMeetingId]);
 
   const handleToggleChat = useCallback(() => {
     setIsChatOpen(prev => {
@@ -342,6 +379,10 @@ export default function MeetingRoom({ darkMode }: { darkMode: boolean }) {
   const handleToggleTranscription = useCallback(() => {
     setIsTranscriptionOpen(prev => !prev);
   }, []);
+
+  const handleToggleTranscriptionActive = useCallback(() => {
+    toggleTranscription();
+  }, [toggleTranscription]);
 
   // Verificar se há erro de permissão
   const hasPermissionError = Array.from(connectionErrors.entries()).some(([key, error]) => 
@@ -406,15 +447,17 @@ export default function MeetingRoom({ darkMode }: { darkMode: boolean }) {
         isMuted={isMuted}
         isVideoOff={isVideoOff}
         isScreenSharing={isScreenSharing}
+        isTranscriptionActive={isTranscriptionEnabled}
+        isAuthenticated={isAuthenticated}
         onToggleMute={handleToggleMute}
         onToggleVideo={handleToggleVideo}
         onToggleScreenShare={handleToggleScreenShare}
+        onToggleTranscriptionActive={handleToggleTranscriptionActive}
         onLeaveMeeting={handleLeaveMeeting}
         onToggleChat={handleToggleChat}
-        onToggleTranscription={handleToggleTranscription}
+        onToggleTranscriptionPanel={handleToggleTranscription}
         unreadCount={unreadCount}
         transcriptionCount={transcriptions.length}
-        isTranscriptionEnabled={isTranscriptionEnabled}
         darkMode={darkMode}
       />
 
