@@ -18,6 +18,7 @@ export interface LoginResponse {
 }
 
 const AUTH_STORAGE_KEY = 'videochat_auth';
+const USER_NAME_PREFIX = 'videochat_username_';
 
 export const authService = {
   async login(credentials: LoginCredentials): Promise<LoginResponse> {
@@ -67,5 +68,18 @@ export const authService = {
   isAuthenticated(): boolean {
     const auth = this.getStoredAuth();
     return auth?.isAuthenticated === true;
+  },
+
+  // Salvar nome preferido do usuário autenticado
+  saveUserName(login: string, name: string): void {
+    if (login && name) {
+      localStorage.setItem(`${USER_NAME_PREFIX}${login}`, name);
+    }
+  },
+
+  // Recuperar nome preferido do usuário autenticado
+  getSavedUserName(login: string): string | null {
+    if (!login) return null;
+    return localStorage.getItem(`${USER_NAME_PREFIX}${login}`);
   },
 };

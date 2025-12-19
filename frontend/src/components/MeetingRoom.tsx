@@ -12,8 +12,8 @@ import { useMobile } from '../hooks/useMobile';
 import { useAuth } from '../contexts/AuthContext';
 
 // Versão do aplicativo - atualizar a cada deploy
-const APP_VERSION = '2.8.0';
-const BUILD_DATE = '2025-12-19 22:30';
+const APP_VERSION = '2.9.0';
+const BUILD_DATE = '2025-12-19 23:15';
 
 interface Participant {
   id: string;
@@ -480,33 +480,29 @@ export default function MeetingRoom({ darkMode }: { darkMode: boolean }) {
         )}
       </div>
 
-      {/* Connection Quality Indicator */}
-      <div
-        className={`fixed ${isMobile ? 'top-2 right-2' : 'top-4 right-4'} z-40 flex items-center gap-2 ${isMobile ? 'px-2 py-1' : 'px-3 py-1.5'} rounded-full backdrop-blur-xl transition-all duration-150 ${
-          darkMode 
-            ? 'bg-gray-900/60 border border-white/10' 
-            : 'bg-white/40 border border-white/30'
-        }`}
-        title={`Qualidade: ${overallQuality}`}
-      >
-        {overallQuality === 'excellent' && <Wifi size={isMobile ? 12 : 14} className="text-green-500" />}
-        {overallQuality === 'good' && <Wifi size={isMobile ? 12 : 14} className="text-green-400" />}
-        {overallQuality === 'fair' && <Wifi size={isMobile ? 12 : 14} className="text-yellow-500" />}
-        {overallQuality === 'poor' && <WifiOff size={isMobile ? 12 : 14} className="text-red-500" />}
-        {overallQuality === 'unknown' && <Wifi size={isMobile ? 12 : 14} className="text-gray-400" />}
-        <span className={`${isMobile ? 'text-[10px]' : 'text-xs'} font-medium ${
-          overallQuality === 'excellent' ? 'text-green-500' :
-          overallQuality === 'good' ? 'text-green-400' :
-          overallQuality === 'fair' ? 'text-yellow-500' :
-          overallQuality === 'poor' ? 'text-red-500' :
-          darkMode ? 'text-gray-400' : 'text-gray-500'
-        }`}>
-          {overallQuality === 'excellent' ? 'Excelente' :
-           overallQuality === 'good' ? 'Boa' :
-           overallQuality === 'fair' ? 'Regular' :
-           overallQuality === 'poor' ? 'Ruim' : '...'}
-        </span>
-      </div>
+      {/* Connection Quality Indicator - só mostra quando há problemas */}
+      {(overallQuality === 'fair' || overallQuality === 'poor') && (
+        <div
+          className={`fixed ${isMobile ? 'top-2 right-2' : 'top-4 right-4'} z-40 flex items-center gap-2 ${isMobile ? 'px-2 py-1' : 'px-3 py-1.5'} rounded-full backdrop-blur-xl transition-all duration-150 ${
+            overallQuality === 'poor'
+              ? darkMode 
+                ? 'bg-red-900/60 border border-red-500/30' 
+                : 'bg-red-100/80 border border-red-300/50'
+              : darkMode 
+                ? 'bg-yellow-900/60 border border-yellow-500/30' 
+                : 'bg-yellow-100/80 border border-yellow-300/50'
+          }`}
+          title={`Qualidade: ${overallQuality === 'fair' ? 'Regular' : 'Ruim'}`}
+        >
+          {overallQuality === 'fair' && <Wifi size={isMobile ? 12 : 14} className="text-yellow-500" />}
+          {overallQuality === 'poor' && <WifiOff size={isMobile ? 12 : 14} className="text-red-500" />}
+          <span className={`${isMobile ? 'text-[10px]' : 'text-xs'} font-medium ${
+            overallQuality === 'fair' ? 'text-yellow-500' : 'text-red-500'
+          }`}>
+            {overallQuality === 'fair' ? 'Conexão Regular' : 'Conexão Ruim'}
+          </span>
+        </div>
+      )}
 
       {/* Version Info Modal */}
       {showVersionInfo && (

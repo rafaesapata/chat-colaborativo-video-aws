@@ -1,6 +1,8 @@
 import { useState, useEffect, useRef } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
 import { Video, VideoOff, Mic, MicOff, Settings, RefreshCw } from 'lucide-react';
+import { useAuth } from '../contexts/AuthContext';
+import { authService } from '../services/authService';
 
 interface PreviewScreenProps {
   darkMode: boolean;
@@ -10,12 +12,22 @@ export default function PreviewScreen({ darkMode }: PreviewScreenProps) {
   const { roomId } = useParams<{ roomId: string }>();
   const navigate = useNavigate();
   const videoRef = useRef<HTMLVideoElement>(null);
+  const { isAuthenticated, user } = useAuth();
   
-  const [name, setName] = useState('');
+  // Carregar nome salvo para usuário autenticado
+  const getSavedName = () => {
+    if (isAuthenticated && user?.login) {
+      return authService.getSavedUserName(user.login) || '';
+    }
+    return '';
+  };
+  
+  const [name, setName] = useState(getSavedName);
   const [stream, setStream] = useState<MediaStream | null>(null);
   const [isVideoEnabled, setIsVideoEnabled] = useState(true);
   const [isAudioEnabled, setIsAudioEnabled] = useState(true);
-  const [isLoading, setIsLoading] = useState(true);
+  const [isLoading, setIsLoading] = useState(false);
+  const [hasInitialized, setHasInitialized] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [audioLevel, setAudioLevel] = useState(0);
   const [devices, setDevices] = useState<{ video: MediaDeviceInfo[], audio: MediaDeviceInfo[] }>({ video: [], audio: [] });
@@ -26,11 +38,16 @@ export default function PreviewScreen({ darkMode }: PreviewScreenProps) {
   const audioContextRef = useRef<AudioContext | null>(null);
   const analyserRef = useRef<AnalyserNode | null>(null);
   const animationRef = useRef<number>();
+  const streamRef = useRef<MediaStream | null>(null);
 
   // Carregar dispositivos disponíveis
   useEffect(() => {
     const loadDevices = async () => {
       try {
+        // Primeiro solicitar permissão para obter labels dos dispositivos
+        const tempStream = await navigator.mediaDevices.getUserMedia({ video: true, audio: true });
+        tempStream.getTracks().forEach(track => track.stop());
+        
         const deviceList = await navigator.mediaDevices.enumerateDevices();
         setDevices({
           video: deviceList.filter(d => d.kind === 'videoinput'),
@@ -43,25 +60,31 @@ export default function PreviewScreen({ darkMode }: PreviewScreenProps) {
     loadDevices();
   }, []);
 
-  // Inicializar stream de preview
+  // Inicializar stream de preview - apenas uma vez ou quando dispositivo mudar
   useEffect(() => {
+    // Evitar múltiplas inicializações
+    if (hasInitialized && !selectedVideoDevice && !selectedAudioDevice) {
+      return;
+    }
+
     const initStream = async () => {
       setIsLoading(true);
       setError(null);
       
       try {
         // Parar stream anterior se existir
-        if (stream) {
-          stream.getTracks().forEach(track => track.stop());
+        if (streamRef.current) {
+          streamRef.current.getTracks().forEach(track => track.stop());
+          streamRef.current = null;
         }
 
         const constraints: MediaStreamConstraints = {
-          video: isVideoEnabled ? {
+          video: {
             deviceId: selectedVideoDevice ? { exact: selectedVideoDevice } : undefined,
             width: { ideal: 1280 },
             height: { ideal: 720 },
             facingMode: 'user'
-          } : false,
+          },
           audio: {
             deviceId: selectedAudioDevice ? { exact: selectedAudioDevice } : undefined,
             echoCancellation: true,
@@ -70,14 +93,16 @@ export default function PreviewScreen({ darkMode }: PreviewScreenProps) {
         };
 
         const mediaStream = await navigator.mediaDevices.getUserMedia(constraints);
+        streamRef.current = mediaStream;
         setStream(mediaStream);
+        setHasInitialized(true);
 
         if (videoRef.current) {
           videoRef.current.srcObject = mediaStream;
         }
 
         // Configurar analisador de áudio
-        if (!audioContextRef.current) {
+        if (!audioContextRef.current || audioContextRef.current.state === 'closed') {
           audioContextRef.current = new AudioContext();
         }
         
@@ -127,18 +152,18 @@ export default function PreviewScreen({ darkMode }: PreviewScreenProps) {
   // Cleanup ao desmontar
   useEffect(() => {
     return () => {
-      if (stream) {
-        stream.getTracks().forEach(track => track.stop());
+      if (streamRef.current) {
+        streamRef.current.getTracks().forEach(track => track.stop());
       }
-      if (audioContextRef.current) {
+      if (audioContextRef.current && audioContextRef.current.state !== 'closed') {
         audioContextRef.current.close();
       }
     };
   }, []);
 
   const toggleVideo = () => {
-    if (stream) {
-      const videoTrack = stream.getVideoTracks()[0];
+    if (streamRef.current) {
+      const videoTrack = streamRef.current.getVideoTracks()[0];
       if (videoTrack) {
         videoTrack.enabled = !videoTrack.enabled;
         setIsVideoEnabled(videoTrack.enabled);
@@ -147,8 +172,8 @@ export default function PreviewScreen({ darkMode }: PreviewScreenProps) {
   };
 
   const toggleAudio = () => {
-    if (stream) {
-      const audioTrack = stream.getAudioTracks()[0];
+    if (streamRef.current) {
+      const audioTrack = streamRef.current.getAudioTracks()[0];
       if (audioTrack) {
         audioTrack.enabled = !audioTrack.enabled;
         setIsAudioEnabled(audioTrack.enabled);
@@ -159,9 +184,14 @@ export default function PreviewScreen({ darkMode }: PreviewScreenProps) {
   const handleJoin = () => {
     if (!name.trim()) return;
     
+    // Salvar nome para usuário autenticado
+    if (isAuthenticated && user?.login) {
+      authService.saveUserName(user.login, name.trim());
+    }
+    
     // Parar stream de preview (será recriado na sala)
-    if (stream) {
-      stream.getTracks().forEach(track => track.stop());
+    if (streamRef.current) {
+      streamRef.current.getTracks().forEach(track => track.stop());
     }
     
     // Salvar preferências
@@ -174,8 +204,8 @@ export default function PreviewScreen({ darkMode }: PreviewScreenProps) {
   };
 
   const handleGoHome = () => {
-    if (stream) {
-      stream.getTracks().forEach(track => track.stop());
+    if (streamRef.current) {
+      streamRef.current.getTracks().forEach(track => track.stop());
     }
     navigate('/');
   };
