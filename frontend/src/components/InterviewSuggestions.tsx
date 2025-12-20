@@ -1,5 +1,5 @@
-import { useState } from 'react';
-import { X, Check, Sparkles, ChevronDown, ChevronUp } from 'lucide-react';
+import { useState, useRef, useEffect, useCallback } from 'react';
+import { X, Check, Sparkles, ChevronDown, ChevronUp, GripVertical } from 'lucide-react';
 import { InterviewSuggestion } from '../services/interviewAIService';
 
 interface InterviewSuggestionsProps {
@@ -21,6 +21,75 @@ export default function InterviewSuggestions({
 }: InterviewSuggestionsProps) {
   const [isMinimized, setIsMinimized] = useState(false);
   const [expandedId, setExpandedId] = useState<string | null>(null);
+  const [position, setPosition] = useState({ x: 0, y: 0 });
+  const [isDragging, setIsDragging] = useState(false);
+  const dragRef = useRef<HTMLDivElement>(null);
+  const dragStartRef = useRef({ x: 0, y: 0, posX: 0, posY: 0 });
+
+  // Inicializar posição
+  useEffect(() => {
+    const savedPos = sessionStorage.getItem('interview_suggestions_pos');
+    if (savedPos) {
+      try {
+        setPosition(JSON.parse(savedPos));
+      } catch { /* ignore */ }
+    }
+  }, []);
+
+  // Salvar posição
+  useEffect(() => {
+    if (position.x !== 0 || position.y !== 0) {
+      sessionStorage.setItem('interview_suggestions_pos', JSON.stringify(position));
+    }
+  }, [position]);
+
+  const handleDragStart = useCallback((e: React.MouseEvent | React.TouchEvent) => {
+    e.preventDefault();
+    setIsDragging(true);
+    
+    const clientX = 'touches' in e ? e.touches[0].clientX : e.clientX;
+    const clientY = 'touches' in e ? e.touches[0].clientY : e.clientY;
+    
+    dragStartRef.current = {
+      x: clientX,
+      y: clientY,
+      posX: position.x,
+      posY: position.y
+    };
+  }, [position]);
+
+  useEffect(() => {
+    if (!isDragging) return;
+
+    const handleMove = (e: MouseEvent | TouchEvent) => {
+      const clientX = 'touches' in e ? e.touches[0].clientX : e.clientX;
+      const clientY = 'touches' in e ? e.touches[0].clientY : e.clientY;
+      
+      const deltaX = clientX - dragStartRef.current.x;
+      const deltaY = clientY - dragStartRef.current.y;
+      
+      setPosition({
+        x: dragStartRef.current.posX + deltaX,
+        y: dragStartRef.current.posY + deltaY
+      });
+    };
+
+    const handleEnd = () => {
+      setIsDragging(false);
+    };
+
+    document.addEventListener('mousemove', handleMove);
+    document.addEventListener('mouseup', handleEnd);
+    document.addEventListener('touchmove', handleMove);
+    document.addEventListener('touchend', handleEnd);
+
+    return () => {
+      document.removeEventListener('mousemove', handleMove);
+      document.removeEventListener('mouseup', handleEnd);
+      document.removeEventListener('touchmove', handleMove);
+      document.removeEventListener('touchend', handleEnd);
+    };
+  }, [isDragging]);
 
   const unreadSuggestions = suggestions.filter(s => !s.isRead);
 
@@ -65,19 +134,38 @@ export default function InterviewSuggestions({
   };
 
   return (
-    <div className={`fixed top-20 right-4 z-40 w-80 max-w-[calc(100vw-2rem)] transition-all duration-300 ${
-      isMinimized ? 'h-auto' : 'max-h-[60vh]'
-    }`}>
+    <div 
+      ref={dragRef}
+      className={`fixed z-40 w-80 max-w-[calc(100vw-2rem)] transition-all duration-300 ${
+        isMinimized ? 'h-auto' : 'max-h-[60vh]'
+      } ${isDragging ? 'cursor-grabbing' : ''}`}
+      style={{
+        top: `calc(5rem + ${position.y}px)`,
+        right: `calc(1rem - ${position.x}px)`,
+      }}
+    >
       {/* Header */}
       <div
-        className={`flex items-center justify-between p-3 rounded-t-xl cursor-pointer ${
+        className={`flex items-center justify-between p-3 rounded-t-xl ${
           darkMode
             ? 'bg-gradient-to-r from-purple-900 to-indigo-900 border border-purple-700/50'
             : 'bg-gradient-to-r from-indigo-500 to-purple-500 border border-indigo-300'
         } ${isMinimized ? 'rounded-b-xl' : ''}`}
-        onClick={() => setIsMinimized(!isMinimized)}
       >
-        <div className="flex items-center gap-2">
+        {/* Drag Handle */}
+        <div
+          className="cursor-grab active:cursor-grabbing p-1 -ml-1 mr-1 text-white/60 hover:text-white/90 transition touch-none"
+          onMouseDown={handleDragStart}
+          onTouchStart={handleDragStart}
+          title="Arrastar para mover"
+        >
+          <GripVertical size={16} />
+        </div>
+        
+        <div 
+          className="flex items-center gap-2 flex-1 cursor-pointer"
+          onClick={() => setIsMinimized(!isMinimized)}
+        >
           <Sparkles size={18} className="text-yellow-400" />
           <span className="text-white font-semibold text-sm">
             Assistente de Entrevista
@@ -88,7 +176,10 @@ export default function InterviewSuggestions({
             </span>
           )}
         </div>
-        <button className="text-white/80 hover:text-white transition">
+        <button 
+          className="text-white/80 hover:text-white transition"
+          onClick={() => setIsMinimized(!isMinimized)}
+        >
           {isMinimized ? <ChevronDown size={18} /> : <ChevronUp size={18} />}
         </button>
       </div>

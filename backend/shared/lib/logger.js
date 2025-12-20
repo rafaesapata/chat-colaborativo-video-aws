@@ -1,44 +1,55 @@
-const pino = require('pino');
-const { v4: uuidv4 } = require('uuid');
+/**
+ * Módulo de Logging Estruturado
+ */
 
-const createLogger = (context = {}) => {
-  const correlationId = context.correlationId || uuidv4();
-  
-  return pino({
-    level: process.env.LOG_LEVEL || 'info',
-    base: {
-      service: 'chat-colaborativo',
-      version: process.env.APP_VERSION || '1.0.0',
-      environment: process.env.STAGE || 'development',
-      correlationId,
-      region: process.env.AWS_REGION
-    },
-    timestamp: pino.stdTimeFunctions.isoTime,
-    formatters: {
-      level: (label) => ({ level: label.toUpperCase() }),
-      bindings: (bindings) => ({
-        ...bindings,
-        pid: undefined,
-        hostname: undefined
-      })
-    },
-    redact: {
-      paths: [
-        'userId',
-        'connectionId',
-        'audioData',
-        'content',
-        '*.password',
-        '*.token',
-        '*.authorization'
-      ],
-      censor: '[REDACTED]'
-    },
-    mixin: () => ({
+const sensitiveFields = ['password', 'token', 'secret', 'authorization', 'apiKey', 'credential'];
+
+function redact(obj, depth = 0) {
+  if (depth > 10) return '[MAX_DEPTH]';
+  if (obj === null || obj === undefined) return obj;
+  if (typeof obj !== 'object') return obj;
+
+  if (Array.isArray(obj)) return obj.map(item => redact(item, depth + 1));
+
+  const result = {};
+  for (const [key, value] of Object.entries(obj)) {
+    const keyLower = key.toLowerCase();
+    if (sensitiveFields.some(field => keyLower.includes(field))) {
+      result[key] = '[REDACTED]';
+    } else {
+      result[key] = redact(value, depth + 1);
+    }
+  }
+  return result;
+}
+
+function createLogger(options = {}) {
+  const { service = 'video-chat', environment = process.env.STAGE || 'dev' } = options;
+
+  function formatLog(level, message, data = {}) {
+    return JSON.stringify({
       timestamp: new Date().toISOString(),
-      traceId: process.env._X_AMZN_TRACE_ID
-    })
-  });
-};
+      level,
+      message,
+      service,
+      environment,
+      ...redact(data)
+    });
+  }
 
-module.exports = { createLogger };
+  return {
+    info(message, data) { console.log(formatLog('INFO', message, data)); },
+    warn(message, data) { console.warn(formatLog('WARN', message, data)); },
+    error(message, error, data = {}) {
+      console.error(formatLog('ERROR', message, {
+        ...data,
+        error: { name: error?.name, message: error?.message }
+      }));
+    },
+    debug(message, data) {
+      if (environment !== 'prod') console.log(formatLog('DEBUG', message, data));
+    }
+  };
+}
+
+module.exports = { createLogger, redact };

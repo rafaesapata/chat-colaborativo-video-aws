@@ -1,65 +1,82 @@
-const retry = require('async-retry');
-const CircuitBreaker = require('opossum');
-const { metrics } = require('./metrics');
+/**
+ * Módulo de Resiliência - RES-004
+ */
 
-// Configuração de retry exponencial
-const withRetry = async (fn, options = {}) => {
-  return retry(async (bail, attempt) => {
+async function withRetry(fn, options = {}) {
+  const {
+    retries = 3,
+    baseDelay = 100,
+    maxDelay = 5000,
+    exponentialBase = 2,
+    retryableErrors = ['ProvisionedThroughputExceededException', 'ThrottlingException', 'ServiceUnavailable']
+  } = options;
+
+  let lastError;
+
+  for (let attempt = 0; attempt <= retries; attempt++) {
     try {
       return await fn();
     } catch (error) {
-      // Não fazer retry para erros de validação
-      if (error.statusCode >= 400 && error.statusCode < 500) {
-        bail(error);
-        return;
+      lastError = error;
+      const isRetryable = retryableErrors.some(errType =>
+        error.name === errType || error.code === errType || error.message?.includes(errType)
+      );
+
+      if (!isRetryable || attempt === retries) throw error;
+
+      const exponentialDelay = baseDelay * Math.pow(exponentialBase, attempt);
+      const jitter = Math.random() * 100;
+      const delay = Math.min(exponentialDelay + jitter, maxDelay);
+
+      console.log(`[Retry] Tentativa ${attempt + 1}/${retries}, aguardando ${Math.round(delay)}ms`);
+      await sleep(delay);
+    }
+  }
+  throw lastError;
+}
+
+class CircuitBreaker {
+  constructor(options = {}) {
+    this.failureThreshold = options.failureThreshold || 5;
+    this.resetTimeout = options.resetTimeout || 30000;
+    this.state = 'CLOSED';
+    this.failures = 0;
+    this.lastFailureTime = null;
+  }
+
+  async execute(fn) {
+    if (this.state === 'OPEN') {
+      if (Date.now() - this.lastFailureTime >= this.resetTimeout) {
+        this.state = 'HALF_OPEN';
+      } else {
+        throw new Error('Circuit breaker is OPEN');
       }
-      
-      console.log(`Attempt ${attempt} failed:`, error.message);
+    }
+
+    try {
+      const result = await fn();
+      this.onSuccess();
+      return result;
+    } catch (error) {
+      this.onFailure();
       throw error;
     }
-  }, {
-    retries: options.retries || 3,
-    factor: 2,
-    minTimeout: 1000,
-    maxTimeout: 10000,
-    randomize: true,
-    ...options
-  });
-};
+  }
 
-// Circuit Breaker para serviços externos
-const createCircuitBreaker = (fn, options = {}) => {
-  const breaker = new CircuitBreaker(fn, {
-    timeout: options.timeout || 10000,
-    errorThresholdPercentage: options.errorThreshold || 50,
-    resetTimeout: options.resetTimeout || 30000,
-    volumeThreshold: options.volumeThreshold || 10
-  });
+  onSuccess() {
+    this.state = 'CLOSED';
+    this.failures = 0;
+  }
 
-  breaker.on('open', () => {
-    console.warn('Circuit breaker opened');
-    metrics.circuitBreakerOpened?.();
-  });
+  onFailure() {
+    this.failures++;
+    this.lastFailureTime = Date.now();
+    if (this.failures >= this.failureThreshold) this.state = 'OPEN';
+  }
+}
 
-  breaker.on('halfOpen', () => {
-    console.info('Circuit breaker half-open');
-  });
+function sleep(ms) {
+  return new Promise(resolve => setTimeout(resolve, ms));
+}
 
-  breaker.on('close', () => {
-    console.info('Circuit breaker closed');
-  });
-
-  return breaker;
-};
-
-// Timeout wrapper
-const withTimeout = (fn, timeoutMs = 30000) => {
-  return Promise.race([
-    fn(),
-    new Promise((_, reject) =>
-      setTimeout(() => reject(new Error('Operation timeout')), timeoutMs)
-    )
-  ]);
-};
-
-module.exports = { withRetry, createCircuitBreaker, withTimeout };
+module.exports = { withRetry, CircuitBreaker, sleep };

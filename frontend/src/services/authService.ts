@@ -1,4 +1,5 @@
 // Serviço de autenticação com o backoffice
+import { secureStorage } from '../utils/secureStorage';
 
 export interface LoginCredentials {
   login: string;
@@ -33,12 +34,23 @@ export const authService = {
 
       if (response.ok) {
         const data = await response.json().catch(() => ({}));
+        
+        // SEC-002: Validar estrutura do token
+        const token = data.token;
+        if (token && token !== 'authenticated') {
+          const parts = token.split('.');
+          if (parts.length !== 3) {
+            console.warn('[Auth] Token inválido recebido');
+          }
+        }
+        
         const authUser: AuthUser = {
           login: credentials.login,
           isAuthenticated: true,
-          token: data.token || 'authenticated',
+          token: token || 'authenticated',
         };
-        localStorage.setItem(AUTH_STORAGE_KEY, JSON.stringify(authUser));
+        // ✅ Usar secureStorage
+        secureStorage.setItem(AUTH_STORAGE_KEY, JSON.stringify(authUser));
         return { success: true, token: data.token };
       } else {
         return { success: false, message: 'Credenciais inválidas' };
@@ -50,11 +62,13 @@ export const authService = {
   },
 
   logout(): void {
-    localStorage.removeItem(AUTH_STORAGE_KEY);
+    // ✅ Usar secureStorage
+    secureStorage.removeItem(AUTH_STORAGE_KEY);
   },
 
   getStoredAuth(): AuthUser | null {
-    const stored = localStorage.getItem(AUTH_STORAGE_KEY);
+    // ✅ Usar secureStorage
+    const stored = secureStorage.getItem(AUTH_STORAGE_KEY);
     if (stored) {
       try {
         return JSON.parse(stored);
@@ -73,13 +87,15 @@ export const authService = {
   // Salvar nome preferido do usuário autenticado
   saveUserName(login: string, name: string): void {
     if (login && name) {
-      localStorage.setItem(`${USER_NAME_PREFIX}${login}`, name);
+      // ✅ Usar secureStorage
+      secureStorage.setItem(`${USER_NAME_PREFIX}${login}`, name);
     }
   },
 
   // Recuperar nome preferido do usuário autenticado
   getSavedUserName(login: string): string | null {
     if (!login) return null;
-    return localStorage.getItem(`${USER_NAME_PREFIX}${login}`);
+    // ✅ Usar secureStorage
+    return secureStorage.getItem(`${USER_NAME_PREFIX}${login}`);
   },
 };

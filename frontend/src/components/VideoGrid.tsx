@@ -152,7 +152,7 @@ const VideoCard = memo(function VideoCard({
       >
         <div className="flex items-center justify-between">
           <span className={`text-white font-medium ${isMobile ? 'text-xs' : 'text-sm'} flex items-center gap-1.5`}>
-            {participant.name}
+            {participant.displayName || participant.name}
             {isSpeaking && (
               <span className="inline-block w-2 h-2 bg-green-400 rounded-full animate-pulse" />
             )}
