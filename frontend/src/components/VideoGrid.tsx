@@ -158,11 +158,19 @@ const VideoCard = memo(function VideoCard({
             )}
           </span>
           
-          {/* Controle PiP */}
+          {/* Controle PiP - mesmo estilo do botão de chat */}
           {!isMobile && isHovered && stream && document.pictureInPictureEnabled && (
             <button
               onClick={handlePiP}
-              className="p-1.5 rounded-lg bg-black/30 text-white/80 hover:bg-black/50 transition-all"
+              className={`w-8 h-8 rounded-full flex items-center justify-center transition-all duration-150 hover:scale-105 active:scale-95 shadow-lg backdrop-blur-xl ${
+                darkMode 
+                  ? 'bg-gray-900/60 text-white border border-white/10' 
+                  : 'bg-white/40 text-gray-700 border border-white/30'
+              }`}
+              style={{ 
+                backdropFilter: 'blur(20px)',
+                WebkitBackdropFilter: 'blur(20px)'
+              }}
               title="Picture-in-Picture"
             >
               <PictureInPicture2 size={14} />
@@ -204,10 +212,10 @@ export default function VideoGrid({ participants, localStream, remoteStreams, da
     }
 
     let isPiPActive = false;
+    let wasManuallyClosedByUser = false;
 
     const findBestVideoForPiP = (): HTMLVideoElement | null => {
       const videoElements = document.querySelectorAll('video');
-      // Priorizar vídeo remoto (não mutado), depois local
       const videos = Array.from(videoElements);
       
       // Primeiro, tentar encontrar um vídeo remoto com stream
@@ -229,7 +237,7 @@ export default function VideoGrid({ participants, localStream, remoteStreams, da
     };
 
     const enterPiP = async () => {
-      if (isPiPActive || document.pictureInPictureElement) return;
+      if (isPiPActive || document.pictureInPictureElement || wasManuallyClosedByUser) return;
       
       const video = findBestVideoForPiP();
       if (!video) {
@@ -238,7 +246,6 @@ export default function VideoGrid({ participants, localStream, remoteStreams, da
       }
 
       try {
-        // Verificar se o vídeo pode entrar em PiP
         if (video.readyState < 2) {
           console.log('[VideoGrid] Vídeo não está pronto para PiP');
           return;
@@ -249,7 +256,6 @@ export default function VideoGrid({ participants, localStream, remoteStreams, da
         setAutoPiPVideoRef(video);
         console.log('[VideoGrid] PiP ativado automaticamente');
       } catch (e: any) {
-        // Ignorar erros comuns (usuário negou, vídeo não elegível, etc)
         if (e.name !== 'NotAllowedError') {
           console.log('[VideoGrid] Erro ao ativar PiP:', e.message);
         }
@@ -274,35 +280,43 @@ export default function VideoGrid({ participants, localStream, remoteStreams, da
 
     const handleVisibilityChange = () => {
       if (document.hidden) {
-        // Pequeno delay para evitar ativação acidental
         setTimeout(() => {
-          if (document.hidden) {
+          if (document.hidden && !wasManuallyClosedByUser) {
             enterPiP();
           }
         }, 300);
       } else {
+        // Quando volta para a página, resetar flag e sair do PiP
+        wasManuallyClosedByUser = false;
         exitPiP();
       }
     };
 
     const handleWindowBlur = () => {
-      // Ativar PiP quando a janela perde foco (troca de aba/app)
       setTimeout(() => {
-        if (!document.hasFocus()) {
+        if (!document.hasFocus() && !wasManuallyClosedByUser) {
           enterPiP();
         }
       }, 500);
     };
 
     const handleWindowFocus = () => {
-      // Desativar PiP quando a janela ganha foco
+      // Quando a janela ganha foco, resetar flag e sair do PiP
+      wasManuallyClosedByUser = false;
       exitPiP();
     };
 
     // Listener para quando o PiP é fechado manualmente pelo usuário
     const handlePiPClose = () => {
+      console.log('[VideoGrid] PiP fechado pelo usuário');
       isPiPActive = false;
       setAutoPiPVideoRef(null);
+      
+      // Se a página ainda está oculta, significa que o usuário fechou manualmente
+      if (document.hidden || !document.hasFocus()) {
+        wasManuallyClosedByUser = true;
+        console.log('[VideoGrid] PiP fechado manualmente enquanto página oculta');
+      }
     };
 
     document.addEventListener('visibilitychange', handleVisibilityChange);
@@ -316,7 +330,6 @@ export default function VideoGrid({ participants, localStream, remoteStreams, da
       window.removeEventListener('focus', handleWindowFocus);
       document.removeEventListener('leavepictureinpicture', handlePiPClose);
       
-      // Limpar PiP ao desmontar
       if (document.pictureInPictureElement) {
         document.exitPictureInPicture().catch(() => {});
       }
