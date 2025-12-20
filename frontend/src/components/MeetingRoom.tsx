@@ -19,8 +19,8 @@ import { meetingHistoryService } from '../services/meetingHistoryService';
 import { interviewAIService, InterviewReport } from '../services/interviewAIService';
 
 // Versão do aplicativo - atualizar a cada deploy
-const APP_VERSION = '2.15.1';
-const BUILD_DATE = '2025-12-20 05:10';
+const APP_VERSION = '2.15.2';
+const BUILD_DATE = '2025-12-20 13:15';
 
 interface Participant {
   id: string;
@@ -72,10 +72,29 @@ export default function MeetingRoom({ darkMode }: { darkMode: boolean }) {
   const [isScreenSharing, setIsScreenSharing] = useState(false);
   const [showVersionInfo, setShowVersionInfo] = useState(false);
   const [currentMeetingId, setCurrentMeetingId] = useState<string | null>(null);
+  // Carregar configuração da reunião do localStorage (persistência)
   const [showMeetingSetup, setShowMeetingSetup] = useState(false);
-  const [meetingType, setMeetingType] = useState('REUNIAO');
-  const [meetingTopic, setMeetingTopic] = useState('');
-  const [hasSetupCompleted, setHasSetupCompleted] = useState(false);
+  const [meetingType, setMeetingType] = useState(() => {
+    const saved = localStorage.getItem(`meeting_config_${roomId}`);
+    if (saved) {
+      try {
+        return JSON.parse(saved).type || 'REUNIAO';
+      } catch { return 'REUNIAO'; }
+    }
+    return 'REUNIAO';
+  });
+  const [meetingTopic, setMeetingTopic] = useState(() => {
+    const saved = localStorage.getItem(`meeting_config_${roomId}`);
+    if (saved) {
+      try {
+        return JSON.parse(saved).topic || '';
+      } catch { return ''; }
+    }
+    return '';
+  });
+  const [hasSetupCompleted, setHasSetupCompleted] = useState(() => {
+    return !!localStorage.getItem(`meeting_config_${roomId}`);
+  });
   const [showEndModal, setShowEndModal] = useState(false);
   const [showReportModal, setShowReportModal] = useState(false);
   const [isGeneratingReport, setIsGeneratingReport] = useState(false);
@@ -288,7 +307,14 @@ export default function MeetingRoom({ darkMode }: { darkMode: boolean }) {
     setMeetingTopic(topic);
     setHasSetupCompleted(true);
     setShowMeetingSetup(false);
-  }, []);
+    
+    // Persistir configuração no localStorage
+    localStorage.setItem(`meeting_config_${roomId}`, JSON.stringify({
+      type,
+      topic,
+      createdAt: Date.now()
+    }));
+  }, [roomId]);
 
   // Criar registro de reunião para usuários autenticados
   useEffect(() => {
@@ -329,6 +355,15 @@ export default function MeetingRoom({ darkMode }: { darkMode: boolean }) {
       }))
     );
   }, [remoteStreams, localStream, userId]);
+
+  // Sincronizar estado de vídeo/áudio com useVideoCall
+  useEffect(() => {
+    setIsVideoOff(!isVideoEnabled);
+  }, [isVideoEnabled]);
+
+  useEffect(() => {
+    setIsMuted(!isAudioEnabled);
+  }, [isAudioEnabled]);
 
   // Controle de visibilidade dos controles - apenas na parte inferior da tela (desktop)
   // No mobile/touch, controles são sempre visíveis (gerenciado pelo ControlBar)
@@ -396,8 +431,9 @@ export default function MeetingRoom({ darkMode }: { darkMode: boolean }) {
 
   const handleToggleVideo = useCallback(() => {
     toggleVideo();
-    setIsVideoOff(prev => !prev);
-  }, [toggleVideo]);
+    // Sincronizar com o estado real do vídeo
+    setIsVideoOff(!isVideoEnabled);
+  }, [toggleVideo, isVideoEnabled]);
 
   const handleToggleScreenShare = useCallback(async () => {
     await toggleScreenShare();
