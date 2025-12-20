@@ -1,6 +1,6 @@
 import { useState, useEffect, useRef, useMemo, useCallback } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
-import { Info, X, ShieldCheck, User, Wifi, WifiOff } from 'lucide-react';
+import { Info, X, ShieldCheck, User, Wifi, WifiOff, AlertTriangle } from 'lucide-react';
 import VideoGrid from './VideoGrid';
 import ControlBar from './ControlBar';
 import ChatSidebar from './ChatSidebar';
@@ -16,13 +16,14 @@ import { useInterviewAssistant } from '../hooks/useInterviewAssistant';
 import { useMobile } from '../hooks/useMobile';
 import { useAuth } from '../contexts/AuthContext';
 import { useRecording } from '../hooks/useRecording';
+import { useNetworkChange, useTabSync, useGracefulShutdown } from '../hooks/useStability';
 import { meetingHistoryService } from '../services/meetingHistoryService';
 import { interviewAIService, InterviewReport } from '../services/interviewAIService';
 import RecordingControl from './RecordingControl';
 
 // Versão do aplicativo - atualizar a cada deploy
-const APP_VERSION = '2.17.0';
-const BUILD_DATE = '2025-12-20 19:00';
+const APP_VERSION = '2.17.1';
+const BUILD_DATE = '2025-12-20 19:15';
 
 interface Participant {
   id: string;
@@ -263,6 +264,25 @@ export default function MeetingRoom({ darkMode }: { darkMode: boolean }) {
     sendMessage, 
     addMessageHandler 
   });
+
+  // ============ HOOKS DE ESTABILIDADE ============
+  
+  // Detectar abas duplicadas
+  const { isMainTab } = useTabSync(roomId || '', userId);
+  
+  // Detectar mudança de rede (WiFi -> 4G)
+  const handleNetworkChange = useCallback(() => {
+    console.log('[MeetingRoom] Rede mudou, conexões serão restabelecidas');
+    // O useVideoCall já tem ICE restart automático
+  }, []);
+  useNetworkChange(handleNetworkChange);
+  
+  // Graceful shutdown ao sair
+  const handleCleanup = useCallback(() => {
+    console.log('[MeetingRoom] Cleanup ao sair');
+    localStream?.getTracks().forEach(t => t.stop());
+  }, [localStream]);
+  useGracefulShutdown(roomId || '', userId, wsUrl, handleCleanup);
 
   const {
     transcriptions,
@@ -590,6 +610,38 @@ export default function MeetingRoom({ darkMode }: { darkMode: boolean }) {
   const hasPermissionError = Array.from(connectionErrors.entries()).some(([key, error]) => 
     key === 'local' && error.includes('Permissão negada')
   );
+
+  // Se não é a aba principal, mostrar aviso
+  if (!isMainTab) {
+    return (
+      <div className={`h-screen w-screen flex items-center justify-center ${
+        darkMode ? 'bg-gray-900' : 'bg-gray-50'
+      }`}>
+        <div className={`text-center p-8 rounded-2xl ${
+          darkMode ? 'bg-gray-800' : 'bg-white'
+        } shadow-xl max-w-md mx-4`}>
+          <AlertTriangle size={48} className="mx-auto mb-4 text-yellow-500" />
+          <h2 className={`text-xl font-bold mb-2 ${darkMode ? 'text-white' : 'text-gray-900'}`}>
+            Sala aberta em outra aba
+          </h2>
+          <p className={`mb-4 ${darkMode ? 'text-gray-400' : 'text-gray-600'}`}>
+            Esta sala já está aberta em outra aba do navegador. 
+            Feche esta aba ou a outra para continuar.
+          </p>
+          <button
+            onClick={() => navigate('/')}
+            className={`px-6 py-2 rounded-lg font-medium ${
+              darkMode 
+                ? 'bg-purple-600 hover:bg-purple-700 text-white' 
+                : 'bg-indigo-600 hover:bg-indigo-700 text-white'
+            }`}
+          >
+            Voltar ao Início
+          </button>
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div className={`h-screen w-screen overflow-hidden transition-colors duration-300 ${
