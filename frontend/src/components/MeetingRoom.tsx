@@ -21,8 +21,8 @@ import { interviewAIService, InterviewReport } from '../services/interviewAIServ
 import RecordingControl from './RecordingControl';
 
 // Versão do aplicativo - atualizar a cada deploy
-const APP_VERSION = '2.16.4';
-const BUILD_DATE = '2025-12-20 17:50';
+const APP_VERSION = '2.16.5';
+const BUILD_DATE = '2025-12-20 18:10';
 
 interface Participant {
   id: string;

@@ -1,4 +1,5 @@
 import { useState, useEffect, useRef, useCallback } from 'react';
+import { turnService } from '../services/turnService';
 
 interface UseVideoCallProps {
   roomId: string;
@@ -13,6 +14,12 @@ export interface ConnectionStats {
   rtt: number;
   packetLoss: number;
 }
+
+// Configuração padrão (será atualizada com credenciais dinâmicas)
+const DEFAULT_ICE_SERVERS: RTCIceServer[] = [
+  { urls: 'stun:stun.l.google.com:19302' },
+  { urls: 'stun:stun1.l.google.com:19302' },
+];
 
 export function useVideoCall({ roomId, userId, userName = 'Usuário', sendMessage, addMessageHandler }: UseVideoCallProps) {
   const [localStream, setLocalStream] = useState<MediaStream | null>(null);
@@ -39,16 +46,20 @@ export function useVideoCall({ roomId, userId, userName = 'Usuário', sendMessag
   const reconnectAttempts = useRef<Map<string, number>>(new Map());
   const statsIntervalRef = useRef<number>();
   const pipOperationInProgress = useRef(false);
+  const iceServersRef = useRef<RTCIceServer[]>(DEFAULT_ICE_SERVERS);
 
-  const configuration: RTCConfiguration = {
-    iceServers: [
-      { urls: 'stun:stun.l.google.com:19302' },
-      { urls: 'stun:stun1.l.google.com:19302' },
-      { urls: 'turn:a.relay.metered.ca:80', username: 'openrelayproject', credential: 'openrelayproject' },
-      { urls: 'turn:a.relay.metered.ca:443?transport=tcp', username: 'openrelayproject', credential: 'openrelayproject' },
-    ],
+  // Carregar credenciais TURN dinâmicas
+  useEffect(() => {
+    turnService.getIceServers(userId).then(servers => {
+      iceServersRef.current = servers;
+      console.log('[WebRTC] ICE servers carregados:', servers.length);
+    });
+  }, [userId]);
+
+  const getConfiguration = useCallback((): RTCConfiguration => ({
+    iceServers: iceServersRef.current,
     iceCandidatePoolSize: 10,
-  };
+  }), []);
 
   const collectConnectionStats = useCallback(async () => {
     const newStats = new Map<string, ConnectionStats>();
@@ -164,7 +175,7 @@ export function useVideoCall({ roomId, userId, userName = 'Usuário', sendMessag
 
   const createPeerConnection = useCallback((remoteUserId: string): RTCPeerConnection => {
     if (peerConnections.current.has(remoteUserId)) return peerConnections.current.get(remoteUserId)!;
-    const pc = new RTCPeerConnection(configuration);
+    const pc = new RTCPeerConnection(getConfiguration());
     if (localStreamRef.current) localStreamRef.current.getTracks().forEach(t => pc.addTrack(t, localStreamRef.current!));
     if (screenStreamRef.current) screenStreamRef.current.getTracks().forEach(t => pc.addTrack(t, screenStreamRef.current!));
     pc.ontrack = (e) => {
@@ -184,7 +195,7 @@ export function useVideoCall({ roomId, userId, userName = 'Usuário', sendMessag
     pc.oniceconnectionstatechange = () => { if (pc.iceConnectionState === 'disconnected') setConnectionErrors(prev => new Map(prev).set(remoteUserId, 'Conexão instável...')); };
     peerConnections.current.set(remoteUserId, pc);
     return pc;
-  }, [roomId, userId, sendMessage, setupAudioAnalyser, performIceRestart]);
+  }, [roomId, userId, sendMessage, setupAudioAnalyser, performIceRestart, getConfiguration]);
 
   const createOffer = useCallback(async (remoteUserId: string) => {
     // Verificar se já há oferta pendente (race condition fix)
