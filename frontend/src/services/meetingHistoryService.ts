@@ -17,6 +17,10 @@ export interface MeetingRecord {
   participants: string[];
   transcriptions: MeetingTranscription[];
   userLogin: string;
+  // Campos de gravação
+  recordingKey?: string;
+  recordingDuration?: number;
+  recordingId?: string;
 }
 
 const HISTORY_STORAGE_KEY = 'videochat_meeting_history';

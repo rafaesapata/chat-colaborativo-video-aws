@@ -1,6 +1,7 @@
 import { useState, useEffect } from 'react';
-import { X, Clock, Users, FileText, Trash2, Download, ChevronDown, ChevronUp } from 'lucide-react';
+import { X, Clock, Users, FileText, Trash2, Download, ChevronDown, ChevronUp, Play, Video } from 'lucide-react';
 import { meetingHistoryService, MeetingRecord } from '../services/meetingHistoryService';
+import { getRecordingPlaybackUrl } from '../hooks/useRecording';
 
 interface MeetingHistoryProps {
   isOpen: boolean;
@@ -12,6 +13,9 @@ interface MeetingHistoryProps {
 export default function MeetingHistory({ isOpen, onClose, userLogin, darkMode }: MeetingHistoryProps) {
   const [meetings, setMeetings] = useState<MeetingRecord[]>([]);
   const [expandedMeeting, setExpandedMeeting] = useState<string | null>(null);
+  const [playingVideo, setPlayingVideo] = useState<string | null>(null);
+  const [videoUrl, setVideoUrl] = useState<string | null>(null);
+  const [loadingVideo, setLoadingVideo] = useState(false);
 
   useEffect(() => {
     if (isOpen && userLogin) {
@@ -38,6 +42,35 @@ export default function MeetingHistory({ isOpen, onClose, userLogin, darkMode }:
     a.click();
     document.body.removeChild(a);
     URL.revokeObjectURL(url);
+  };
+
+  const handlePlayRecording = async (meeting: MeetingRecord) => {
+    if (!meeting.recordingKey) return;
+    
+    setLoadingVideo(true);
+    try {
+      const url = await getRecordingPlaybackUrl(meeting.recordingKey, userLogin);
+      if (url) {
+        setVideoUrl(url);
+        setPlayingVideo(meeting.id);
+      }
+    } catch (error) {
+      console.error('Erro ao carregar vídeo:', error);
+    } finally {
+      setLoadingVideo(false);
+    }
+  };
+
+  const handleCloseVideo = () => {
+    setPlayingVideo(null);
+    setVideoUrl(null);
+  };
+
+  const formatRecordingDuration = (seconds?: number) => {
+    if (!seconds) return '';
+    const mins = Math.floor(seconds / 60);
+    const secs = seconds % 60;
+    return `${mins}:${secs.toString().padStart(2, '0')}`;
   };
 
   const formatDuration = (ms?: number) => {
@@ -119,6 +152,14 @@ export default function MeetingHistory({ isOpen, onClose, userLogin, darkMode }:
                           }`}>
                             {meeting.roomId}
                           </span>
+                          {meeting.recordingKey && (
+                            <span className={`text-xs px-2 py-0.5 rounded flex items-center gap-1 ${
+                              darkMode ? 'bg-red-900/50 text-red-300' : 'bg-red-100 text-red-700'
+                            }`}>
+                              <Video size={12} />
+                              {meeting.recordingDuration ? formatRecordingDuration(meeting.recordingDuration) : 'Gravado'}
+                            </span>
+                          )}
                           {meeting.transcriptions.length > 0 && (
                             <span className={`text-xs px-2 py-0.5 rounded flex items-center gap-1 ${
                               darkMode ? 'bg-green-900/50 text-green-300' : 'bg-green-100 text-green-700'
@@ -147,6 +188,23 @@ export default function MeetingHistory({ isOpen, onClose, userLogin, darkMode }:
                         </div>
                       </div>
                       <div className="flex items-center gap-2">
+                        {meeting.recordingKey && (
+                          <button
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              handlePlayRecording(meeting);
+                            }}
+                            disabled={loadingVideo}
+                            className={`p-2 rounded-lg transition ${
+                              darkMode 
+                                ? 'hover:bg-red-900/50 text-red-400 hover:text-red-300' 
+                                : 'hover:bg-red-100 text-red-500 hover:text-red-600'
+                            } ${loadingVideo ? 'opacity-50' : ''}`}
+                            title="Assistir gravação"
+                          >
+                            <Play size={16} />
+                          </button>
+                        )}
                         {meeting.transcriptions.length > 0 && (
                           <button
                             onClick={(e) => {
@@ -227,6 +285,30 @@ export default function MeetingHistory({ isOpen, onClose, userLogin, darkMode }:
             </div>
           )}
         </div>
+
+        {/* Video Player Modal */}
+        {playingVideo && videoUrl && (
+          <div className="fixed inset-0 z-[60] flex items-center justify-center bg-black/80 backdrop-blur-sm p-4">
+            <div className={`relative w-full max-w-4xl rounded-2xl shadow-2xl overflow-hidden ${
+              darkMode ? 'bg-gray-900' : 'bg-black'
+            }`}>
+              <button
+                onClick={handleCloseVideo}
+                className="absolute top-4 right-4 z-10 p-2 rounded-full bg-black/50 hover:bg-black/70 text-white transition"
+              >
+                <X size={20} />
+              </button>
+              <video
+                src={videoUrl}
+                controls
+                autoPlay
+                className="w-full max-h-[80vh]"
+              >
+                Seu navegador não suporta reprodução de vídeo.
+              </video>
+            </div>
+          </div>
+        )}
       </div>
     </div>
   );

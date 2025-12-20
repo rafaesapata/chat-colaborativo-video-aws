@@ -1,0 +1,155 @@
+AWSTemplateFormatVersion: '2010-09-09'
+Transform: AWS::Serverless-2016-10-31
+Description: Recording Resources for Chat Colaborativo
+
+Parameters:
+  Stage:
+    Type: String
+    Default: prod
+
+Globals:
+  Function:
+    Runtime: nodejs18.x
+    Timeout: 30
+    MemorySize: 256
+
+Resources:
+  RecordingsTable:
+    Type: AWS::DynamoDB::Table
+    Properties:
+      TableName: chat-colaborativo-recordings
+      BillingMode: PAY_PER_REQUEST
+      AttributeDefinitions:
+        - AttributeName: recordingId
+          AttributeType: S
+        - AttributeName: userLogin
+          AttributeType: S
+        - AttributeName: createdAt
+          AttributeType: N
+      KeySchema:
+        - AttributeName: recordingId
+          KeyType: HASH
+      GlobalSecondaryIndexes:
+        - IndexName: UserRecordingsIndex
+          KeySchema:
+            - AttributeName: userLogin
+              KeyType: HASH
+            - AttributeName: createdAt
+              KeyType: RANGE
+          Projection:
+            ProjectionType: ALL
+      TimeToLiveSpecification:
+        AttributeName: ttl
+        Enabled: true
+
+  RecordingsBucket:
+    Type: AWS::S3::Bucket
+    Properties:
+      BucketName: !Sub 'chat-colaborativo-recordings-${AWS::AccountId}'
+      BucketEncryption:
+        ServerSideEncryptionConfiguration:
+          - ServerSideEncryptionByDefault:
+              SSEAlgorithm: AES256
+      VersioningConfiguration:
+        Status: Enabled
+      LifecycleConfiguration:
+        Rules:
+          - Id: DeleteOldRecordings
+            Status: Enabled
+            ExpirationInDays: 90
+      CorsConfiguration:
+        CorsRules:
+          - AllowedOrigins:
+              - 'https://livechat.ai.udstec.io'
+              - 'http://localhost:5173'
+            AllowedMethods: [GET, PUT, POST, HEAD]
+            AllowedHeaders: ['*']
+            ExposeHeaders: ['ETag']
+            MaxAge: 3000
+      PublicAccessBlockConfiguration:
+        BlockPublicAcls: true
+        BlockPublicPolicy: true
+        IgnorePublicAcls: true
+        RestrictPublicBuckets: true
+
+  RecordingApi:
+    Type: AWS::ApiGatewayV2::Api
+    Properties:
+      Name: chat-colaborativo-recording-api
+      ProtocolType: HTTP
+      CorsConfiguration:
+        AllowOrigins:
+          - 'https://livechat.ai.udstec.io'
+          - 'http://localhost:5173'
+        AllowMethods: [GET, POST, OPTIONS]
+        AllowHeaders: [Content-Type, Authorization]
+        MaxAge: 300
+
+  RecordingApiStage:
+    Type: AWS::ApiGatewayV2::Stage
+    Properties:
+      ApiId: !Ref RecordingApi
+      StageName: !Ref Stage
+      AutoDeploy: true
+
+  RecordingManagerFunction:
+    Type: AWS::Serverless::Function
+    Properties:
+      FunctionName: chat-colaborativo-recording-manager
+      CodeUri: ../backend/lambdas/recording-manager/
+      Handler: index.handler
+      Environment:
+        Variables:
+          RECORDINGS_BUCKET: !Ref RecordingsBucket
+          RECORDINGS_TABLE: !Ref RecordingsTable
+      Policies:
+        - DynamoDBCrudPolicy:
+            TableName: !Ref RecordingsTable
+        - S3CrudPolicy:
+            BucketName: !Ref RecordingsBucket
+
+  RecordingUploadRoute:
+    Type: AWS::ApiGatewayV2::Route
+    Properties:
+      ApiId: !Ref RecordingApi
+      RouteKey: 'POST /recording/upload-url'
+      Target: !Sub 'integrations/${RecordingIntegration}'
+
+  RecordingPlaybackRoute:
+    Type: AWS::ApiGatewayV2::Route
+    Properties:
+      ApiId: !Ref RecordingApi
+      RouteKey: 'POST /recording/playback-url'
+      Target: !Sub 'integrations/${RecordingIntegration}'
+
+  RecordingListRoute:
+    Type: AWS::ApiGatewayV2::Route
+    Properties:
+      ApiId: !Ref RecordingApi
+      RouteKey: 'POST /recording/list'
+      Target: !Sub 'integrations/${RecordingIntegration}'
+
+  RecordingIntegration:
+    Type: AWS::ApiGatewayV2::Integration
+    Properties:
+      ApiId: !Ref RecordingApi
+      IntegrationType: AWS_PROXY
+      IntegrationUri: !Sub 'arn:aws:apigateway:${AWS::Region}:lambda:path/2015-03-31/functions/${RecordingManagerFunction.Arn}/invocations'
+      PayloadFormatVersion: '2.0'
+
+  RecordingPermission:
+    Type: AWS::Lambda::Permission
+    Properties:
+      FunctionName: !Ref RecordingManagerFunction
+      Action: lambda:InvokeFunction
+      Principal: apigateway.amazonaws.com
+      SourceArn: !Sub 'arn:aws:execute-api:${AWS::Region}:${AWS::AccountId}:${RecordingApi}/*'
+
+Outputs:
+  RecordingApiURL:
+    Description: Recording API URL
+    Value: !Sub 'https://${RecordingApi}.execute-api.${AWS::Region}.amazonaws.com/${Stage}'
+  
+  RecordingsBucketName:
+    Description: S3 Bucket para Gravações
+    Value: !Ref RecordingsBucket

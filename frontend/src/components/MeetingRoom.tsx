@@ -15,12 +15,14 @@ import { useTranscription } from '../hooks/useTranscription';
 import { useInterviewAssistant } from '../hooks/useInterviewAssistant';
 import { useMobile } from '../hooks/useMobile';
 import { useAuth } from '../contexts/AuthContext';
+import { useRecording } from '../hooks/useRecording';
 import { meetingHistoryService } from '../services/meetingHistoryService';
 import { interviewAIService, InterviewReport } from '../services/interviewAIService';
+import RecordingControl from './RecordingControl';
 
 // Versão do aplicativo - atualizar a cada deploy
-const APP_VERSION = '2.15.4';
-const BUILD_DATE = '2025-12-20 13:30';
+const APP_VERSION = '2.16.0';
+const BUILD_DATE = '2025-12-20 14:30';
 
 interface Participant {
   id: string;
@@ -289,6 +291,20 @@ export default function MeetingRoom({ darkMode }: { darkMode: boolean }) {
     meetingType,
     topic: meetingTopic,
     transcriptions,
+  });
+
+  // Hook de gravação - só para usuários autenticados
+  const {
+    isRecording: isRecordingMeeting,
+    isPaused: isRecordingPaused,
+    duration: recordingDuration,
+    startRecording,
+    stopRecording,
+    togglePause: toggleRecordingPause,
+  } = useRecording({
+    roomId: roomId || '',
+    userLogin: user?.login || '',
+    meetingId: currentMeetingId || '',
   });
 
   // Mostrar modal de configuração para usuários autenticados
@@ -627,6 +643,22 @@ export default function MeetingRoom({ darkMode }: { darkMode: boolean }) {
           ref={mouseAreaRef}
           className="fixed bottom-0 left-0 right-0 h-32 pointer-events-none z-10"
         />
+      )}
+
+      {/* Recording Control - só para usuários autenticados */}
+      {isAuthenticated && currentMeetingId && (
+        <div className={`fixed ${isMobile ? 'top-12 right-2' : 'top-4 right-48'} z-40`}>
+          <RecordingControl
+            isRecording={isRecordingMeeting}
+            isPaused={isRecordingPaused}
+            duration={recordingDuration}
+            onStart={startRecording}
+            onStop={stopRecording}
+            onTogglePause={toggleRecordingPause}
+            darkMode={darkMode}
+            disabled={!localStream}
+          />
+        </div>
       )}
 
       <ControlBar
