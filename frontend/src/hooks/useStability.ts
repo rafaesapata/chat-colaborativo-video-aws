@@ -3,13 +3,12 @@
  * Implementa: Heartbeat, ICE Restart, Connection Watchdog, Network Change, etc.
  */
 
-import { useEffect, useRef, useCallback, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 
 // ============================================
 // 1. HEARTBEAT BIDIRECIONAL COM RECOVERY
 // ============================================
 const HEARTBEAT_INTERVAL = 15000;
-const HEARTBEAT_TIMEOUT = 5000;
 const MAX_MISSED_HEARTBEATS = 3;
 
 export function useHeartbeat(

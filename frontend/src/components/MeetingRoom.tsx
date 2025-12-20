@@ -16,14 +16,20 @@ import { useInterviewAssistant } from '../hooks/useInterviewAssistant';
 import { useMobile } from '../hooks/useMobile';
 import { useAuth } from '../contexts/AuthContext';
 import { useRecording } from '../hooks/useRecording';
-import { useNetworkChange, useTabSync, useGracefulShutdown } from '../hooks/useStability';
+import {
+  useNetworkChange,
+  useTabSync,
+  useGracefulShutdown,
+  useStreamRecovery,
+  useDeviceChange,
+} from '../hooks/useStability';
 import { meetingHistoryService } from '../services/meetingHistoryService';
 import { interviewAIService, InterviewReport } from '../services/interviewAIService';
 import RecordingControl from './RecordingControl';
 
 // Versão do aplicativo - atualizar a cada deploy
-const APP_VERSION = '2.17.2';
-const BUILD_DATE = '2025-12-20 19:30';
+const APP_VERSION = '2.17.4';
+const BUILD_DATE = '2025-12-20 20:15';
 
 interface Participant {
   id: string;
@@ -283,6 +289,18 @@ export default function MeetingRoom({ darkMode }: { darkMode: boolean }) {
     localStream?.getTracks().forEach(t => t.stop());
   }, [localStream]);
   useGracefulShutdown(roomId || '', userId, wsUrl, handleCleanup);
+
+  // Stream recovery - recupera tracks que falharam
+  const handleStreamRecovered = useCallback((newStream: MediaStream) => {
+    console.log('[MeetingRoom] Stream recuperado');
+  }, []);
+  const { streamHealth } = useStreamRecovery(localStream, handleStreamRecovered);
+
+  // Device change detection - detecta quando dispositivos são desconectados
+  const handleDeviceChange = useCallback(() => {
+    console.log('[MeetingRoom] Dispositivo mudou, verificando streams');
+  }, []);
+  useDeviceChange(localStream, handleDeviceChange);
 
   const {
     transcriptions,
