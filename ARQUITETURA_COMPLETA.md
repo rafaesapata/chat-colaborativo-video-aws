@@ -835,3 +835,208 @@ MeetingRoom
      │────────────────────────────────────────────────────────>│
      │                  │                   │                  │
 ```
+
+---
+
+## 🔒 Arquitetura de Segurança
+
+### Camadas de Segurança
+```
+┌─────────────────────────────────────────────────────────────────┐
+│                    CAMADA DE EDGE                               │
+│  ┌─────────────────────────────────────────────────────────┐   │
+│  │ CloudFront                                               │   │
+│  │ ├── HTTPS obrigatório (TLS 1.2+)                        │   │
+│  │ ├── Origin Access Control (OAC)                         │   │
+│  │ └── Custom Headers                                       │   │
+│  └─────────────────────────────────────────────────────────┘   │
+└─────────────────────────────────────────────────────────────────┘
+                              │
+┌─────────────────────────────────────────────────────────────────┐
+│                    CAMADA DE AUTENTICAÇÃO                       │
+│  ┌─────────────────────────────────────────────────────────┐   │
+│  │ Cognito User Pool                                        │   │
+│  │ ├── JWT Tokens (Access, ID, Refresh)                    │   │
+│  │ ├── Password Policy (8+ chars, upper, lower, num, sym)  │   │
+│  │ ├── Account Recovery via Email                          │   │
+│  │ └── Prevent User Existence Errors                       │   │
+│  └─────────────────────────────────────────────────────────┘   │
+└─────────────────────────────────────────────────────────────────┘
+                              │
+┌─────────────────────────────────────────────────────────────────┐
+│                    CAMADA DE API                                │
+│  ┌─────────────────────────────────────────────────────────┐   │
+│  │ API Gateway                                              │   │
+│  │ ├── Throttling (5000 burst, 2000 rate)                  │   │
+│  │ ├── CORS restritivo (origins específicos)               │   │
+│  │ └── Request Validation                                   │   │
+│  └─────────────────────────────────────────────────────────┘   │
+└─────────────────────────────────────────────────────────────────┘
+                              │
+┌─────────────────────────────────────────────────────────────────┐
+│                    CAMADA DE APLICAÇÃO                          │
+│  ┌─────────────────────────────────────────────────────────┐   │
+│  │ Lambda Functions                                         │   │
+│  │ ├── Input Validation (Joi schemas)                      │   │
+│  │ ├── Sanitização (DOMPurify + validator.js)              │   │
+│  │ ├── Logging Seguro (redação de PII)                     │   │
+│  │ └── IAM Roles (least privilege)                         │   │
+│  └─────────────────────────────────────────────────────────┘   │
+└─────────────────────────────────────────────────────────────────┘
+                              │
+┌─────────────────────────────────────────────────────────────────┐
+│                    CAMADA DE DADOS                              │
+│  ┌─────────────────────────────────────────────────────────┐   │
+│  │ DynamoDB + S3                                            │   │
+│  │ ├── Encryption at Rest (AES-256)                        │   │
+│  │ ├── Encryption in Transit (TLS)                         │   │
+│  │ ├── VPC Endpoints (opcional)                            │   │
+│  │ └── Point-in-Time Recovery                              │   │
+│  └─────────────────────────────────────────────────────────┘   │
+└─────────────────────────────────────────────────────────────────┘
+```
+
+### Sanitização de Dados
+```javascript
+// Backend (shared/lib/sanitizer.js)
+const sanitizeContent = (content) => {
+  // DOMPurify para HTML
+  // validator.js para formatos
+  // Limite de tamanho
+  // Remoção de scripts
+};
+
+// Frontend (utils/sanitize.ts)
+const sanitizeText = (text) => {
+  return text
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;')
+    .substring(0, 5000);
+};
+```
+
+### IAM Policies (Least Privilege)
+```yaml
+# Exemplo: message-handler
+Policies:
+  - DynamoDBCrudPolicy:
+      TableName: !Ref MessagesTable
+  - DynamoDBCrudPolicy:
+      TableName: !Ref ConnectionsTable
+  - Statement:
+      - Effect: Allow
+        Action:
+          - execute-api:ManageConnections
+        Resource: !Sub 'arn:aws:execute-api:${AWS::Region}:${AWS::AccountId}:${WebSocketApi}/*'
+```
+
+---
+
+## 📊 Observabilidade
+
+### CloudWatch Logs
+```
+Log Groups:
+├── /aws/lambda/chat-colaborativo-serverless-connection-handler
+├── /aws/lambda/chat-colaborativo-serverless-message-handler
+├── /aws/lambda/chat-colaborativo-serverless-audio-stream-processor
+├── /aws/lambda/chat-colaborativo-serverless-transcription-aggregator
+├── /aws/lambda/chat-colaborativo-serverless-ai-analysis
+├── /aws/lambda/chat-colaborativo-serverless-room-manager
+├── /aws/lambda/chat-colaborativo-serverless-recording-manager
+└── /aws/lambda/chat-colaborativo-serverless-turn-credentials
+
+Retention: 30 dias
+```
+
+### Métricas Customizadas
+```
+Namespace: ChatColaborativo
+
+Métricas:
+├── ConnectionCount (por sala)
+├── MessageCount (por sala)
+├── TranscriptionLatency
+├── WebRTCSignalingLatency
+├── RecordingUploadSize
+└── AIAnalysisLatency
+```
+
+### Alertas (CloudWatch Alarms)
+```
+Alertas Configurados:
+├── Lambda Errors > 1% (5 min)
+├── Lambda Duration > 3s (p95)
+├── API Gateway 5xx > 1%
+├── DynamoDB Throttling > 0
+└── S3 4xx Errors > 10
+```
+
+---
+
+## 💰 Estimativa de Custos
+
+### Para 5 usuários, 8h/dia, 20 dias/mês
+
+| Serviço | Uso Estimado | Custo Mensal |
+|---------|--------------|--------------|
+| CloudFront | 10 GB transfer | $1-5 |
+| API Gateway WebSocket | 1M messages | $5 |
+| Lambda | 500K invocations | $10 |
+| DynamoDB | 5 GB storage, 1M requests | $5 |
+| Amazon Transcribe | 160 horas | $30 |
+| Amazon Bedrock | 100K tokens | $20 |
+| S3 | 50 GB storage | $2.50 |
+| Route53 | 1 hosted zone | $0.50 |
+| **TOTAL** | | **~$74-78/mês** |
+
+---
+
+## 🚀 Deploy
+
+### Comandos de Deploy (Produção)
+```bash
+# 1. Build Frontend
+cd frontend && npm run build
+
+# 2. Deploy Frontend para S3
+aws s3 sync frontend/dist/ s3://chat-colaborativo-prod-frontend-383234048592 --delete
+
+# 3. Invalidar cache CloudFront
+aws cloudfront create-invalidation --distribution-id E19FZWDK7MJWSX --paths "/*"
+
+# 4. Build Backend
+cd backend && sam build --template-file ../infrastructure/complete-stack.yaml
+
+# 5. Deploy Backend
+sam deploy --config-file samconfig.toml --no-confirm-changeset
+```
+
+### Ambientes
+| Ambiente | Frontend | Backend |
+|----------|----------|---------|
+| **Produção** | `chat-colaborativo-prod-frontend-383234048592` | `chat-colaborativo-serverless` |
+| Desenvolvimento | `chat-colaborativo-serverless-frontend-383234048592` | - |
+
+---
+
+## 📝 Resumo de Recursos AWS
+
+| Categoria | Quantidade | Recursos |
+|-----------|------------|----------|
+| Compute | 8 | Lambda Functions |
+| Database | 7 | DynamoDB Tables |
+| Storage | 3 | S3 Buckets |
+| Networking | 2 | API Gateway (WebSocket + HTTP) |
+| CDN | 1 | CloudFront Distribution |
+| Auth | 1 | Cognito User Pool |
+| AI/ML | 2 | Transcribe, Bedrock |
+| DNS | 1 | Route53 Hosted Zone |
+| Security | 1 | ACM Certificate |
+| **TOTAL** | **~43** | Recursos |
+
+---
+
+*Documento gerado em: Dezembro 2024*
+*Versão: 2.15.3*

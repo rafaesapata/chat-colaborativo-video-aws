@@ -1,5 +1,6 @@
 import { useState, useEffect, useRef, useCallback } from 'react';
 import { turnService } from '../services/turnService';
+import { useAdaptiveBitrate, useConnectionWatchdog } from './useStability';
 
 interface UseVideoCallProps {
   roomId: string;
@@ -325,6 +326,18 @@ export function useVideoCall({ roomId, userId, userName = 'Usuário', sendMessag
   const toggleVideo = useCallback(() => { if (localStreamRef.current) { const t = localStreamRef.current.getVideoTracks()[0]; if (t) { t.enabled = !t.enabled; setIsVideoEnabled(t.enabled); } } }, []);
   const toggleAudio = useCallback(() => { if (localStreamRef.current) { const t = localStreamRef.current.getAudioTracks()[0]; if (t) { t.enabled = !t.enabled; setIsAudioEnabled(t.enabled); } } }, []);
   const getPeerConnections = useCallback(() => peerConnections.current, []);
+
+  // Integração dos hooks de estabilidade
+  const handleConnectionTimeout = useCallback((peerId: string) => {
+    console.warn('[Stability] Conexão timeout, tentando ICE restart:', peerId);
+    performIceRestart(peerId);
+  }, [performIceRestart]);
+
+  // Connection Watchdog - detecta conexões penduradas
+  useConnectionWatchdog(peerConnections, handleConnectionTimeout);
+
+  // Adaptive Bitrate - ajusta qualidade baseado na conexão
+  useAdaptiveBitrate(peerConnections, overallQuality);
 
   return { localStream, screenStream, remoteStreams, isVideoEnabled, isAudioEnabled, isScreenSharing, toggleVideo, toggleAudio, toggleScreenShare, speakingUsers, connectionErrors, connectionStats, overallQuality, participantNames, getPeerConnections };
 }
