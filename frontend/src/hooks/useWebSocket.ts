@@ -1,5 +1,17 @@
 import { useEffect, useRef, useState, useCallback } from 'react';
 
+// Buffer de mensagens offline
+interface BufferedMessage {
+  id: string;
+  payload: any;
+  timestamp: number;
+  retries: number;
+}
+
+const MAX_BUFFER_SIZE = 50;
+const MAX_RETRIES = 3;
+const MESSAGE_TTL = 30000; // 30 segundos
+
 export function useWebSocket(
   url: string,
   userId: string,
@@ -13,7 +25,8 @@ export function useWebSocket(
   const reconnectTimeoutRef = useRef<number>();
   const heartbeatIntervalRef = useRef<number>();
   const reconnectAttemptsRef = useRef(0);
-  const pendingMessages = useRef<any[]>([]); // ✅ Fila de mensagens pendentes
+  const pendingMessages = useRef<any[]>([]); // Fila de mensagens recebidas pendentes
+  const offlineBuffer = useRef<BufferedMessage[]>([]); // Buffer de mensagens para enviar
   const MAX_RECONNECT_ATTEMPTS = 5;
   const RECONNECT_DELAY = 3000;
   const HEARTBEAT_INTERVAL = 30000; // 30 segundos
@@ -53,6 +66,25 @@ export function useWebSocket(
           console.log('[WebSocket] ✅ Conectado com sucesso!');
           setIsConnected(true);
           reconnectAttemptsRef.current = 0;
+          
+          // Flush buffer de mensagens offline
+          if (offlineBuffer.current.length > 0) {
+            const now = Date.now();
+            const validMessages = offlineBuffer.current.filter(
+              msg => now - msg.timestamp < MESSAGE_TTL && msg.retries < MAX_RETRIES
+            );
+            
+            console.log(`[WebSocket] 📤 Enviando ${validMessages.length} mensagens do buffer offline`);
+            validMessages.forEach(msg => {
+              msg.retries++;
+              try {
+                ws.send(JSON.stringify(msg.payload));
+              } catch (e) {
+                console.warn('[WebSocket] Erro ao enviar mensagem do buffer:', e);
+              }
+            });
+            offlineBuffer.current = [];
+          }
           
           // Iniciar heartbeat para manter conexão ativa
           heartbeatIntervalRef.current = window.setInterval(() => {
@@ -170,7 +202,21 @@ export function useWebSocket(
       wsRef.current.send(JSON.stringify(message));
       return true;
     }
-    console.warn('[WebSocket] Tentativa de enviar mensagem com conexão fechada:', message);
+    
+    // Adicionar ao buffer offline (exceto pings)
+    if (message.action !== 'ping') {
+      if (offlineBuffer.current.length >= MAX_BUFFER_SIZE) {
+        offlineBuffer.current.shift(); // Remover mais antigo
+      }
+      offlineBuffer.current.push({
+        id: crypto.randomUUID(),
+        payload: message,
+        timestamp: Date.now(),
+        retries: 0
+      });
+      console.log('[WebSocket] 📦 Mensagem adicionada ao buffer offline:', message.action);
+    }
+    
     return false;
   }, []);
 
