@@ -1,0 +1,9 @@
+{
+  "name": "chime-meeting",
+  "version": "1.0.0",
+  "description": "Amazon Chime SDK Meeting Manager",
+  "main": "index.js",
+  "dependencies": {
+    "@aws-sdk/client-chime-sdk-meetings": "^3.0.0"
+  }
+}

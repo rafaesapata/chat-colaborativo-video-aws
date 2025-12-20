@@ -1,7 +1,7 @@
 import { useState, useEffect, useRef, useMemo, useCallback } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import { Info, X, ShieldCheck, User, Wifi, WifiOff, AlertTriangle } from 'lucide-react';
-import VideoGrid from './VideoGrid';
+import ChimeVideoGrid from './ChimeVideoGrid';
 import ControlBar from './ControlBar';
 import ChatSidebar from './ChatSidebar';
 import TranscriptionPanel from './TranscriptionPanel';
@@ -10,33 +10,19 @@ import InterviewSuggestions from './InterviewSuggestions';
 import EndMeetingModal from './EndMeetingModal';
 import InterviewReportModal from './InterviewReportModal';
 import { useWebSocket } from '../hooks/useWebSocket';
-import { useVideoCall } from '../hooks/useVideoCall';
+import { useChimeMeeting } from '../hooks/useChimeMeeting';
 import { useTranscription } from '../hooks/useTranscription';
 import { useInterviewAssistant } from '../hooks/useInterviewAssistant';
 import { useMobile } from '../hooks/useMobile';
 import { useAuth } from '../contexts/AuthContext';
 import { useRecording } from '../hooks/useRecording';
-import {
-  useNetworkChange,
-  useTabSync,
-  useGracefulShutdown,
-  useStreamRecovery,
-  useDeviceChange,
-} from '../hooks/useStability';
+import { useTabSync } from '../hooks/useStability';
 import { meetingHistoryService } from '../services/meetingHistoryService';
 import { interviewAIService, InterviewReport } from '../services/interviewAIService';
 
 // Versão do aplicativo - atualizar a cada deploy
-const APP_VERSION = '2.18.2';
-const BUILD_DATE = '2025-12-20 20:45';
-
-interface Participant {
-  id: string;
-  name: string;
-  isMuted: boolean;
-  hasVideo: boolean;
-  stream?: MediaStream;
-}
+const APP_VERSION = '3.0.0';
+const BUILD_DATE = '2025-12-20 14:35';
 
 interface Message {
   id: string;
@@ -50,12 +36,10 @@ export default function MeetingRoom({ darkMode }: { darkMode: boolean }) {
   const { roomId } = useParams<{ roomId: string }>();
   const navigate = useNavigate();
   const { isMobile, isTouch } = useMobile();
-  const { isAuthenticated, user, isGuest } = useAuth();
+  const { isAuthenticated, user } = useAuth();
   
-  // Ler nome de sessionStorage ao invés de URL
   const userName = sessionStorage.getItem('videochat_user_name') || 'Usuário';
   
-  // CORREÇÃO: userId estável usando useMemo + sessionStorage
   const userId = useMemo(() => {
     const storageKey = `video-chat-userId-${roomId}`;
     const storedId = sessionStorage.getItem(storageKey);
@@ -66,37 +50,27 @@ export default function MeetingRoom({ darkMode }: { darkMode: boolean }) {
     return newId;
   }, [roomId]);
   
-  const [participants, setParticipants] = useState<Participant[]>(() => [
-    { id: userId, name: 'Você', isMuted: false, hasVideo: true }
-  ]);
-  
   const [messages, setMessages] = useState<Message[]>([]);
   const [isChatOpen, setIsChatOpen] = useState(false);
   const [isTranscriptionOpen, setIsTranscriptionOpen] = useState(false);
   const [unreadCount, setUnreadCount] = useState(0);
   const [controlsVisible, setControlsVisible] = useState(false);
-  const [isMuted, setIsMuted] = useState(false);
-  const [isVideoOff, setIsVideoOff] = useState(false);
-  const [isScreenSharing, setIsScreenSharing] = useState(false);
   const [showVersionInfo, setShowVersionInfo] = useState(false);
   const [currentMeetingId, setCurrentMeetingId] = useState<string | null>(null);
-  // Carregar configuração da reunião do localStorage (persistência)
   const [showMeetingSetup, setShowMeetingSetup] = useState(false);
   const [meetingType, setMeetingType] = useState(() => {
     const saved = localStorage.getItem(`meeting_config_${roomId}`);
     if (saved) {
-      try {
-        return JSON.parse(saved).type || 'REUNIAO';
-      } catch { return 'REUNIAO'; }
+      try { return JSON.parse(saved).type || 'REUNIAO'; } 
+      catch { return 'REUNIAO'; }
     }
     return 'REUNIAO';
   });
   const [meetingTopic, setMeetingTopic] = useState(() => {
     const saved = localStorage.getItem(`meeting_config_${roomId}`);
     if (saved) {
-      try {
-        return JSON.parse(saved).topic || '';
-      } catch { return ''; }
+      try { return JSON.parse(saved).topic || ''; } 
+      catch { return ''; }
     }
     return '';
   });
@@ -109,26 +83,44 @@ export default function MeetingRoom({ darkMode }: { darkMode: boolean }) {
   const [interviewReport, setInterviewReport] = useState<InterviewReport | null>(null);
   
   const controlsTimeoutRef = useRef<number>();
-  const mouseAreaRef = useRef<HTMLDivElement>(null);
   const isChatOpenRef = useRef(isChatOpen);
 
-  // Manter ref atualizada
   useEffect(() => {
     isChatOpenRef.current = isChatOpen;
   }, [isChatOpen]);
 
-  // CORREÇÃO: Handler estável com useCallback
+  // ============ AMAZON CHIME SDK ============
+  const {
+    isJoined,
+    isJoining,
+    error: chimeError,
+    videoTiles,
+    activeSpeakers,
+    isVideoEnabled,
+    isAudioEnabled,
+    isScreenSharing,
+    connectionQuality,
+    toggleVideo,
+    toggleAudio,
+    toggleScreenShare,
+    leaveMeeting: leaveChimeMeeting,
+    bindVideoElement,
+    bindAudioElement,
+  } = useChimeMeeting({
+    roomId: roomId || '',
+    odUserId: userId,
+    userName,
+  });
+
+  // WebSocket apenas para chat
   const handleWebSocketMessage = useCallback((data: any) => {
-    console.log('[MeetingRoom] 📨 Mensagem recebida:', data.type, data);
-    
     if (data.type === 'message') {
       const newMessage: Message = {
         id: data.data.messageId,
         author: data.data.userName,
         text: data.data.content,
         time: new Date(data.data.timestamp).toLocaleTimeString('pt-BR', { 
-          hour: '2-digit', 
-          minute: '2-digit' 
+          hour: '2-digit', minute: '2-digit' 
         }),
         isOwn: data.data.userId === userId
       };
@@ -138,168 +130,18 @@ export default function MeetingRoom({ darkMode }: { darkMode: boolean }) {
       if (!isChatOpenRef.current && data.data.userId !== userId) {
         setUnreadCount(prev => prev + 1);
       }
-    } else if (data.type === 'room_event') {
-      const { eventType, userId: eventUserId, participants: roomParticipants, existingParticipants } = data.data;
-      
-      console.log('[MeetingRoom] 🏠 Room event:', eventType, { eventUserId, roomParticipants, existingParticipants });
-      
-      // ✅ NOVO: Resposta à solicitação de participantes (após câmera estar pronta)
-      if (eventType === 'participants_list' && existingParticipants && existingParticipants.length > 0) {
-        console.log('[MeetingRoom] 📋 Lista de participantes recebida:', existingParticipants);
-        
-        setParticipants(prev => {
-          const newParticipants = [...prev];
-          
-          existingParticipants.forEach((participantId: string) => {
-            if (participantId !== userId && !newParticipants.some(p => p.id === participantId)) {
-              console.log('[MeetingRoom] ➕ Adicionando participante:', participantId);
-              newParticipants.push({
-                id: participantId,
-                name: `Usuário ${participantId.substring(participantId.length - 4)}`,
-                isMuted: false,
-                hasVideo: true
-              });
-            }
-          });
-          
-          console.log('[MeetingRoom] 📋 Total de participantes:', newParticipants.length);
-          return newParticipants;
-        });
-      }
-      else if (eventType === 'user_joined') {
-        // ✅ NOVO: Se EU sou o novo usuário e há participantes existentes, adicionar todos
-        if (eventUserId === userId && existingParticipants && existingParticipants.length > 0) {
-          console.log('[MeetingRoom] 👥 EU entrei! Participantes existentes:', existingParticipants);
-          
-          setParticipants(prev => {
-            const newParticipants = [...prev];
-            
-            existingParticipants.forEach((participantId: string) => {
-              if (participantId !== userId && !newParticipants.some(p => p.id === participantId)) {
-                console.log('[MeetingRoom] ➕ Adicionando participante existente:', participantId);
-                newParticipants.push({
-                  id: participantId,
-                  name: `Usuário ${participantId.substring(participantId.length - 4)}`,
-                  isMuted: false,
-                  hasVideo: true
-                });
-              }
-            });
-            
-            console.log('[MeetingRoom] 📋 Lista atualizada de participantes:', newParticipants.length);
-            return newParticipants;
-          });
-        } 
-        // Se OUTRO usuário entrou
-        else if (eventUserId !== userId) {
-          console.log('[MeetingRoom] ➕ Novo usuário entrou:', eventUserId);
-          const eventUserName = data.data.userName;
-          
-          setParticipants(prev => {
-            if (prev.some(p => p.id === eventUserId)) {
-              console.log('[MeetingRoom] ⏭️ Usuário já existe na lista');
-              return prev;
-            }
-            return [
-              ...prev,
-              { 
-                id: eventUserId, 
-                name: eventUserName || `Usuário ${eventUserId.substring(eventUserId.length - 4)}`, 
-                isMuted: false, 
-                hasVideo: true
-              }
-            ];
-          });
-        }
-      } else if (eventType === 'existing_participants' && roomParticipants) {
-        // Manter compatibilidade com o evento antigo
-        console.log('[MeetingRoom] 👥 Participantes existentes (evento legado):', roomParticipants);
-        
-        setParticipants(prev => {
-          const newParticipants = [...prev];
-          
-          roomParticipants.forEach((participantId: string) => {
-            if (participantId !== userId && !newParticipants.some(p => p.id === participantId)) {
-              console.log('[MeetingRoom] ➕ Adicionando participante existente:', participantId);
-              newParticipants.push({
-                id: participantId,
-                name: `Usuário ${participantId.substring(participantId.length - 4)}`,
-                isMuted: false,
-                hasVideo: true
-              });
-            }
-          });
-          
-          console.log('[MeetingRoom] 📋 Lista atualizada de participantes:', newParticipants.length);
-          return newParticipants;
-        });
-      } else if (eventType === 'user_left') {
-        console.log('[MeetingRoom] ➖ Usuário saiu:', eventUserId);
-        setParticipants(prev => prev.filter(p => p.id !== eventUserId));
-      }
     }
   }, [userId]);
 
   const wsUrl = import.meta.env.VITE_WEBSOCKET_URL || '';
-  const { sendMessage, isConnected, addMessageHandler } = useWebSocket(
-    wsUrl, 
-    userId, 
-    roomId || '', 
-    handleWebSocketMessage
+  const { sendMessage, isConnected } = useWebSocket(
+    wsUrl, userId, roomId || '', handleWebSocketMessage
   );
-  
-  const {
-    localStream,
-    remoteStreams,
-    isVideoEnabled,
-    isAudioEnabled,
-    isScreenSharing: screenShareActive,
-    toggleVideo,
-    toggleAudio,
-    toggleScreenShare,
-    connectionErrors,
-    speakingUsers,
-    overallQuality,
-    participantNames,
-  } = useVideoCall({ 
-    roomId: roomId || '', 
-    userId,
-    userName,
-    sendMessage, 
-    addMessageHandler 
-  });
 
-  // ============ HOOKS DE ESTABILIDADE ============
-  
-  // Detectar abas duplicadas
+  // Tab sync
   const { isMainTab } = useTabSync(roomId || '', userId);
-  
-  // Detectar mudança de rede (WiFi -> 4G)
-  const handleNetworkChange = useCallback(() => {
-    console.log('[MeetingRoom] Rede mudou, conexões serão restabelecidas');
-    // O useVideoCall já tem ICE restart automático
-  }, []);
-  useNetworkChange(handleNetworkChange);
-  
-  // Graceful shutdown ao sair
-  const handleCleanup = useCallback(() => {
-    console.log('[MeetingRoom] Cleanup ao sair');
-    localStream?.getTracks().forEach(t => t.stop());
-  }, [localStream]);
-  useGracefulShutdown(roomId || '', userId, wsUrl, handleCleanup);
 
-  // Stream recovery - recupera tracks que falharam
-  const handleStreamRecovered = useCallback((newStream: MediaStream) => {
-    console.log('[MeetingRoom] Stream recuperado');
-  }, []);
-  const { streamHealth } = useStreamRecovery(localStream, handleStreamRecovered);
-
-  // Device change detection - detecta quando dispositivos são desconectados
-  const handleDeviceChange = useCallback(() => {
-    console.log('[MeetingRoom] Dispositivo mudou, verificando streams');
-  }, []);
-  useDeviceChange(localStream, handleDeviceChange);
-
+  // Transcrição (usa áudio local do Chime)
   const {
     transcriptions,
     isTranscriptionEnabled,
@@ -311,14 +153,13 @@ export default function MeetingRoom({ darkMode }: { darkMode: boolean }) {
     userId,
     userName,
     sendMessage,
-    addMessageHandler,
-    localStream
+    addMessageHandler: () => () => {},
+    localStream: null // Chime gerencia o stream
   });
 
-  // Hook do assistente de entrevista
+  // Assistente de entrevista
   const {
     suggestions: interviewSuggestions,
-    unreadSuggestions,
     isGenerating: isGeneratingSuggestions,
     markAsRead: markSuggestionAsRead,
     dismissSuggestion,
@@ -329,62 +170,46 @@ export default function MeetingRoom({ darkMode }: { darkMode: boolean }) {
     transcriptions,
   });
 
-  // Hook de gravação - só para usuários autenticados
+  // Gravação
   const {
     isRecording: isRecordingMeeting,
-    isPaused: isRecordingPaused,
     duration: recordingDuration,
     startRecording,
     stopRecording,
-    togglePause: toggleRecordingPause,
   } = useRecording({
     roomId: roomId || '',
     userLogin: user?.login || '',
     meetingId: currentMeetingId || '',
   });
 
-  // Mostrar modal de configuração para usuários autenticados
+
+  // Setup modal para usuários autenticados
   useEffect(() => {
-    if (isAuthenticated && !hasSetupCompleted && localStream) {
-      // Aguardar um pouco para o usuário se situar
-      const timer = setTimeout(() => {
-        setShowMeetingSetup(true);
-      }, 1500);
+    if (isAuthenticated && !hasSetupCompleted && isJoined) {
+      const timer = setTimeout(() => setShowMeetingSetup(true), 1500);
       return () => clearTimeout(timer);
     }
-  }, [isAuthenticated, hasSetupCompleted, localStream]);
+  }, [isAuthenticated, hasSetupCompleted, isJoined]);
 
-  // Handler para configuração da reunião
   const handleMeetingSetup = useCallback((type: string, topic: string) => {
     setMeetingType(type);
     setMeetingTopic(topic);
     setHasSetupCompleted(true);
     setShowMeetingSetup(false);
-    
-    // Persistir configuração no localStorage
     localStorage.setItem(`meeting_config_${roomId}`, JSON.stringify({
-      type,
-      topic,
-      createdAt: Date.now()
+      type, topic, createdAt: Date.now()
     }));
   }, [roomId]);
 
-  // Criar registro de reunião para usuários autenticados
+  // Criar registro de reunião
   useEffect(() => {
-    if (isAuthenticated && user?.login && roomId && !currentMeetingId) {
+    if (isAuthenticated && user?.login && roomId && !currentMeetingId && isJoined) {
       const meeting = meetingHistoryService.createMeeting(user.login, roomId, [userName]);
       setCurrentMeetingId(meeting.id);
-      
-      // Ativar transcrição automaticamente para usuários autenticados
-      if (isSpeechRecognitionSupported && localStream && !isTranscriptionEnabled) {
-        setTimeout(() => {
-          toggleTranscription();
-        }, 2000); // Aguardar stream estar pronto
-      }
     }
-  }, [isAuthenticated, user?.login, roomId, localStream, isSpeechRecognitionSupported]);
+  }, [isAuthenticated, user?.login, roomId, isJoined, currentMeetingId, userName]);
 
-  // Salvar transcrições no histórico
+  // Salvar transcrições
   useEffect(() => {
     if (isAuthenticated && user?.login && currentMeetingId && transcriptions.length > 0) {
       const lastTranscription = transcriptions[transcriptions.length - 1];
@@ -399,29 +224,8 @@ export default function MeetingRoom({ darkMode }: { darkMode: boolean }) {
     }
   }, [transcriptions, isAuthenticated, user?.login, currentMeetingId]);
 
-  // Sincronizar streams remotos com participantes
+  // Controles visíveis
   useEffect(() => {
-    setParticipants(prev => 
-      prev.map(participant => ({
-        ...participant,
-        stream: participant.id === userId ? localStream || undefined : remoteStreams.get(participant.id)
-      }))
-    );
-  }, [remoteStreams, localStream, userId]);
-
-  // Sincronizar estado de vídeo/áudio com useVideoCall
-  useEffect(() => {
-    setIsVideoOff(!isVideoEnabled);
-  }, [isVideoEnabled]);
-
-  useEffect(() => {
-    setIsMuted(!isAudioEnabled);
-  }, [isAudioEnabled]);
-
-  // Controle de visibilidade dos controles - apenas na parte inferior da tela (desktop)
-  // No mobile/touch, controles são sempre visíveis (gerenciado pelo ControlBar)
-  useEffect(() => {
-    // No mobile/touch, não precisamos do listener de mouse
     if (isTouch) {
       setControlsVisible(true);
       return;
@@ -429,30 +233,16 @@ export default function MeetingRoom({ darkMode }: { darkMode: boolean }) {
 
     const handleMouseMove = (e: MouseEvent) => {
       const windowHeight = window.innerHeight;
-      const bottomThreshold = windowHeight - 150; // 150px da parte inferior
-      
-      if (e.clientY >= bottomThreshold) {
-        // Mouse na parte inferior - mostrar controles
+      if (e.clientY >= windowHeight - 150) {
         setControlsVisible(true);
-        
-        if (controlsTimeoutRef.current) {
-          clearTimeout(controlsTimeoutRef.current);
-        }
-        
-        controlsTimeoutRef.current = window.setTimeout(() => {
-          setControlsVisible(false);
-        }, 3000);
+        if (controlsTimeoutRef.current) clearTimeout(controlsTimeoutRef.current);
+        controlsTimeoutRef.current = window.setTimeout(() => setControlsVisible(false), 3000);
       }
     };
 
     const handleMouseLeave = () => {
-      // Mouse saiu da janela - esconder controles após delay
-      if (controlsTimeoutRef.current) {
-        clearTimeout(controlsTimeoutRef.current);
-      }
-      controlsTimeoutRef.current = window.setTimeout(() => {
-        setControlsVisible(false);
-      }, 1000);
+      if (controlsTimeoutRef.current) clearTimeout(controlsTimeoutRef.current);
+      controlsTimeoutRef.current = window.setTimeout(() => setControlsVisible(false), 1000);
     };
 
     document.addEventListener('mousemove', handleMouseMove);
@@ -461,9 +251,7 @@ export default function MeetingRoom({ darkMode }: { darkMode: boolean }) {
     return () => {
       document.removeEventListener('mousemove', handleMouseMove);
       document.removeEventListener('mouseleave', handleMouseLeave);
-      if (controlsTimeoutRef.current) {
-        clearTimeout(controlsTimeoutRef.current);
-      }
+      if (controlsTimeoutRef.current) clearTimeout(controlsTimeoutRef.current);
     };
   }, [isTouch]);
 
@@ -479,57 +267,43 @@ export default function MeetingRoom({ darkMode }: { darkMode: boolean }) {
 
   const handleToggleMute = useCallback(() => {
     toggleAudio();
-    setIsMuted(prev => !prev);
   }, [toggleAudio]);
 
   const handleToggleVideo = useCallback(() => {
     toggleVideo();
-    // Sincronizar com o estado real do vídeo
-    setIsVideoOff(!isVideoEnabled);
-  }, [toggleVideo, isVideoEnabled]);
+  }, [toggleVideo]);
 
   const handleToggleScreenShare = useCallback(async () => {
     await toggleScreenShare();
-    setIsScreenSharing(prev => !prev);
   }, [toggleScreenShare]);
 
   const handleLeaveMeeting = useCallback(() => {
-    // Para usuários autenticados, mostrar modal de opções
     if (isAuthenticated) {
       setShowEndModal(true);
       return;
     }
-    
-    // Para convidados, sair diretamente
+    leaveChimeMeeting();
     sessionStorage.removeItem(`video-chat-userId-${roomId}`);
     sessionStorage.removeItem('videochat_user_name');
     navigate('/');
-  }, [navigate, roomId, isAuthenticated]);
+  }, [navigate, roomId, isAuthenticated, leaveChimeMeeting]);
 
-  // Handler para apenas sair (sem encerrar sala)
   const handleLeaveOnly = useCallback(() => {
-    // Finalizar reunião no histórico
     if (isAuthenticated && user?.login && currentMeetingId) {
       meetingHistoryService.endMeeting(user.login, currentMeetingId);
     }
-    
-    // Limpar dados da sessão
+    leaveChimeMeeting();
     sessionStorage.removeItem(`video-chat-userId-${roomId}`);
     sessionStorage.removeItem('videochat_user_name');
     setShowEndModal(false);
     navigate('/');
-  }, [navigate, roomId, isAuthenticated, user?.login, currentMeetingId]);
+  }, [navigate, roomId, isAuthenticated, user?.login, currentMeetingId, leaveChimeMeeting]);
 
-  // Handler para encerrar sala (gera relatório se for entrevista)
   const handleEndRoom = useCallback(async () => {
-    // Se for entrevista, gerar relatório
     if (meetingType === 'ENTREVISTA' && transcriptions.length > 0) {
       setIsGeneratingReport(true);
-      
-      // Simular tempo de processamento da IA
       await new Promise(resolve => setTimeout(resolve, 2000));
       
-      // Gerar relatório
       const report = interviewAIService.generateInterviewReport(
         meetingTopic,
         transcriptions.map(t => ({
@@ -544,31 +318,24 @@ export default function MeetingRoom({ darkMode }: { darkMode: boolean }) {
       setShowEndModal(false);
       setShowReportModal(true);
     } else {
-      // Não é entrevista, apenas sair
       handleLeaveOnly();
     }
   }, [meetingType, meetingTopic, transcriptions, handleLeaveOnly]);
 
-  // Handler para fechar relatório e sair
   const handleCloseReport = useCallback(() => {
     setShowReportModal(false);
-    
-    // Finalizar reunião no histórico
     if (isAuthenticated && user?.login && currentMeetingId) {
       meetingHistoryService.endMeeting(user.login, currentMeetingId);
     }
-    
-    // Limpar dados da sessão
+    leaveChimeMeeting();
     sessionStorage.removeItem(`video-chat-userId-${roomId}`);
     sessionStorage.removeItem('videochat_user_name');
     navigate('/');
-  }, [navigate, roomId, isAuthenticated, user?.login, currentMeetingId]);
+  }, [navigate, roomId, isAuthenticated, user?.login, currentMeetingId, leaveChimeMeeting]);
 
   const handleToggleChat = useCallback(() => {
     setIsChatOpen(prev => {
-      if (!prev) {
-        setUnreadCount(0);
-      }
+      if (!prev) setUnreadCount(0);
       return !prev;
     });
   }, []);
@@ -581,12 +348,8 @@ export default function MeetingRoom({ darkMode }: { darkMode: boolean }) {
     toggleTranscription();
   }, [toggleTranscription]);
 
-  // Verificar se há erro de permissão
-  const hasPermissionError = Array.from(connectionErrors.entries()).some(([key, error]) => 
-    key === 'local' && error.includes('Permissão negada')
-  );
 
-  // Se não é a aba principal, mostrar aviso
+  // Se não é a aba principal
   if (!isMainTab) {
     return (
       <div className={`h-screen w-screen flex items-center justify-center ${
@@ -600,15 +363,13 @@ export default function MeetingRoom({ darkMode }: { darkMode: boolean }) {
             Sala aberta em outra aba
           </h2>
           <p className={`mb-4 ${darkMode ? 'text-gray-400' : 'text-gray-600'}`}>
-            Esta sala já está aberta em outra aba do navegador. 
-            Feche esta aba ou a outra para continuar.
+            Esta sala já está aberta em outra aba do navegador.
           </p>
           <button
             onClick={() => navigate('/')}
             className={`px-6 py-2 rounded-lg font-medium ${
-              darkMode 
-                ? 'bg-purple-600 hover:bg-purple-700 text-white' 
-                : 'bg-indigo-600 hover:bg-indigo-700 text-white'
+              darkMode ? 'bg-purple-600 hover:bg-purple-700 text-white' 
+                       : 'bg-indigo-600 hover:bg-indigo-700 text-white'
             }`}
           >
             Voltar ao Início
@@ -618,65 +379,89 @@ export default function MeetingRoom({ darkMode }: { darkMode: boolean }) {
     );
   }
 
+  // Tela de carregamento enquanto conecta ao Chime
+  if (isJoining) {
+    return (
+      <div className={`h-screen w-screen flex items-center justify-center ${
+        darkMode ? 'bg-gray-900' : 'bg-gray-50'
+      }`}>
+        <div className="text-center">
+          <div className="w-16 h-16 mx-auto mb-4 border-4 border-blue-500 border-t-transparent rounded-full animate-spin" />
+          <h2 className={`text-xl font-bold mb-2 ${darkMode ? 'text-white' : 'text-gray-900'}`}>
+            Conectando à reunião...
+          </h2>
+          <p className={`${darkMode ? 'text-gray-400' : 'text-gray-600'}`}>
+            Aguarde enquanto estabelecemos a conexão
+          </p>
+        </div>
+      </div>
+    );
+  }
+
+  // Erro ao conectar
+  if (chimeError) {
+    return (
+      <div className={`h-screen w-screen flex items-center justify-center ${
+        darkMode ? 'bg-gray-900' : 'bg-gray-50'
+      }`}>
+        <div className={`text-center p-8 rounded-2xl ${
+          darkMode ? 'bg-gray-800' : 'bg-white'
+        } shadow-xl max-w-md mx-4`}>
+          <AlertTriangle size={48} className="mx-auto mb-4 text-red-500" />
+          <h2 className={`text-xl font-bold mb-2 ${darkMode ? 'text-white' : 'text-gray-900'}`}>
+            Erro ao conectar
+          </h2>
+          <p className={`mb-4 ${darkMode ? 'text-gray-400' : 'text-gray-600'}`}>
+            {chimeError}
+          </p>
+          <div className="flex gap-3 justify-center">
+            <button
+              onClick={() => window.location.reload()}
+              className={`px-6 py-2 rounded-lg font-medium ${
+                darkMode ? 'bg-blue-600 hover:bg-blue-700 text-white' 
+                         : 'bg-blue-600 hover:bg-blue-700 text-white'
+              }`}
+            >
+              Tentar Novamente
+            </button>
+            <button
+              onClick={() => navigate('/')}
+              className={`px-6 py-2 rounded-lg font-medium ${
+                darkMode ? 'bg-gray-700 hover:bg-gray-600 text-white' 
+                         : 'bg-gray-200 hover:bg-gray-300 text-gray-800'
+              }`}
+            >
+              Voltar
+            </button>
+          </div>
+        </div>
+      </div>
+    );
+  }
+
   return (
     <div className={`h-screen w-screen overflow-hidden transition-colors duration-300 ${
       darkMode ? 'bg-gray-900' : 'bg-gray-50'
     }`}>
-      {/* Mostrar aviso de permissão se necessário */}
-      {hasPermissionError && (
-        <div className={`absolute ${isMobile ? 'top-2 left-2 right-2' : 'top-4 left-1/2 transform -translate-x-1/2'} z-50`}>
-          <div className={`${isMobile ? 'px-3 py-2' : 'px-6 py-3'} rounded-lg shadow-lg border ${
-            darkMode 
-              ? 'bg-red-900/90 border-red-700 text-red-200' 
-              : 'bg-red-50 border-red-200 text-red-800'
-          }`}>
-            <div className={`flex items-center ${isMobile ? 'gap-2' : 'gap-3'}`}>
-              <svg className={`${isMobile ? 'w-4 h-4' : 'w-5 h-5'} text-red-500 flex-shrink-0`} fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-2.5L13.732 4c-.77-.833-1.964-.833-2.732 0L3.732 16.5c-.77.833.192 2.5 1.732 2.5z" />
-              </svg>
-              <span className={`${isMobile ? 'text-xs' : 'text-sm'} font-medium flex-1`}>
-                {isMobile ? 'Permita acesso à câmera' : 'Clique no ícone da câmera na barra de endereços para permitir acesso'}
-              </span>
-              <button
-                onClick={() => window.location.reload()}
-                className={`${isMobile ? 'px-2 py-0.5 text-[10px]' : 'ml-2 px-3 py-1 text-xs'} rounded ${
-                  darkMode 
-                    ? 'bg-red-800 hover:bg-red-700 text-red-200' 
-                    : 'bg-red-100 hover:bg-red-200 text-red-700'
-                }`}
-              >
-                Recarregar
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
-
+      {/* Video Grid usando Chime SDK */}
       <div className={`h-full ${isMobile ? 'p-1' : 'p-4'}`}>
-        <VideoGrid 
-          participants={participants}
-          localStream={localStream}
-          remoteStreams={remoteStreams}
-          darkMode={darkMode}
-          speakingUsers={speakingUsers}
+        <ChimeVideoGrid
+          videoTiles={videoTiles}
+          activeSpeakers={activeSpeakers}
           localUserId={userId}
-          isLocalVideoEnabled={!isVideoOff}
           localUserName={userName}
+          isLocalVideoEnabled={isVideoEnabled}
+          isLocalAudioEnabled={isAudioEnabled}
+          bindVideoElement={bindVideoElement}
+          bindAudioElement={bindAudioElement}
+          darkMode={darkMode}
         />
       </div>
 
-      {!isTouch && (
-        <div
-          ref={mouseAreaRef}
-          className="fixed bottom-0 left-0 right-0 h-32 pointer-events-none z-10"
-        />
-      )}
-
-
       <ControlBar
         visible={controlsVisible}
-        isMuted={isMuted}
-        isVideoOff={isVideoOff}
+        isMuted={!isAudioEnabled}
+        isVideoOff={!isVideoEnabled}
         isScreenSharing={isScreenSharing}
         isTranscriptionActive={isTranscriptionEnabled}
         isAuthenticated={isAuthenticated}
@@ -711,25 +496,23 @@ export default function MeetingRoom({ darkMode }: { darkMode: boolean }) {
         isTranscriptionEnabled={isTranscriptionEnabled}
         isRecording={isRecording}
         onToggleTranscription={toggleTranscription}
-        speakingUsers={speakingUsers || new Set()}
+        speakingUsers={new Set(activeSpeakers)}
         darkMode={darkMode}
         isSpeechRecognitionSupported={isSpeechRecognitionSupported}
       />
 
-      {/* Meeting Setup Modal - só para usuários autenticados */}
+
+      {/* Meeting Setup Modal */}
       {isAuthenticated && (
         <MeetingSetupModal
           isOpen={showMeetingSetup}
-          onClose={() => {
-            setShowMeetingSetup(false);
-            setHasSetupCompleted(true);
-          }}
+          onClose={() => { setShowMeetingSetup(false); setHasSetupCompleted(true); }}
           onConfirm={handleMeetingSetup}
           darkMode={darkMode}
         />
       )}
 
-      {/* Interview Suggestions - só para entrevistas */}
+      {/* Interview Suggestions */}
       {isAuthenticated && meetingType === 'ENTREVISTA' && hasSetupCompleted && (
         <InterviewSuggestions
           suggestions={interviewSuggestions}
@@ -741,7 +524,7 @@ export default function MeetingRoom({ darkMode }: { darkMode: boolean }) {
         />
       )}
 
-      {/* End Meeting Modal - só para usuários autenticados */}
+      {/* End Meeting Modal */}
       <EndMeetingModal
         isOpen={showEndModal}
         onClose={() => setShowEndModal(false)}
@@ -778,12 +561,10 @@ export default function MeetingRoom({ darkMode }: { darkMode: boolean }) {
       <div
         className={`fixed ${isMobile ? 'top-2 left-11' : 'top-4 left-14'} z-40 flex items-center gap-2 ${isMobile ? 'px-2 py-1' : 'px-3 py-1.5'} rounded-full backdrop-blur-xl transition-all duration-150 ${
           isAuthenticated
-            ? darkMode 
-              ? 'bg-green-900/60 text-green-400 border border-green-700/50' 
-              : 'bg-green-100/80 text-green-700 border border-green-300/50'
-            : darkMode 
-              ? 'bg-gray-900/60 text-gray-400 border border-gray-700/50' 
-              : 'bg-gray-100/80 text-gray-500 border border-gray-300/50'
+            ? darkMode ? 'bg-green-900/60 text-green-400 border border-green-700/50' 
+                       : 'bg-green-100/80 text-green-700 border border-green-300/50'
+            : darkMode ? 'bg-gray-900/60 text-gray-400 border border-gray-700/50' 
+                       : 'bg-gray-100/80 text-gray-500 border border-gray-300/50'
         }`}
         title={isAuthenticated ? `Autenticado como ${user?.login}` : 'Modo Convidado'}
       >
@@ -797,36 +578,44 @@ export default function MeetingRoom({ darkMode }: { darkMode: boolean }) {
         ) : (
           <>
             <User size={isMobile ? 12 : 14} />
-            <span className={`${isMobile ? 'text-[10px]' : 'text-xs'} font-medium`}>
-              Convidado
-            </span>
+            <span className={`${isMobile ? 'text-[10px]' : 'text-xs'} font-medium`}>Convidado</span>
           </>
         )}
       </div>
 
-      {/* Connection Quality Indicator - só mostra quando há problemas */}
-      {(overallQuality === 'fair' || overallQuality === 'poor') && (
+      {/* Connection Quality Indicator */}
+      {(connectionQuality === 'fair' || connectionQuality === 'poor') && (
         <div
           className={`fixed ${isMobile ? 'top-2 right-2' : 'top-4 right-4'} z-40 flex items-center gap-2 ${isMobile ? 'px-2 py-1' : 'px-3 py-1.5'} rounded-full backdrop-blur-xl transition-all duration-150 ${
-            overallQuality === 'poor'
-              ? darkMode 
-                ? 'bg-red-900/60 border border-red-500/30' 
-                : 'bg-red-100/80 border border-red-300/50'
-              : darkMode 
-                ? 'bg-yellow-900/60 border border-yellow-500/30' 
-                : 'bg-yellow-100/80 border border-yellow-300/50'
+            connectionQuality === 'poor'
+              ? darkMode ? 'bg-red-900/60 border border-red-500/30' 
+                         : 'bg-red-100/80 border border-red-300/50'
+              : darkMode ? 'bg-yellow-900/60 border border-yellow-500/30' 
+                         : 'bg-yellow-100/80 border border-yellow-300/50'
           }`}
-          title={`Qualidade: ${overallQuality === 'fair' ? 'Regular' : 'Ruim'}`}
         >
-          {overallQuality === 'fair' && <Wifi size={isMobile ? 12 : 14} className="text-yellow-500" />}
-          {overallQuality === 'poor' && <WifiOff size={isMobile ? 12 : 14} className="text-red-500" />}
+          {connectionQuality === 'fair' && <Wifi size={isMobile ? 12 : 14} className="text-yellow-500" />}
+          {connectionQuality === 'poor' && <WifiOff size={isMobile ? 12 : 14} className="text-red-500" />}
           <span className={`${isMobile ? 'text-[10px]' : 'text-xs'} font-medium ${
-            overallQuality === 'fair' ? 'text-yellow-500' : 'text-red-500'
+            connectionQuality === 'fair' ? 'text-yellow-500' : 'text-red-500'
           }`}>
-            {overallQuality === 'fair' ? 'Conexão Regular' : 'Conexão Ruim'}
+            {connectionQuality === 'fair' ? 'Conexão Regular' : 'Conexão Ruim'}
           </span>
         </div>
       )}
+
+      {/* Chime SDK Badge */}
+      <div
+        className={`fixed ${isMobile ? 'bottom-24 right-2' : 'bottom-28 right-4'} z-40 flex items-center gap-1.5 px-2 py-1 rounded-full backdrop-blur-xl ${
+          darkMode ? 'bg-blue-900/60 text-blue-400 border border-blue-700/50' 
+                   : 'bg-blue-100/80 text-blue-700 border border-blue-300/50'
+        }`}
+        title="Powered by Amazon Chime SDK"
+      >
+        <span className={`${isMobile ? 'text-[9px]' : 'text-[10px]'} font-medium`}>
+          ⚡ Chime SDK
+        </span>
+      </div>
 
       {/* Version Info Modal */}
       {showVersionInfo && (
@@ -850,7 +639,7 @@ export default function MeetingRoom({ darkMode }: { darkMode: boolean }) {
               
               <h3 className={`${isMobile ? 'text-lg' : 'text-xl'} font-bold mb-1`}>Video Chat</h3>
               <p className={`${isMobile ? 'text-xs' : 'text-sm'} mb-3 ${darkMode ? 'text-gray-400' : 'text-gray-500'}`}>
-                Conferência em tempo real
+                Powered by Amazon Chime SDK
               </p>
               
               <div className={`rounded-xl ${isMobile ? 'p-3' : 'p-4'} mb-3 ${darkMode ? 'bg-gray-700/50' : 'bg-gray-100'}`}>
@@ -863,9 +652,15 @@ export default function MeetingRoom({ darkMode }: { darkMode: boolean }) {
                   <span className={`font-mono ${isMobile ? 'text-xs' : 'text-sm'} ${darkMode ? 'text-gray-300' : 'text-gray-600'}`}>{BUILD_DATE}</span>
                 </div>
                 <div className="flex justify-between items-center mb-2">
-                  <span className={`${isMobile ? 'text-xs' : 'text-sm'} ${darkMode ? 'text-gray-400' : 'text-gray-500'}`}>WebSocket</span>
+                  <span className={`${isMobile ? 'text-xs' : 'text-sm'} ${darkMode ? 'text-gray-400' : 'text-gray-500'}`}>Chat</span>
                   <span className={`${isMobile ? 'text-xs' : 'text-sm'} ${isConnected ? 'text-green-500' : 'text-red-500'}`}>
                     {isConnected ? '● Conectado' : '○ Desconectado'}
+                  </span>
+                </div>
+                <div className="flex justify-between items-center mb-2">
+                  <span className={`${isMobile ? 'text-xs' : 'text-sm'} ${darkMode ? 'text-gray-400' : 'text-gray-500'}`}>Mídia</span>
+                  <span className={`${isMobile ? 'text-xs' : 'text-sm'} ${isJoined ? 'text-green-500' : 'text-yellow-500'}`}>
+                    {isJoined ? '● Chime SDK' : '○ Conectando...'}
                   </span>
                 </div>
                 <div className="flex justify-between items-center">
@@ -878,7 +673,7 @@ export default function MeetingRoom({ darkMode }: { darkMode: boolean }) {
               
               <div className={`${isMobile ? 'text-[10px]' : 'text-xs'} ${darkMode ? 'text-gray-500' : 'text-gray-400'}`}>
                 <p>Sala: {roomId}</p>
-                <p>Participantes: {participants.length}</p>
+                <p>Participantes: {videoTiles.length}</p>
               </div>
             </div>
           </div>
