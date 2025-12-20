@@ -35,23 +35,23 @@ export const authService = {
       if (response.ok) {
         const data = await response.json().catch(() => ({}));
         
-        // SEC-002: Validar estrutura do token
+        // SEC-002: Validar estrutura do token (se for JWT)
         const token = data.token;
-        if (token && token !== 'authenticated') {
+        if (token && typeof token === 'string' && token !== 'authenticated') {
           const parts = token.split('.');
           if (parts.length !== 3) {
-            console.warn('[Auth] Token inválido recebido');
+            console.warn('[Auth] Token não é JWT padrão');
           }
         }
         
         const authUser: AuthUser = {
           login: credentials.login,
           isAuthenticated: true,
-          token: token || 'authenticated',
+          token: typeof token === 'string' ? token : 'authenticated',
         };
         // ✅ Usar secureStorage
         secureStorage.setItem(AUTH_STORAGE_KEY, JSON.stringify(authUser));
-        return { success: true, token: data.token };
+        return { success: true, token: typeof token === 'string' ? token : undefined };
       } else {
         return { success: false, message: 'Credenciais inválidas' };
       }
