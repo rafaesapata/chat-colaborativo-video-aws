@@ -19,8 +19,8 @@ import { meetingHistoryService } from '../services/meetingHistoryService';
 import { interviewAIService, InterviewReport } from '../services/interviewAIService';
 
 // Versão do aplicativo - atualizar a cada deploy
-const APP_VERSION = '2.15.0';
-const BUILD_DATE = '2025-12-20 05:00';
+const APP_VERSION = '2.15.1';
+const BUILD_DATE = '2025-12-20 05:10';
 
 interface Participant {
   id: string;
@@ -540,6 +540,7 @@ export default function MeetingRoom({ darkMode }: { darkMode: boolean }) {
           speakingUsers={speakingUsers}
           localUserId={userId}
           isLocalVideoEnabled={!isVideoOff}
+          localUserName={userName}
         />
       </div>
 

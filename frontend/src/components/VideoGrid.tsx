@@ -8,6 +8,7 @@ interface Participant {
   isMuted: boolean;
   hasVideo: boolean;
   stream?: MediaStream;
+  displayName?: string;
 }
 
 interface VideoCardProps {
@@ -68,7 +69,9 @@ const VideoCard = memo(function VideoCard({
   };
 
   const getParticipantInitials = (name: string) => {
-    return name.split(' ').map(n => n[0]).join('').toUpperCase().slice(0, 2);
+    // Usar displayName se disponível (nome real), senão usar name
+    const nameToUse = participant.displayName || name;
+    return nameToUse.split(' ').map(n => n[0]).join('').toUpperCase().slice(0, 2);
   };
 
   // Verificar se deve mostrar vídeo ou avatar
@@ -179,9 +182,10 @@ interface VideoGridProps {
   speakingUsers?: Set<string>;
   localUserId?: string;
   isLocalVideoEnabled?: boolean;
+  localUserName?: string;
 }
 
-export default function VideoGrid({ participants, localStream, remoteStreams, darkMode, speakingUsers = new Set(), localUserId, isLocalVideoEnabled = true }: VideoGridProps) {
+export default function VideoGrid({ participants, localStream, remoteStreams, darkMode, speakingUsers = new Set(), localUserId, isLocalVideoEnabled = true, localUserName }: VideoGridProps) {
   const [hoveredParticipant, setHoveredParticipant] = useState<string | null>(null);
   const [spotlightParticipant, setSpotlightParticipant] = useState<string | null>(null);
   const [autoPiPVideoRef, setAutoPiPVideoRef] = useState<HTMLVideoElement | null>(null);
@@ -379,12 +383,17 @@ export default function VideoGrid({ participants, localStream, remoteStreams, da
             : speakingUsers.has(participant.id);
           const isVideoEnabled = isLocal ? isLocalVideoEnabled : participant.hasVideo;
           
+          // Usar nome real para iniciais (não "Você")
+          const displayParticipant = isLocal && localUserName 
+            ? { ...participant, name: participant.name, displayName: localUserName }
+            : { ...participant, displayName: participant.name };
+          
           console.log(`[VideoGrid] Renderizando ${participant.name} (${participant.id}):`, stream ? 'com stream' : 'SEM STREAM');
           
           return (
             <VideoCard
               key={participant.id}
-              participant={participant}
+              participant={displayParticipant}
               isLocal={isLocal}
               stream={stream}
               darkMode={darkMode}
