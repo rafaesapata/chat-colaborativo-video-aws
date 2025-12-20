@@ -2,7 +2,8 @@
  * Serviço para obter credenciais TURN dinâmicas
  */
 
-const TURN_API_URL = import.meta.env.VITE_API_URL || '';
+// URL da Lambda TURN (Function URL)
+const TURN_API_URL = 'https://wuac3rstsdvwuqjbkyevqh73ne0ienpy.lambda-url.us-east-1.on.aws';
 const CACHE_KEY = 'videochat_turn_credentials';
 const CACHE_TTL = 3600000; // 1 hora em ms
 
@@ -51,7 +52,7 @@ export const turnService = {
     }
 
     try {
-      const response = await fetch(`${TURN_API_URL}/turn/credentials`, {
+      const response = await fetch(TURN_API_URL, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ userId: userId || 'anonymous' })
