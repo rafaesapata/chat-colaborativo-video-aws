@@ -1,14 +1,23 @@
-import { useState } from 'react';
+import { useState, Suspense, lazy } from 'react';
 import { BrowserRouter, Routes, Route, useNavigate, useParams } from 'react-router-dom';
 import { Amplify } from 'aws-amplify';
 import Toast from './components/Toast';
-import MeetingRoom from './components/MeetingRoom';
-import PreviewScreen from './components/PreviewScreen';
-import LoginScreen from './components/LoginScreen';
-import MeetingHistory from './components/MeetingHistory';
 import ErrorBoundary from './components/ErrorBoundary';
 import { useToast } from './hooks/useToast';
 import { AuthProvider, useAuth } from './contexts/AuthContext';
+
+// Lazy load componentes pesados
+const MeetingRoom = lazy(() => import('./components/MeetingRoom'));
+const PreviewScreen = lazy(() => import('./components/PreviewScreen'));
+const LoginScreen = lazy(() => import('./components/LoginScreen'));
+const MeetingHistory = lazy(() => import('./components/MeetingHistory'));
+
+// Loading fallback
+const LoadingFallback = () => (
+  <div className="min-h-screen flex items-center justify-center bg-gradient-to-br from-gray-900 via-purple-900 to-violet-900">
+    <div className="animate-spin w-8 h-8 border-4 border-white border-t-transparent rounded-full"></div>
+  </div>
+);
 
 // Configurar Amplify
 Amplify.configure({
@@ -292,15 +301,21 @@ function AuthenticatedRoutes() {
 
   // Se não está autenticado e não é convidado, mostrar tela de login
   if (!isAuthenticated && !isGuest) {
-    return <LoginScreen darkMode={darkMode} onToggleDarkMode={toggleDarkMode} />;
+    return (
+      <Suspense fallback={<LoadingFallback />}>
+        <LoginScreen darkMode={darkMode} onToggleDarkMode={toggleDarkMode} />
+      </Suspense>
+    );
   }
 
   // Se está autenticado ou é convidado, mostrar as rotas normais
   return (
-    <Routes>
-      <Route path="/" element={<HomePage darkMode={darkMode} onToggleDarkMode={toggleDarkMode} />} />
-      <Route path="/meeting/:roomId" element={<MeetingWrapper darkMode={darkMode} />} />
-    </Routes>
+    <Suspense fallback={<LoadingFallback />}>
+      <Routes>
+        <Route path="/" element={<HomePage darkMode={darkMode} onToggleDarkMode={toggleDarkMode} />} />
+        <Route path="/meeting/:roomId" element={<MeetingWrapper darkMode={darkMode} />} />
+      </Routes>
+    </Suspense>
   );
 }
 

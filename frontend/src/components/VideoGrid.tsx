@@ -194,6 +194,7 @@ export default function VideoGrid({ participants, localStream, remoteStreams, da
 
     let isPiPActive = false;
     let wasManuallyClosedByUser = false;
+    let pipOperationInProgress = false;
 
     const findBestVideoForPiP = (): HTMLVideoElement | null => {
       const videoElements = document.querySelectorAll('video');
@@ -218,17 +219,22 @@ export default function VideoGrid({ participants, localStream, remoteStreams, da
     };
 
     const enterPiP = async () => {
-      if (isPiPActive || document.pictureInPictureElement || wasManuallyClosedByUser) return;
+      // Race condition fix
+      if (pipOperationInProgress || isPiPActive || document.pictureInPictureElement || wasManuallyClosedByUser) return;
+      
+      pipOperationInProgress = true;
       
       const video = findBestVideoForPiP();
       if (!video) {
         console.log('[VideoGrid] Nenhum vídeo disponível para PiP');
+        pipOperationInProgress = false;
         return;
       }
 
       try {
         if (video.readyState < 2) {
           console.log('[VideoGrid] Vídeo não está pronto para PiP');
+          pipOperationInProgress = false;
           return;
         }
         
@@ -240,14 +246,19 @@ export default function VideoGrid({ participants, localStream, remoteStreams, da
         if (e.name !== 'NotAllowedError') {
           console.log('[VideoGrid] Erro ao ativar PiP:', e.message);
         }
+      } finally {
+        pipOperationInProgress = false;
       }
     };
 
     const exitPiP = async () => {
-      if (!document.pictureInPictureElement) {
+      // Race condition fix
+      if (pipOperationInProgress || !document.pictureInPictureElement) {
         isPiPActive = false;
         return;
       }
+
+      pipOperationInProgress = true;
 
       try {
         await document.exitPictureInPicture();
@@ -256,6 +267,8 @@ export default function VideoGrid({ participants, localStream, remoteStreams, da
         console.log('[VideoGrid] PiP desativado automaticamente');
       } catch (e: any) {
         console.log('[VideoGrid] Erro ao sair do PiP:', e.message);
+      } finally {
+        pipOperationInProgress = false;
       }
     };
 

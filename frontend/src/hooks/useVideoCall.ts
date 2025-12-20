@@ -30,12 +30,15 @@ export function useVideoCall({ roomId, userId, userName = 'Usuário', sendMessag
   const peerConnections = useRef<Map<string, RTCPeerConnection>>(new Map());
   const audioContextRef = useRef<AudioContext | null>(null);
   const analyserNodes = useRef<Map<string, AnalyserNode>>(new Map());
+  const audioIntervals = useRef<Map<string, number>>(new Map());
   const localStreamRef = useRef<MediaStream | null>(null);
   const screenStreamRef = useRef<MediaStream | null>(null);
   const isInitializedRef = useRef(false);
   const pendingIceCandidates = useRef<Map<string, RTCIceCandidateInit[]>>(new Map());
+  const pendingOffers = useRef<Set<string>>(new Set());
   const reconnectAttempts = useRef<Map<string, number>>(new Map());
   const statsIntervalRef = useRef<number>();
+  const pipOperationInProgress = useRef(false);
 
   const configuration: RTCConfiguration = {
     iceServers: [
@@ -93,12 +96,26 @@ export function useVideoCall({ roomId, userId, userName = 'Usuário', sendMessag
   }, []);
 
   const cleanupAudioContext = useCallback(() => {
+    // Limpar TODOS os intervals de audio
+    audioIntervals.current.forEach((intervalId) => {
+      clearInterval(intervalId);
+    });
+    audioIntervals.current.clear();
+    
     if (audioContextRef.current) { audioContextRef.current.close(); audioContextRef.current = null; }
     analyserNodes.current.clear();
   }, []);
 
   const setupAudioAnalyser = useCallback((stream: MediaStream, streamUserId: string) => {
     if (!audioContextRef.current) return;
+    
+    // Limpar interval anterior se existir
+    const existingInterval = audioIntervals.current.get(streamUserId);
+    if (existingInterval) {
+      clearInterval(existingInterval);
+      audioIntervals.current.delete(streamUserId);
+    }
+    
     try {
       const source = audioContextRef.current.createMediaStreamSource(stream);
       const analyser = audioContextRef.current.createAnalyser();
@@ -106,13 +123,23 @@ export function useVideoCall({ roomId, userId, userName = 'Usuário', sendMessag
       source.connect(analyser);
       analyserNodes.current.set(streamUserId, analyser);
       const check = () => {
-        if (!analyserNodes.current.has(streamUserId)) return;
+        if (!analyserNodes.current.has(streamUserId)) {
+          // Limpar interval se usuário não existe mais
+          const interval = audioIntervals.current.get(streamUserId);
+          if (interval) {
+            clearInterval(interval);
+            audioIntervals.current.delete(streamUserId);
+          }
+          return;
+        }
         const data = new Uint8Array(analyser.frequencyBinCount);
         analyser.getByteFrequencyData(data);
         const avg = data.reduce((a, b) => a + b) / data.length;
         setSpeakingUsers(prev => { const s = new Set(prev); avg > 30 ? s.add(streamUserId) : s.delete(streamUserId); return s; });
       };
-      setInterval(check, 100);
+      // Armazenar referência do interval
+      const intervalId = window.setInterval(check, 100);
+      audioIntervals.current.set(streamUserId, intervalId);
     } catch (e) { console.error(e); }
   }, []);
 
@@ -160,12 +187,24 @@ export function useVideoCall({ roomId, userId, userName = 'Usuário', sendMessag
   }, [roomId, userId, sendMessage, setupAudioAnalyser, performIceRestart]);
 
   const createOffer = useCallback(async (remoteUserId: string) => {
+    // Verificar se já há oferta pendente (race condition fix)
+    if (pendingOffers.current.has(remoteUserId)) {
+      console.log('[WebRTC] Oferta já pendente para:', remoteUserId);
+      return;
+    }
+    
+    pendingOffers.current.add(remoteUserId);
+    
     try {
       const pc = createPeerConnection(remoteUserId);
       const offer = await pc.createOffer();
       await pc.setLocalDescription(offer);
       sendMessage({ action: 'webrtc-signal', type: 'offer', roomId, userId, userName, targetUserId: remoteUserId, signal: { type: 'offer', offer } });
-    } catch (e) { console.error(e); }
+    } catch (e) { 
+      console.error(e); 
+    } finally {
+      pendingOffers.current.delete(remoteUserId);
+    }
   }, [createPeerConnection, roomId, userId, userName, sendMessage]);
 
   const handleOffer = useCallback(async (remoteUserId: string, offer: RTCSessionDescriptionInit) => {
