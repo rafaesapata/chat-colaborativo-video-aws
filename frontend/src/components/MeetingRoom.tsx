@@ -19,8 +19,8 @@ import { meetingHistoryService } from '../services/meetingHistoryService';
 import { interviewAIService, InterviewReport } from '../services/interviewAIService';
 
 // Versão do aplicativo - atualizar a cada deploy
-const APP_VERSION = '2.15.3';
-const BUILD_DATE = '2025-12-20 13:20';
+const APP_VERSION = '2.15.4';
+const BUILD_DATE = '2025-12-20 13:30';
 
 interface Participant {
   id: string;
@@ -98,6 +98,7 @@ export default function MeetingRoom({ darkMode }: { darkMode: boolean }) {
   const [showEndModal, setShowEndModal] = useState(false);
   const [showReportModal, setShowReportModal] = useState(false);
   const [isGeneratingReport, setIsGeneratingReport] = useState(false);
+  const [isPiPActive, setIsPiPActive] = useState(false);
   const [interviewReport, setInterviewReport] = useState<InterviewReport | null>(null);
   
   const controlsTimeoutRef = useRef<number>();
@@ -440,6 +441,47 @@ export default function MeetingRoom({ darkMode }: { darkMode: boolean }) {
     setIsScreenSharing(prev => !prev);
   }, [toggleScreenShare]);
 
+  // Handler para PiP
+  const handleTogglePiP = useCallback(async () => {
+    if (!document.pictureInPictureEnabled) return;
+    
+    try {
+      if (document.pictureInPictureElement) {
+        await document.exitPictureInPicture();
+        setIsPiPActive(false);
+      } else {
+        // Encontrar o melhor vídeo para PiP
+        const videos = Array.from(document.querySelectorAll('video'));
+        const video = videos.find(v => 
+          v.srcObject && 
+          (v.srcObject as MediaStream).getVideoTracks().some(t => t.enabled)
+        );
+        
+        if (video && video.readyState >= 2) {
+          await video.requestPictureInPicture();
+          setIsPiPActive(true);
+        }
+      }
+    } catch (e) {
+      console.error('[MeetingRoom] Erro ao alternar PiP:', e);
+    }
+  }, []);
+
+  // Listener para quando PiP é fechado externamente
+  useEffect(() => {
+    const handlePiPChange = () => {
+      setIsPiPActive(!!document.pictureInPictureElement);
+    };
+    
+    document.addEventListener('enterpictureinpicture', handlePiPChange);
+    document.addEventListener('leavepictureinpicture', handlePiPChange);
+    
+    return () => {
+      document.removeEventListener('enterpictureinpicture', handlePiPChange);
+      document.removeEventListener('leavepictureinpicture', handlePiPChange);
+    };
+  }, []);
+
   const handleLeaveMeeting = useCallback(() => {
     // Para usuários autenticados, mostrar modal de opções
     if (isAuthenticated) {
@@ -601,6 +643,8 @@ export default function MeetingRoom({ darkMode }: { darkMode: boolean }) {
         onLeaveMeeting={handleLeaveMeeting}
         onToggleChat={handleToggleChat}
         onToggleTranscriptionPanel={handleToggleTranscription}
+        onTogglePiP={handleTogglePiP}
+        isPiPActive={isPiPActive}
         unreadCount={unreadCount}
         transcriptionCount={transcriptions.length}
         darkMode={darkMode}

@@ -1,4 +1,4 @@
-import { Mic, MicOff, Video, VideoOff, Monitor, PhoneOff, MessageCircle, FileText, FileTextIcon } from 'lucide-react';
+import { Mic, MicOff, Video, VideoOff, Monitor, PhoneOff, MessageCircle, FileText, FileTextIcon, PictureInPicture2 } from 'lucide-react';
 import { useMobile } from '../hooks/useMobile';
 
 interface ControlBarProps {
@@ -15,6 +15,8 @@ interface ControlBarProps {
   onLeaveMeeting: () => void;
   onToggleChat: () => void;
   onToggleTranscriptionPanel: () => void;
+  onTogglePiP?: () => void;
+  isPiPActive?: boolean;
   unreadCount: number;
   transcriptionCount: number;
   darkMode: boolean;
@@ -34,6 +36,8 @@ export default function ControlBar({
   onLeaveMeeting,
   onToggleChat,
   onToggleTranscriptionPanel,
+  onTogglePiP,
+  isPiPActive = false,
   unreadCount,
   transcriptionCount,
   darkMode
@@ -145,6 +149,27 @@ export default function ControlBar({
           isVisible ? 'translate-y-0 opacity-100' : 'translate-y-full opacity-0'
         }`}
       >
+        {/* PiP Button - só no desktop */}
+        {!isMobile && document.pictureInPictureEnabled && onTogglePiP && (
+          <button
+            onClick={onTogglePiP}
+            className={`relative ${roundButtonSize} rounded-full flex items-center justify-center transition-all duration-150 hover:scale-105 active:scale-95 shadow-lg backdrop-blur-xl ${
+              isPiPActive
+                ? 'bg-blue-500 text-white border border-blue-400'
+                : darkMode 
+                  ? 'bg-gray-900/60 text-white border border-white/10' 
+                  : 'bg-white/40 text-gray-700 border border-white/30'
+            }`}
+            style={{ 
+              backdropFilter: 'blur(20px)',
+              WebkitBackdropFilter: 'blur(20px)'
+            }}
+            title={isPiPActive ? 'Sair do Picture-in-Picture' : 'Picture-in-Picture'}
+          >
+            <PictureInPicture2 size={iconSize} />
+          </button>
+        )}
+
         {/* Transcription Panel Button - só para usuários autenticados */}
         {isAuthenticated && (
           <button

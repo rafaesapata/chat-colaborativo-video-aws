@@ -1,5 +1,5 @@
 import { useState, useRef, useEffect, memo, useCallback } from 'react';
-import { MicOff, Maximize2, PictureInPicture2, Pin, PinOff } from 'lucide-react';
+import { MicOff, Pin, PinOff } from 'lucide-react';
 import { useMobile } from '../hooks/useMobile';
 
 interface Participant {
@@ -157,25 +157,6 @@ const VideoCard = memo(function VideoCard({
               <span className="inline-block w-2 h-2 bg-green-400 rounded-full animate-pulse" />
             )}
           </span>
-          
-          {/* Controle PiP - mesmo estilo do botão de chat */}
-          {!isMobile && isHovered && stream && document.pictureInPictureEnabled && (
-            <button
-              onClick={handlePiP}
-              className={`w-8 h-8 rounded-full flex items-center justify-center transition-all duration-150 hover:scale-105 active:scale-95 shadow-lg backdrop-blur-xl ${
-                darkMode 
-                  ? 'bg-gray-900/60 text-white border border-white/10' 
-                  : 'bg-white/40 text-gray-700 border border-white/30'
-              }`}
-              style={{ 
-                backdropFilter: 'blur(20px)',
-                WebkitBackdropFilter: 'blur(20px)'
-              }}
-              title="Picture-in-Picture"
-            >
-              <PictureInPicture2 size={14} />
-            </button>
-          )}
         </div>
       </div>
     </div>
