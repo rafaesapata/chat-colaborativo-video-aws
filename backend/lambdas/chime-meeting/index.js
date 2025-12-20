@@ -17,11 +17,9 @@ const chimeClient = new ChimeSDKMeetingsClient({ region: process.env.AWS_REGION 
 // Cache de meetings ativos (em produção, usar DynamoDB)
 const activeMeetings = new Map();
 
+// Headers sem CORS (Function URL já gerencia CORS)
 const headers = {
   'Content-Type': 'application/json',
-  'Access-Control-Allow-Origin': '*',
-  'Access-Control-Allow-Headers': 'Content-Type,Authorization',
-  'Access-Control-Allow-Methods': 'GET,POST,DELETE,OPTIONS',
 };
 
 exports.handler = async (event) => {
@@ -76,7 +74,7 @@ exports.handler = async (event) => {
  * Criar ou entrar em uma reunião
  */
 async function handleJoinMeeting(body) {
-  const { roomId, odUserId } = body;
+  const { roomId, odUserId, userName } = body;
 
   if (!roomId || !odUserId) {
     return {
@@ -85,6 +83,10 @@ async function handleJoinMeeting(body) {
       body: JSON.stringify({ error: 'roomId e odUserId são obrigatórios' }),
     };
   }
+
+  // Criar ExternalUserId com formato: odUserId|userName (para extrair o nome depois)
+  const displayName = userName || 'Participante';
+  const externalUserId = `${odUserId}|${displayName}`;
 
   try {
     let meeting;
@@ -131,10 +133,10 @@ async function handleJoinMeeting(body) {
       console.log('Nova reunião criada:', meeting.MeetingId);
     }
 
-    // Criar attendee para o usuário
+    // Criar attendee para o usuário (ExternalUserId inclui o nome para exibição)
     const createAttendeeResponse = await chimeClient.send(new CreateAttendeeCommand({
       MeetingId: meeting.MeetingId,
-      ExternalUserId: odUserId,
+      ExternalUserId: externalUserId,
       Capabilities: {
         Audio: 'SendReceive',
         Video: 'SendReceive',
@@ -151,7 +153,7 @@ async function handleJoinMeeting(body) {
     }));
 
     const otherAttendees = (listAttendeesResponse.Attendees || [])
-      .filter(a => a.ExternalUserId !== odUserId)
+      .filter(a => a.ExternalUserId !== externalUserId)
       .map(a => ({
         odAttendeeId: a.AttendeeId,
         odExternalUserId: a.ExternalUserId

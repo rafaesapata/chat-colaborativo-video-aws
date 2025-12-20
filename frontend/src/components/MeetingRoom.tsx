@@ -21,8 +21,8 @@ import { meetingHistoryService } from '../services/meetingHistoryService';
 import { interviewAIService, InterviewReport } from '../services/interviewAIService';
 
 // Versão do aplicativo - atualizar a cada deploy
-const APP_VERSION = '3.0.2';
-const BUILD_DATE = '2025-12-20 14:55';
+const APP_VERSION = '3.0.3';
+const BUILD_DATE = '2025-12-20 17:45';
 
 interface Message {
   id: string;

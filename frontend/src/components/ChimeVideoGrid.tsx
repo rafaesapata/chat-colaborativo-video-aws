@@ -215,9 +215,22 @@ export default function ChimeVideoGrid({
       {/* Grid de vídeos */}
       <div className={`grid ${getGridCols()} ${getGridRows()} gap-2 h-full`}>
         {allTiles.map((tile) => {
-          const isLocal = tile.odExternalUserId === localUserId || tile.isLocal;
+          // Verificar se é local: pode ser pelo flag isLocal ou pelo userId no ExternalUserId
+          const externalUserIdPart = tile.odExternalUserId?.split('|')[0] || '';
+          const isLocal = tile.isLocal || externalUserIdPart === localUserId;
           const isActiveSpeaker = activeSpeakers.includes(tile.odAttendeeId);
-          const userName = isLocal ? localUserName : tile.odExternalUserId.split('_').pop() || 'Participante';
+          
+          // Extrair nome do ExternalUserId (formato: odUserId|userName)
+          let userName = 'Participante';
+          if (tile.odExternalUserId) {
+            const parts = tile.odExternalUserId.split('|');
+            if (parts.length > 1) {
+              userName = parts[1]; // Nome está após o pipe
+            } else {
+              // Fallback para formato antigo
+              userName = tile.odExternalUserId.split('_').pop() || 'Participante';
+            }
+          }
 
           return (
             <VideoTileComponent
