@@ -44,6 +44,12 @@ export function useTranscription({
   
   const recognitionRef = useRef<SpeechRecognition | null>(null);
   const isInitializedRef = useRef(false);
+  const isTranscriptionEnabledRef = useRef(false);
+
+  // Manter ref sincronizada com state
+  useEffect(() => {
+    isTranscriptionEnabledRef.current = isTranscriptionEnabled;
+  }, [isTranscriptionEnabled]);
 
   // Verificar suporte do navegador
   const isSpeechRecognitionSupported = useCallback(() => {
@@ -173,11 +179,11 @@ export function useTranscription({
       console.log('[Transcription] Speech recognition ended');
       setIsRecording(false);
       
-      // Reiniciar se ainda estiver habilitado (com limite)
-      if (isTranscriptionEnabled && restartAttempts < MAX_RESTART_ATTEMPTS) {
+      // Reiniciar se ainda estiver habilitado (com limite) - usar ref para valor atual
+      if (isTranscriptionEnabledRef.current && restartAttempts < MAX_RESTART_ATTEMPTS) {
         restartAttempts++;
         setTimeout(() => {
-          if (recognitionRef.current && isTranscriptionEnabled) {
+          if (recognitionRef.current && isTranscriptionEnabledRef.current) {
             try {
               recognitionRef.current.start();
               // Reset contador após start bem-sucedido
@@ -197,7 +203,7 @@ export function useTranscription({
     };
 
     recognitionRef.current = recognition;
-  }, [isSpeechRecognitionSupported, roomId, userId, userName, sendMessage, isTranscriptionEnabled]);
+  }, [isSpeechRecognitionSupported, roomId, userId, userName, sendMessage]);
 
   // Toggle transcrição
   const toggleTranscription = useCallback(() => {

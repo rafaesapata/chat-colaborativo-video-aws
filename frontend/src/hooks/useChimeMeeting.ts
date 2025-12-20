@@ -327,11 +327,13 @@ export function useChimeMeeting({ roomId, odUserId, userName = 'Usuário' }: Use
     odAttendeeIdRef.current = null;
     videoElementsRef.current.clear();
 
-    // Limpar stream de áudio local
-    if (localAudioStream) {
-      localAudioStream.getTracks().forEach(t => t.stop());
-      setLocalAudioStream(null);
-    }
+    // Limpar stream de áudio local usando setState callback para garantir valor atual
+    setLocalAudioStream(prev => {
+      if (prev) {
+        prev.getTracks().forEach(t => t.stop());
+      }
+      return null;
+    });
 
     setIsJoined(false);
     setAttendees([]);
