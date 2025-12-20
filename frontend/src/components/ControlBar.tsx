@@ -1,4 +1,4 @@
-import { Mic, MicOff, Video, VideoOff, Monitor, PhoneOff, MessageCircle, FileText, FileTextIcon, PictureInPicture2 } from 'lucide-react';
+import { Mic, MicOff, Video, VideoOff, Monitor, PhoneOff, MessageCircle, FileText, FileTextIcon, Circle } from 'lucide-react';
 import { useMobile } from '../hooks/useMobile';
 
 interface ControlBarProps {
@@ -15,8 +15,10 @@ interface ControlBarProps {
   onLeaveMeeting: () => void;
   onToggleChat: () => void;
   onToggleTranscriptionPanel: () => void;
-  onTogglePiP?: () => void;
-  isPiPActive?: boolean;
+  onStartRecording?: () => void;
+  onStopRecording?: () => void;
+  isRecording?: boolean;
+  recordingDuration?: number;
   unreadCount: number;
   transcriptionCount: number;
   darkMode: boolean;
@@ -36,8 +38,10 @@ export default function ControlBar({
   onLeaveMeeting,
   onToggleChat,
   onToggleTranscriptionPanel,
-  onTogglePiP,
-  isPiPActive = false,
+  onStartRecording,
+  onStopRecording,
+  isRecording = false,
+  recordingDuration = 0,
   unreadCount,
   transcriptionCount,
   darkMode
@@ -51,6 +55,13 @@ export default function ControlBar({
   const buttonSize = isMobile ? 'w-12 h-12' : 'w-13 h-13';
   const iconSize = isMobile ? 18 : 20;
   const roundButtonSize = isMobile ? 'w-11 h-11' : 'w-13 h-13';
+
+  // Formatar duração da gravação
+  const formatDuration = (seconds: number) => {
+    const mins = Math.floor(seconds / 60);
+    const secs = seconds % 60;
+    return `${mins.toString().padStart(2, '0')}:${secs.toString().padStart(2, '0')}`;
+  };
 
   return (
     <>
@@ -149,13 +160,13 @@ export default function ControlBar({
           isVisible ? 'translate-y-0 opacity-100' : 'translate-y-full opacity-0'
         }`}
       >
-        {/* PiP Button - só no desktop */}
-        {!isMobile && document.pictureInPictureEnabled && onTogglePiP && (
+        {/* Recording Button - só para usuários autenticados */}
+        {isAuthenticated && onStartRecording && onStopRecording && (
           <button
-            onClick={onTogglePiP}
+            onClick={isRecording ? onStopRecording : onStartRecording}
             className={`relative ${roundButtonSize} rounded-full flex items-center justify-center transition-all duration-150 hover:scale-105 active:scale-95 shadow-lg backdrop-blur-xl ${
-              isPiPActive
-                ? 'bg-blue-500 text-white border border-blue-400'
+              isRecording
+                ? 'bg-red-500 text-white border border-red-400 animate-pulse'
                 : darkMode 
                   ? 'bg-gray-900/60 text-white border border-white/10' 
                   : 'bg-white/40 text-gray-700 border border-white/30'
@@ -164,9 +175,14 @@ export default function ControlBar({
               backdropFilter: 'blur(20px)',
               WebkitBackdropFilter: 'blur(20px)'
             }}
-            title={isPiPActive ? 'Sair do Picture-in-Picture' : 'Picture-in-Picture'}
+            title={isRecording ? `Parar gravação (${formatDuration(recordingDuration)})` : 'Iniciar gravação'}
           >
-            <PictureInPicture2 size={iconSize} />
+            <Circle size={iconSize} fill={isRecording ? 'white' : 'currentColor'} />
+            {isRecording && (
+              <span className="absolute -bottom-5 left-1/2 -translate-x-1/2 text-[10px] font-mono text-red-500 whitespace-nowrap">
+                {formatDuration(recordingDuration)}
+              </span>
+            )}
           </button>
         )}
 
