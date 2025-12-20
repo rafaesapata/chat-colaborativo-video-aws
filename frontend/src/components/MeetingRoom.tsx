@@ -21,8 +21,8 @@ import { meetingHistoryService } from '../services/meetingHistoryService';
 import { interviewAIService, InterviewReport } from '../services/interviewAIService';
 
 // Versão do aplicativo - atualizar a cada deploy
-const APP_VERSION = '3.0.0';
-const BUILD_DATE = '2025-12-20 14:35';
+const APP_VERSION = '3.0.1';
+const BUILD_DATE = '2025-12-20 14:50';
 
 interface Message {
   id: string;
@@ -100,6 +100,7 @@ export default function MeetingRoom({ darkMode }: { darkMode: boolean }) {
     isAudioEnabled,
     isScreenSharing,
     connectionQuality,
+    localAudioStream,
     toggleVideo,
     toggleAudio,
     toggleScreenShare,
@@ -112,7 +113,7 @@ export default function MeetingRoom({ darkMode }: { darkMode: boolean }) {
     userName,
   });
 
-  // WebSocket apenas para chat
+  // WebSocket para chat E transcrição
   const handleWebSocketMessage = useCallback((data: any) => {
     if (data.type === 'message') {
       const newMessage: Message = {
@@ -131,17 +132,18 @@ export default function MeetingRoom({ darkMode }: { darkMode: boolean }) {
         setUnreadCount(prev => prev + 1);
       }
     }
+    // Transcrições são processadas pelo hook useTranscription via addMessageHandler
   }, [userId]);
 
   const wsUrl = import.meta.env.VITE_WEBSOCKET_URL || '';
-  const { sendMessage, isConnected } = useWebSocket(
+  const { sendMessage, isConnected, addMessageHandler } = useWebSocket(
     wsUrl, userId, roomId || '', handleWebSocketMessage
   );
 
   // Tab sync
   const { isMainTab } = useTabSync(roomId || '', userId);
 
-  // Transcrição (usa áudio local do Chime)
+  // Transcrição - usa stream de áudio do Chime
   const {
     transcriptions,
     isTranscriptionEnabled,
@@ -153,8 +155,8 @@ export default function MeetingRoom({ darkMode }: { darkMode: boolean }) {
     userId,
     userName,
     sendMessage,
-    addMessageHandler: () => () => {},
-    localStream: null // Chime gerencia o stream
+    addMessageHandler,
+    localStream: localAudioStream // Stream de áudio do Chime
   });
 
   // Assistente de entrevista

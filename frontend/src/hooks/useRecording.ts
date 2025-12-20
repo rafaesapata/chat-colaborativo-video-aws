@@ -228,13 +228,16 @@ export function useRecording({ roomId, userLogin, meetingId }: UseRecordingProps
       // Capturar stream do canvas
       const canvasStream = canvas.captureStream(30); // 30 FPS
       
-      // Capturar áudio de todos os vídeos
+      // Capturar áudio de todos os vídeos E do elemento de áudio do Chime
       const videos = Array.from(document.querySelectorAll('video')) as HTMLVideoElement[];
+      const audios = Array.from(document.querySelectorAll('audio')) as HTMLAudioElement[];
       const audioContext = new AudioContext();
       audioContextRef.current = audioContext;
       const destination = audioContext.createMediaStreamDestination();
       
       let hasAudio = false;
+      
+      // Capturar áudio dos vídeos
       videos.forEach(video => {
         if (video.srcObject) {
           try {
@@ -246,10 +249,41 @@ export function useRecording({ roomId, userLogin, meetingId }: UseRecordingProps
               hasAudio = true;
             }
           } catch (e) {
-            console.warn('[Recording] Erro ao conectar áudio:', e);
+            console.warn('[Recording] Erro ao conectar áudio de vídeo:', e);
           }
         }
       });
+
+      // Capturar áudio dos elementos <audio> (Chime SDK usa isso)
+      audios.forEach(audio => {
+        if (audio.srcObject) {
+          try {
+            const stream = audio.srcObject as MediaStream;
+            const audioTracks = stream.getAudioTracks();
+            if (audioTracks.length > 0) {
+              const source = audioContext.createMediaStreamSource(stream);
+              source.connect(destination);
+              hasAudio = true;
+              console.log('[Recording] Áudio do Chime conectado');
+            }
+          } catch (e) {
+            console.warn('[Recording] Erro ao conectar áudio do Chime:', e);
+          }
+        }
+      });
+
+      // Se não encontrou áudio nos elementos, tentar capturar do microfone
+      if (!hasAudio) {
+        try {
+          const micStream = await navigator.mediaDevices.getUserMedia({ audio: true });
+          const source = audioContext.createMediaStreamSource(micStream);
+          source.connect(destination);
+          hasAudio = true;
+          console.log('[Recording] Usando microfone como fallback');
+        } catch (e) {
+          console.warn('[Recording] Não foi possível capturar áudio:', e);
+        }
+      }
 
       // Combinar vídeo do canvas com áudio
       const tracks = [...canvasStream.getVideoTracks()];

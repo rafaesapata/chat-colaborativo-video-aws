@@ -57,6 +57,7 @@ export function useChimeMeeting({ roomId, odUserId, userName = 'Usuário' }: Use
   const meetingIdRef = useRef<string | null>(null);
   const odAttendeeIdRef = useRef<string | null>(null);
   const videoElementsRef = useRef<Map<number, HTMLVideoElement>>(new Map());
+  const [localAudioStream, setLocalAudioStream] = useState<MediaStream | null>(null);
 
   // Criar sessão do Chime
   const joinMeeting = useCallback(async () => {
@@ -251,6 +252,17 @@ export function useChimeMeeting({ roomId, odUserId, userName = 'Usuário' }: Use
           ? audioInputDevices.find(d => d.deviceId === savedAudioDevice) || audioInputDevices[0]
           : audioInputDevices[0];
         await audioVideo.startAudioInput(audioDevice.deviceId);
+        
+        // Criar stream de áudio local para transcrição
+        try {
+          const audioStream = await navigator.mediaDevices.getUserMedia({
+            audio: { deviceId: audioDevice.deviceId }
+          });
+          setLocalAudioStream(audioStream);
+          console.log('[Chime] Stream de áudio local criado para transcrição');
+        } catch (e) {
+          console.warn('[Chime] Não foi possível criar stream para transcrição:', e);
+        }
       }
 
       // Selecionar câmera
@@ -314,6 +326,12 @@ export function useChimeMeeting({ roomId, odUserId, userName = 'Usuário' }: Use
     meetingIdRef.current = null;
     odAttendeeIdRef.current = null;
     videoElementsRef.current.clear();
+
+    // Limpar stream de áudio local
+    if (localAudioStream) {
+      localAudioStream.getTracks().forEach(t => t.stop());
+      setLocalAudioStream(null);
+    }
 
     setIsJoined(false);
     setAttendees([]);
@@ -427,6 +445,7 @@ export function useChimeMeeting({ roomId, odUserId, userName = 'Usuário' }: Use
     isAudioEnabled,
     isScreenSharing,
     connectionQuality,
+    localAudioStream, // Stream para transcrição
     
     // Ações
     joinMeeting,
