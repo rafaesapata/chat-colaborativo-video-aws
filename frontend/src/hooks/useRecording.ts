@@ -32,6 +32,8 @@ export function useRecording({ roomId, userLogin, meetingId }: UseRecordingProps
   const animationFrameRef = useRef<number>();
   const durationIntervalRef = useRef<number>();
   const streamRef = useRef<MediaStream | null>(null);
+  const audioContextRef = useRef<AudioContext | null>(null);
+  const isRecordingRef = useRef(false); // Ref para controle de animação
 
   // Criar canvas para composição de vídeos
   const createCompositeCanvas = useCallback(() => {
@@ -42,10 +44,10 @@ export function useRecording({ roomId, userLogin, meetingId }: UseRecordingProps
     return canvas;
   }, []);
 
-  // Desenhar todos os vídeos no canvas
+  // Desenhar todos os vídeos no canvas (usa ref ao invés de state)
   const drawVideosToCanvas = useCallback(() => {
     const canvas = canvasRef.current;
-    if (!canvas) return;
+    if (!canvas || !isRecordingRef.current) return;
     
     const ctx = canvas.getContext('2d');
     if (!ctx) return;
@@ -64,57 +66,56 @@ export function useRecording({ roomId, userLogin, meetingId }: UseRecordingProps
       ctx.font = '24px Arial';
       ctx.textAlign = 'center';
       ctx.fillText('Aguardando vídeos...', canvas.width / 2, canvas.height / 2);
-      return;
+    } else {
+      // Calcular layout do grid
+      const cols = Math.ceil(Math.sqrt(activeVideos.length));
+      const rows = Math.ceil(activeVideos.length / cols);
+      const cellWidth = canvas.width / cols;
+      const cellHeight = canvas.height / rows;
+      const padding = 4;
+
+      activeVideos.forEach((video, index) => {
+        const col = index % cols;
+        const row = Math.floor(index / cols);
+        const x = col * cellWidth + padding;
+        const y = row * cellHeight + padding;
+        const w = cellWidth - padding * 2;
+        const h = cellHeight - padding * 2;
+
+        // Desenhar vídeo mantendo aspect ratio
+        const videoAspect = video.videoWidth / video.videoHeight || 16/9;
+        const cellAspect = w / h;
+        
+        let drawWidth = w;
+        let drawHeight = h;
+        let drawX = x;
+        let drawY = y;
+
+        if (videoAspect > cellAspect) {
+          drawHeight = w / videoAspect;
+          drawY = y + (h - drawHeight) / 2;
+        } else {
+          drawWidth = h * videoAspect;
+          drawX = x + (w - drawWidth) / 2;
+        }
+
+        // Borda arredondada
+        ctx.save();
+        ctx.beginPath();
+        ctx.roundRect(drawX, drawY, drawWidth, drawHeight, 8);
+        ctx.clip();
+        
+        try {
+          ctx.drawImage(video, drawX, drawY, drawWidth, drawHeight);
+        } catch {
+          // Vídeo pode não estar pronto
+          ctx.fillStyle = '#2d2d44';
+          ctx.fillRect(drawX, drawY, drawWidth, drawHeight);
+        }
+        
+        ctx.restore();
+      });
     }
-
-    // Calcular layout do grid
-    const cols = Math.ceil(Math.sqrt(activeVideos.length));
-    const rows = Math.ceil(activeVideos.length / cols);
-    const cellWidth = canvas.width / cols;
-    const cellHeight = canvas.height / rows;
-    const padding = 4;
-
-    activeVideos.forEach((video, index) => {
-      const col = index % cols;
-      const row = Math.floor(index / cols);
-      const x = col * cellWidth + padding;
-      const y = row * cellHeight + padding;
-      const w = cellWidth - padding * 2;
-      const h = cellHeight - padding * 2;
-
-      // Desenhar vídeo mantendo aspect ratio
-      const videoAspect = video.videoWidth / video.videoHeight;
-      const cellAspect = w / h;
-      
-      let drawWidth = w;
-      let drawHeight = h;
-      let drawX = x;
-      let drawY = y;
-
-      if (videoAspect > cellAspect) {
-        drawHeight = w / videoAspect;
-        drawY = y + (h - drawHeight) / 2;
-      } else {
-        drawWidth = h * videoAspect;
-        drawX = x + (w - drawWidth) / 2;
-      }
-
-      // Borda arredondada
-      ctx.save();
-      ctx.beginPath();
-      ctx.roundRect(drawX, drawY, drawWidth, drawHeight, 8);
-      ctx.clip();
-      
-      try {
-        ctx.drawImage(video, drawX, drawY, drawWidth, drawHeight);
-      } catch (e) {
-        // Vídeo pode não estar pronto
-        ctx.fillStyle = '#2d2d44';
-        ctx.fillRect(drawX, drawY, drawWidth, drawHeight);
-      }
-      
-      ctx.restore();
-    });
 
     // Timestamp no canto
     ctx.fillStyle = 'rgba(0, 0, 0, 0.5)';
@@ -124,168 +125,47 @@ export function useRecording({ roomId, userLogin, meetingId }: UseRecordingProps
     ctx.textAlign = 'left';
     ctx.fillText(new Date().toLocaleTimeString('pt-BR'), 15, canvas.height - 12);
 
-    // Continuar animação
-    if (state.isRecording && !state.isPaused) {
+    // Continuar animação se ainda estiver gravando
+    if (isRecordingRef.current) {
       animationFrameRef.current = requestAnimationFrame(drawVideosToCanvas);
     }
-  }, [state.isRecording, state.isPaused]);
-
-  // Iniciar gravação
-  const startRecording = useCallback(async () => {
-    try {
-      // Criar canvas de composição
-      const canvas = createCompositeCanvas();
-      
-      // Capturar stream do canvas
-      const canvasStream = canvas.captureStream(30); // 30 FPS
-      
-      // Capturar áudio de todos os vídeos
-      const videos = Array.from(document.querySelectorAll('video')) as HTMLVideoElement[];
-      const audioContext = new AudioContext();
-      const destination = audioContext.createMediaStreamDestination();
-      
-      videos.forEach(video => {
-        if (video.srcObject) {
-          try {
-            const source = audioContext.createMediaStreamSource(video.srcObject as MediaStream);
-            source.connect(destination);
-          } catch (e) {
-            console.warn('[Recording] Erro ao conectar áudio:', e);
-          }
-        }
-      });
-
-      // Combinar vídeo do canvas com áudio
-      const combinedStream = new MediaStream([
-        ...canvasStream.getVideoTracks(),
-        ...destination.stream.getAudioTracks()
-      ]);
-      
-      streamRef.current = combinedStream;
-
-      // Configurar MediaRecorder
-      const mimeType = MediaRecorder.isTypeSupported('video/webm;codecs=vp9,opus')
-        ? 'video/webm;codecs=vp9,opus'
-        : MediaRecorder.isTypeSupported('video/webm;codecs=vp8,opus')
-        ? 'video/webm;codecs=vp8,opus'
-        : 'video/webm';
-
-      const mediaRecorder = new MediaRecorder(combinedStream, {
-        mimeType,
-        videoBitsPerSecond: 2500000, // 2.5 Mbps
-      });
-
-      chunksRef.current = [];
-
-      mediaRecorder.ondataavailable = (event) => {
-        if (event.data.size > 0) {
-          chunksRef.current.push(event.data);
-        }
-      };
-
-      mediaRecorder.onstop = async () => {
-        // Parar animação
-        if (animationFrameRef.current) {
-          cancelAnimationFrame(animationFrameRef.current);
-        }
-        
-        // Criar blob final
-        const blob = new Blob(chunksRef.current, { type: mimeType });
-        
-        // Upload para S3 ou salvar localmente
-        if (USE_S3_STORAGE) {
-          try {
-            await uploadRecording(blob);
-          } catch (error) {
-            console.warn('[Recording] Falha no upload, salvando localmente');
-            saveRecordingLocally(blob);
-          }
-        } else {
-          // Sem API configurada, salvar localmente
-          saveRecordingLocally(blob);
-          saveRecordingToHistory(`local_${Date.now()}`);
-        }
-        
-        // Limpar
-        chunksRef.current = [];
-        streamRef.current?.getTracks().forEach(t => t.stop());
-        audioContext.close();
-      };
-
-      mediaRecorderRef.current = mediaRecorder;
-      
-      // Iniciar gravação
-      mediaRecorder.start(1000); // Chunk a cada 1 segundo
-      
-      // Iniciar desenho no canvas
-      drawVideosToCanvas();
-      
-      // Iniciar contador de duração
-      durationIntervalRef.current = window.setInterval(() => {
-        setState(prev => ({ ...prev, duration: prev.duration + 1 }));
-      }, 1000);
-
-      const recordingId = `rec_${Date.now()}_${Math.random().toString(36).substring(2, 9)}`;
-      
-      setState({
-        isRecording: true,
-        isPaused: false,
-        duration: 0,
-        recordingId,
-      });
-
-      console.log('[Recording] Gravação iniciada:', recordingId);
-      return true;
-    } catch (error) {
-      console.error('[Recording] Erro ao iniciar gravação:', error);
-      return false;
-    }
-  }, [createCompositeCanvas, drawVideosToCanvas]);
-
-  // Pausar/Retomar gravação
-  const togglePause = useCallback(() => {
-    if (!mediaRecorderRef.current) return;
-
-    if (state.isPaused) {
-      mediaRecorderRef.current.resume();
-      drawVideosToCanvas();
-      durationIntervalRef.current = window.setInterval(() => {
-        setState(prev => ({ ...prev, duration: prev.duration + 1 }));
-      }, 1000);
-    } else {
-      mediaRecorderRef.current.pause();
-      if (animationFrameRef.current) {
-        cancelAnimationFrame(animationFrameRef.current);
-      }
-      if (durationIntervalRef.current) {
-        clearInterval(durationIntervalRef.current);
-      }
-    }
-
-    setState(prev => ({ ...prev, isPaused: !prev.isPaused }));
-  }, [state.isPaused, drawVideosToCanvas]);
-
-  // Parar gravação
-  const stopRecording = useCallback(() => {
-    if (!mediaRecorderRef.current) return;
-
-    if (durationIntervalRef.current) {
-      clearInterval(durationIntervalRef.current);
-    }
-
-    mediaRecorderRef.current.stop();
-    
-    setState(prev => ({
-      ...prev,
-      isRecording: false,
-      isPaused: false,
-    }));
-
-    console.log('[Recording] Gravação parada');
   }, []);
 
+  // Salvar referência no histórico
+  const saveRecordingToHistory = useCallback((recordingKey: string, duration: number) => {
+    const historyKey = `videochat_meeting_history_${userLogin}`;
+    const stored = localStorage.getItem(historyKey);
+    
+    if (stored) {
+      try {
+        const history = JSON.parse(stored);
+        const meetingIndex = history.findIndex((m: any) => m.id === meetingId);
+        
+        if (meetingIndex >= 0) {
+          history[meetingIndex].recordingKey = recordingKey;
+          history[meetingIndex].recordingDuration = duration;
+          localStorage.setItem(historyKey, JSON.stringify(history));
+        }
+      } catch (e) {
+        console.error('[Recording] Erro ao salvar no histórico:', e);
+      }
+    }
+  }, [userLogin, meetingId]);
+
+  // Fallback: salvar localmente
+  const saveRecordingLocally = useCallback((blob: Blob) => {
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = `reuniao_${roomId}_${new Date().toISOString().slice(0, 10)}.webm`;
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+    URL.revokeObjectURL(url);
+  }, [roomId]);
+
   // Upload para S3 via URL pré-assinada
-  const uploadRecording = useCallback(async (blob: Blob) => {
+  const uploadRecording = useCallback(async (blob: Blob, duration: number) => {
     try {
       console.log('[Recording] Iniciando upload...', blob.size, 'bytes');
       
@@ -302,7 +182,7 @@ export function useRecording({ roomId, userLogin, meetingId }: UseRecordingProps
           userLogin,
           roomId,
           meetingId,
-          duration: state.duration,
+          duration,
         }),
       });
 
@@ -328,64 +208,219 @@ export function useRecording({ roomId, userLogin, meetingId }: UseRecordingProps
       console.log('[Recording] Upload concluído:', recordingKey);
       
       // Salvar referência no histórico local
-      saveRecordingToHistory(recordingKey);
+      saveRecordingToHistory(recordingKey, duration);
       
       return recordingKey;
     } catch (error) {
       console.error('[Recording] Erro no upload:', error);
-      
-      // Fallback: salvar localmente
-      saveRecordingLocally(blob);
       throw error;
     }
-  }, [userLogin, roomId, meetingId, state.duration]);
+  }, [userLogin, roomId, meetingId, saveRecordingToHistory]);
 
-  // Salvar referência no histórico
-  const saveRecordingToHistory = useCallback((recordingKey: string) => {
-    const historyKey = `videochat_meeting_history_${userLogin}`;
-    const stored = localStorage.getItem(historyKey);
-    
-    if (stored) {
-      try {
-        const history = JSON.parse(stored);
-        const meetingIndex = history.findIndex((m: any) => m.id === meetingId);
-        
-        if (meetingIndex >= 0) {
-          history[meetingIndex].recordingKey = recordingKey;
-          history[meetingIndex].recordingDuration = state.duration;
-          localStorage.setItem(historyKey, JSON.stringify(history));
+  // Iniciar gravação
+  const startRecording = useCallback(async () => {
+    try {
+      console.log('[Recording] Iniciando gravação...');
+      
+      // Criar canvas de composição
+      const canvas = createCompositeCanvas();
+      
+      // Capturar stream do canvas
+      const canvasStream = canvas.captureStream(30); // 30 FPS
+      
+      // Capturar áudio de todos os vídeos
+      const videos = Array.from(document.querySelectorAll('video')) as HTMLVideoElement[];
+      const audioContext = new AudioContext();
+      audioContextRef.current = audioContext;
+      const destination = audioContext.createMediaStreamDestination();
+      
+      let hasAudio = false;
+      videos.forEach(video => {
+        if (video.srcObject) {
+          try {
+            const stream = video.srcObject as MediaStream;
+            const audioTracks = stream.getAudioTracks();
+            if (audioTracks.length > 0) {
+              const source = audioContext.createMediaStreamSource(stream);
+              source.connect(destination);
+              hasAudio = true;
+            }
+          } catch (e) {
+            console.warn('[Recording] Erro ao conectar áudio:', e);
+          }
         }
-      } catch (e) {
-        console.error('[Recording] Erro ao salvar no histórico:', e);
+      });
+
+      // Combinar vídeo do canvas com áudio
+      const tracks = [...canvasStream.getVideoTracks()];
+      if (hasAudio) {
+        tracks.push(...destination.stream.getAudioTracks());
       }
+      const combinedStream = new MediaStream(tracks);
+      
+      streamRef.current = combinedStream;
+
+      // Configurar MediaRecorder
+      const mimeType = MediaRecorder.isTypeSupported('video/webm;codecs=vp9,opus')
+        ? 'video/webm;codecs=vp9,opus'
+        : MediaRecorder.isTypeSupported('video/webm;codecs=vp8,opus')
+        ? 'video/webm;codecs=vp8,opus'
+        : 'video/webm';
+
+      const mediaRecorder = new MediaRecorder(combinedStream, {
+        mimeType,
+        videoBitsPerSecond: 2500000, // 2.5 Mbps
+      });
+
+      chunksRef.current = [];
+      let finalDuration = 0;
+
+      mediaRecorder.ondataavailable = (event) => {
+        if (event.data.size > 0) {
+          chunksRef.current.push(event.data);
+        }
+      };
+
+      mediaRecorder.onstop = async () => {
+        console.log('[Recording] MediaRecorder parou, processando...');
+        
+        // Parar animação
+        isRecordingRef.current = false;
+        if (animationFrameRef.current) {
+          cancelAnimationFrame(animationFrameRef.current);
+        }
+        
+        // Criar blob final
+        const blob = new Blob(chunksRef.current, { type: mimeType });
+        console.log('[Recording] Blob criado:', blob.size, 'bytes');
+        
+        // Upload para S3 ou salvar localmente
+        if (USE_S3_STORAGE && blob.size > 0) {
+          try {
+            await uploadRecording(blob, finalDuration);
+            console.log('[Recording] Upload para S3 concluído');
+          } catch (error) {
+            console.warn('[Recording] Falha no upload, salvando localmente');
+            saveRecordingLocally(blob);
+          }
+        } else if (blob.size > 0) {
+          // Sem API configurada, salvar localmente
+          saveRecordingLocally(blob);
+          saveRecordingToHistory(`local_${Date.now()}`, finalDuration);
+        }
+        
+        // Limpar
+        chunksRef.current = [];
+        streamRef.current?.getTracks().forEach(t => t.stop());
+        audioContextRef.current?.close();
+        audioContextRef.current = null;
+      };
+
+      mediaRecorderRef.current = mediaRecorder;
+      
+      // IMPORTANTE: Atualizar ref ANTES de iniciar animação
+      isRecordingRef.current = true;
+      
+      // Iniciar gravação
+      mediaRecorder.start(1000); // Chunk a cada 1 segundo
+      console.log('[Recording] MediaRecorder iniciado');
+      
+      // Iniciar desenho no canvas
+      drawVideosToCanvas();
+      
+      // Iniciar contador de duração
+      durationIntervalRef.current = window.setInterval(() => {
+        setState(prev => {
+          finalDuration = prev.duration + 1;
+          return { ...prev, duration: prev.duration + 1 };
+        });
+      }, 1000);
+
+      const recordingId = `rec_${Date.now()}_${Math.random().toString(36).substring(2, 9)}`;
+      
+      // Atualizar estado
+      setState({
+        isRecording: true,
+        isPaused: false,
+        duration: 0,
+        recordingId,
+      });
+
+      console.log('[Recording] Gravação iniciada:', recordingId);
+      return true;
+    } catch (error) {
+      console.error('[Recording] Erro ao iniciar gravação:', error);
+      isRecordingRef.current = false;
+      return false;
     }
-  }, [userLogin, meetingId, state.duration]);
+  }, [createCompositeCanvas, drawVideosToCanvas, uploadRecording, saveRecordingLocally, saveRecordingToHistory]);
 
-  // Fallback: salvar localmente
-  const saveRecordingLocally = useCallback((blob: Blob) => {
-    const url = URL.createObjectURL(blob);
-    const a = document.createElement('a');
-    a.href = url;
-    a.download = `reuniao_${roomId}_${new Date().toISOString().slice(0, 10)}.webm`;
-    a.click();
-    URL.revokeObjectURL(url);
-  }, [roomId]);
+  // Pausar/Retomar gravação
+  const togglePause = useCallback(() => {
+    if (!mediaRecorderRef.current) return;
 
-  // Cleanup
-  useEffect(() => {
-    return () => {
+    if (state.isPaused) {
+      mediaRecorderRef.current.resume();
+      isRecordingRef.current = true;
+      drawVideosToCanvas();
+      durationIntervalRef.current = window.setInterval(() => {
+        setState(prev => ({ ...prev, duration: prev.duration + 1 }));
+      }, 1000);
+    } else {
+      mediaRecorderRef.current.pause();
+      isRecordingRef.current = false;
       if (animationFrameRef.current) {
         cancelAnimationFrame(animationFrameRef.current);
       }
       if (durationIntervalRef.current) {
         clearInterval(durationIntervalRef.current);
       }
-      if (mediaRecorderRef.current && state.isRecording) {
+    }
+
+    setState(prev => ({ ...prev, isPaused: !prev.isPaused }));
+  }, [state.isPaused, drawVideosToCanvas]);
+
+  // Parar gravação
+  const stopRecording = useCallback(() => {
+    console.log('[Recording] Parando gravação...');
+    
+    if (durationIntervalRef.current) {
+      clearInterval(durationIntervalRef.current);
+      durationIntervalRef.current = undefined;
+    }
+
+    isRecordingRef.current = false;
+    
+    if (mediaRecorderRef.current && mediaRecorderRef.current.state !== 'inactive') {
+      mediaRecorderRef.current.stop();
+    }
+    
+    setState(prev => ({
+      ...prev,
+      isRecording: false,
+      isPaused: false,
+    }));
+
+    console.log('[Recording] Gravação parada');
+  }, []);
+
+  // Cleanup
+  useEffect(() => {
+    return () => {
+      isRecordingRef.current = false;
+      if (animationFrameRef.current) {
+        cancelAnimationFrame(animationFrameRef.current);
+      }
+      if (durationIntervalRef.current) {
+        clearInterval(durationIntervalRef.current);
+      }
+      if (mediaRecorderRef.current && mediaRecorderRef.current.state !== 'inactive') {
         mediaRecorderRef.current.stop();
       }
       streamRef.current?.getTracks().forEach(t => t.stop());
+      audioContextRef.current?.close();
     };
-  }, [state.isRecording]);
+  }, []);
 
   return {
     isRecording: state.isRecording,
