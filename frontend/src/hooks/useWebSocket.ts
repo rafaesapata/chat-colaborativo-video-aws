@@ -13,6 +13,9 @@ interface BufferedMessage {
 const MAX_BUFFER_SIZE = 50;
 const MAX_RETRIES = 3;
 const MESSAGE_TTL = 30000; // 30 segundos
+const ZOMBIE_PING_INTERVAL = 25000; // 25 segundos
+const ZOMBIE_PONG_TIMEOUT = 10000; // 10 segundos para resposta
+const ZOMBIE_MAX_MISSED = 3; // 3 pongs perdidos = zombie
 
 export function useWebSocket(
   url: string,
@@ -27,9 +30,13 @@ export function useWebSocket(
   const reconnectTimeoutRef = useRef<number>();
   const heartbeatIntervalRef = useRef<number>();
   const reconnectAttemptsRef = useRef(0);
+  const isConnectingRef = useRef(false); // Mutex para evitar conexões simultâneas
   const pendingMessages = useRef<unknown[]>([]); // Fila de mensagens recebidas pendentes
   const offlineBuffer = useRef<BufferedMessage[]>([]); // Buffer de mensagens para enviar
   const messageQueueRef = useRef<MessageQueue | null>(null); // Message queue com backpressure
+  const lastPongTimeRef = useRef<number>(Date.now()); // Zombie detection
+  const missedPongsRef = useRef<number>(0); // Zombie detection
+  const zombieCheckIntervalRef = useRef<number>(); // Zombie detection interval
   const MAX_RECONNECT_ATTEMPTS = 5;
   const RECONNECT_DELAY = 3000;
   const HEARTBEAT_INTERVAL = 30000; // 30 segundos
@@ -57,13 +64,25 @@ export function useWebSocket(
       return;
     }
 
-    // Evitar múltiplas conexões
+    // Evitar múltiplas conexões simultâneas (race condition fix)
     if (wsRef.current && wsRef.current.readyState === WebSocket.CONNECTING) {
       console.log('[WebSocket] Conexão já em andamento, aguardando...');
       return;
     }
+    
+    if (isConnectingRef.current) {
+      console.log('[WebSocket] Mutex ativo, ignorando tentativa de conexão');
+      return;
+    }
 
     const connect = () => {
+      // Verificar mutex novamente dentro da função
+      if (isConnectingRef.current) {
+        console.log('[WebSocket] Mutex ativo dentro de connect(), abortando');
+        return;
+      }
+      isConnectingRef.current = true;
+      
       // Limpar conexão anterior se existir
       if (wsRef.current && wsRef.current.readyState !== WebSocket.CLOSED) {
         console.log('[WebSocket] Fechando conexão anterior...');
@@ -81,6 +100,7 @@ export function useWebSocket(
           console.log('[WebSocket] ✅ Conectado com sucesso!');
           setIsConnected(true);
           reconnectAttemptsRef.current = 0;
+          isConnectingRef.current = false; // Liberar mutex
           
           // Flush buffer de mensagens offline
           if (offlineBuffer.current.length > 0) {
@@ -107,6 +127,21 @@ export function useWebSocket(
               ws.send(JSON.stringify({ action: 'ping', userId, roomId }));
             }
           }, HEARTBEAT_INTERVAL);
+          
+          // Iniciar zombie detection
+          zombieCheckIntervalRef.current = window.setInterval(() => {
+            const timeSinceLastPong = Date.now() - lastPongTimeRef.current;
+            if (timeSinceLastPong > ZOMBIE_PONG_TIMEOUT) {
+              missedPongsRef.current++;
+              console.warn('[WebSocket] 🧟 Pong perdido:', missedPongsRef.current);
+              
+              if (missedPongsRef.current >= ZOMBIE_MAX_MISSED) {
+                console.error('[WebSocket] 🧟 Conexão zombie detectada! Reconectando...');
+                missedPongsRef.current = 0;
+                ws.close(4000, 'Zombie connection detected');
+              }
+            }
+          }, ZOMBIE_PING_INTERVAL);
         };
 
         ws.onmessage = (event) => {
@@ -128,8 +163,12 @@ export function useWebSocket(
               return;
             }
             
-            // Ignorar mensagens de pong
-            if (data.type === 'pong') return;
+            // Ignorar mensagens de pong (mas registrar para zombie detection)
+            if (data.type === 'pong') {
+              lastPongTimeRef.current = Date.now();
+              missedPongsRef.current = 0;
+              return;
+            }
             
             // Usar message queue com backpressure para processar mensagens
             if (messageQueueRef.current) {
@@ -149,6 +188,7 @@ export function useWebSocket(
           console.log('[WebSocket] URL tentada:', wsUrl);
           console.log('[WebSocket] Parâmetros enviados:', { userId, roomId });
           console.log('[WebSocket] Estado da conexão:', ws.readyState);
+          isConnectingRef.current = false; // Liberar mutex em caso de erro
         };
 
         ws.onclose = (event) => {
@@ -158,6 +198,7 @@ export function useWebSocket(
             wasClean: event.wasClean 
           });
           setIsConnected(false);
+          isConnectingRef.current = false; // Liberar mutex
           
           // Códigos que NÃO devem reconectar:
           // 1000 = fechamento normal
@@ -201,6 +242,10 @@ export function useWebSocket(
       if (heartbeatIntervalRef.current) {
         clearInterval(heartbeatIntervalRef.current);
       }
+      if (zombieCheckIntervalRef.current) {
+        clearInterval(zombieCheckIntervalRef.current);
+      }
+      isConnectingRef.current = false;
       if (wsRef.current) {
         wsRef.current.close(1000, 'Component unmounting');
       }

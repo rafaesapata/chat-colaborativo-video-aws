@@ -495,6 +495,8 @@ const routes = Object.freeze({
   'POST:/meeting/end': handleEndMeeting,
   'GET:/meeting/info': handleGetMeetingInfo,
   'POST:/meeting/info': handleGetMeetingInfo,
+  // Health check
+  'GET:/health': handleHealthCheck,
   // Rotas administrativas
   'POST:/admin/rooms': handleAdminListRooms,
   'POST:/admin/room/end': handleAdminEndRoom,
@@ -836,6 +838,39 @@ async function handleEndMeeting(body) {
     log(LOG_LEVELS.ERROR, 'Erro ao encerrar reunião', { error: error.message });
     return errorResponse(500, 'Erro ao encerrar reunião');
   }
+}
+
+// ============ HANDLER: HEALTH CHECK ============
+async function handleHealthCheck() {
+  const checks = {
+    status: 'healthy',
+    timestamp: new Date().toISOString(),
+    version: '3.5.2',
+    region: CONFIG.REGION,
+    dynamodb: 'unknown',
+    chime: 'unknown'
+  };
+  
+  // Check DynamoDB
+  if (CONFIG.USE_DYNAMO) {
+    try {
+      await dynamoClient.send(new GetItemCommand({
+        TableName: CONFIG.MEETINGS_TABLE,
+        Key: { roomId: { S: 'health_check_probe' } }
+      }));
+      checks.dynamodb = 'healthy';
+    } catch (e) {
+      checks.dynamodb = 'degraded';
+      checks.status = 'degraded';
+    }
+  } else {
+    checks.dynamodb = 'not_configured';
+  }
+  
+  // Chime SDK is assumed healthy if Lambda is running
+  checks.chime = 'healthy';
+  
+  return successResponse(checks);
 }
 
 // ============ HANDLER: GET MEETING INFO ============

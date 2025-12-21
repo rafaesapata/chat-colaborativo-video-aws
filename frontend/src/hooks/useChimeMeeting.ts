@@ -96,6 +96,7 @@ export function useChimeMeeting({ roomId, odUserId, userName = 'Usuário', isAut
   const observerRef = useRef<AudioVideoObserver | null>(null);
   const reconnectionStrategyRef = useRef<ReconnectionStrategy | null>(null);
   const isCleaningUpRef = useRef(false);
+  const localAudioStreamRef = useRef<MediaStream | null>(null); // Ref para cleanup síncrono
 
   // Criar sessão do Chime
   const joinMeeting = useCallback(async () => {
@@ -344,6 +345,7 @@ export function useChimeMeeting({ roomId, odUserId, userName = 'Usuário', isAut
           const audioStream = await navigator.mediaDevices.getUserMedia({
             audio: { deviceId: audioDevice.deviceId }
           });
+          localAudioStreamRef.current = audioStream; // Guardar na ref para cleanup
           setLocalAudioStream(audioStream);
           console.log('[Chime] Stream de áudio local criado para transcrição');
         } catch (e) {
@@ -410,13 +412,12 @@ export function useChimeMeeting({ roomId, odUserId, userName = 'Usuário', isAut
     odAttendeeIdRef.current = null;
     videoElementsRef.current.clear();
 
-    // Limpar stream de áudio local usando setState callback para garantir valor atual
-    setLocalAudioStream(prev => {
-      if (prev) {
-        prev.getTracks().forEach(t => t.stop());
-      }
-      return null;
-    });
+    // Limpar stream de áudio local - usar ref para garantir cleanup síncrono
+    if (localAudioStreamRef.current) {
+      localAudioStreamRef.current.getTracks().forEach(t => t.stop());
+      localAudioStreamRef.current = null;
+    }
+    setLocalAudioStream(null);
 
     setIsJoined(false);
     setAttendees([]);
@@ -594,13 +595,12 @@ export function useChimeMeeting({ roomId, odUserId, userName = 'Usuário', isAut
         }
       }
       
-      // Limpar streams
-      setLocalAudioStream(prev => {
-        if (prev) {
-          prev.getTracks().forEach(t => t.stop());
-        }
-        return null;
-      });
+      // Limpar streams - usar ref para garantir cleanup síncrono
+      if (localAudioStreamRef.current) {
+        localAudioStreamRef.current.getTracks().forEach(t => t.stop());
+        localAudioStreamRef.current = null;
+      }
+      setLocalAudioStream(null);
       
       // Cleanup async em background (best effort)
       deviceControllerRef.current?.destroy().catch(console.warn);
