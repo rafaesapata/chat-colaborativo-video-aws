@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef } from 'react';
+import { useState, useEffect, useRef, useCallback } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
 import { Video, VideoOff, Mic, MicOff, Settings, RefreshCw } from 'lucide-react';
 import { useAuth } from '../contexts/AuthContext';
@@ -41,6 +41,23 @@ export default function PreviewScreen({ darkMode, onJoin }: PreviewScreenProps) 
   const animationRef = useRef<number>();
   const streamRef = useRef<MediaStream | null>(null);
 
+  // Callback ref para conectar o stream ao vídeo
+  const setVideoRef = useCallback((node: HTMLVideoElement | null) => {
+    if (node && streamRef.current) {
+      node.srcObject = streamRef.current;
+      node.play().catch(() => {});
+    }
+    (videoRef as React.MutableRefObject<HTMLVideoElement | null>).current = node;
+  }, []);
+
+  // Também conectar quando o stream mudar
+  useEffect(() => {
+    if (stream && videoRef.current) {
+      videoRef.current.srcObject = stream;
+      videoRef.current.play().catch(() => {});
+    }
+  }, [stream]);
+
   // Carregar dispositivos disponíveis e inicializar stream
   useEffect(() => {
     let isMounted = true;
@@ -67,9 +84,7 @@ export default function PreviewScreen({ darkMode, onJoin }: PreviewScreenProps) 
             : { echoCancellation: true, noiseSuppression: true }
         };
 
-        console.log('[PreviewScreen] Solicitando mídia...');
         localStream = await navigator.mediaDevices.getUserMedia(constraints);
-        console.log('[PreviewScreen] Mídia obtida:', localStream.getTracks().map(t => t.kind));
         
         if (!isMounted) {
           localStream.getTracks().forEach(track => track.stop());
@@ -86,23 +101,6 @@ export default function PreviewScreen({ darkMode, onJoin }: PreviewScreenProps) 
           setDevices({
             video: deviceList.filter(d => d.kind === 'videoinput'),
             audio: deviceList.filter(d => d.kind === 'audioinput')
-          });
-        }
-
-        // Conectar ao elemento de vídeo
-        if (videoRef.current && isMounted) {
-          console.log('[PreviewScreen] Conectando stream ao elemento de vídeo');
-          videoRef.current.srcObject = localStream;
-          videoRef.current.onloadedmetadata = () => {
-            console.log('[PreviewScreen] Video metadata carregado, iniciando play');
-            videoRef.current?.play()
-              .then(() => console.log('[PreviewScreen] Video play iniciado com sucesso'))
-              .catch(e => console.warn('[PreviewScreen] Play error:', e));
-          };
-        } else {
-          console.warn('[PreviewScreen] videoRef ou isMounted inválido:', { 
-            hasVideoRef: !!videoRef.current, 
-            isMounted 
           });
         }
 
@@ -133,12 +131,11 @@ export default function PreviewScreen({ darkMode, onJoin }: PreviewScreenProps) 
             animationRef.current = requestAnimationFrame(checkAudioLevel);
           };
           checkAudioLevel();
-        } catch (audioErr) {
-          console.warn('Erro ao configurar analisador de áudio:', audioErr);
+        } catch {
+          // Ignorar erro de configuração de áudio
         }
 
       } catch (err) {
-        console.error('[PreviewScreen] Erro ao acessar mídia:', err);
         if (!isMounted) return;
         
         if (err instanceof Error) {
@@ -170,7 +167,6 @@ export default function PreviewScreen({ darkMode, onJoin }: PreviewScreenProps) 
       if (animationRef.current) {
         cancelAnimationFrame(animationRef.current);
       }
-      // Não parar o stream aqui - será parado no cleanup geral ou ao trocar dispositivo
     };
   }, [selectedVideoDevice, selectedAudioDevice]);
 
@@ -250,8 +246,7 @@ export default function PreviewScreen({ darkMode, onJoin }: PreviewScreenProps) 
         // Fallback: navegar (não deve acontecer, mas por segurança)
         navigate(`/meeting/${roomId}`);
       }
-    } catch (err) {
-      console.error('Erro ao entrar na sala:', err);
+    } catch {
       setIsJoining(false);
     }
   };
@@ -304,7 +299,7 @@ export default function PreviewScreen({ darkMode, onJoin }: PreviewScreenProps) 
               ) : (
                 <>
                   <video
-                    ref={videoRef}
+                    ref={setVideoRef}
                     autoPlay
                     playsInline
                     muted

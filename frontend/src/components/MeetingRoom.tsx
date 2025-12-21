@@ -212,15 +212,7 @@ export default function MeetingRoom({ darkMode }: { darkMode: boolean }) {
     isVideoEnabled,
   });
 
-  // Debug log para background effect
-  useEffect(() => {
-    console.log('[MeetingRoom] Background Effect:', {
-      isBackgroundSupported,
-      currentBackground: currentBackground?.name,
-      availableBackgrounds: availableBackgrounds?.length,
-      isAuthenticated
-    });
-  }, [isBackgroundSupported, currentBackground, availableBackgrounds, isAuthenticated]);
+
 
   // Ref para controlar se a gravação automática já foi iniciada
   const autoRecordingStartedRef = useRef(false);
@@ -232,7 +224,6 @@ export default function MeetingRoom({ darkMode }: { darkMode: boolean }) {
       autoRecordingStartedRef.current = true;
       // Pequeno delay para garantir que tudo está pronto
       const timer = setTimeout(() => {
-        console.log('[MeetingRoom] Iniciando gravação automática...');
         startRecording();
       }, 2000);
       return () => clearTimeout(timer);
