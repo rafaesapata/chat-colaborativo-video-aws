@@ -1,5 +1,6 @@
 import { useState, useRef, useCallback, useEffect } from 'react';
 import { meetingHistoryService } from '../services/meetingHistoryService';
+import { audioContextManager } from '../utils/audioContextManager';
 
 interface UseRecordingProps {
   roomId: string;
@@ -33,7 +34,7 @@ export function useRecording({ roomId, userLogin, meetingId }: UseRecordingProps
   const animationFrameRef = useRef<number>();
   const durationIntervalRef = useRef<number>();
   const streamRef = useRef<MediaStream | null>(null);
-  const audioContextRef = useRef<AudioContext | null>(null);
+  const audioContextIdRef = useRef<string | null>(null); // ID para AudioContext Manager
   const isRecordingRef = useRef(false); // Ref para controle de animação
 
   // Criar canvas para composição de vídeos
@@ -228,14 +229,10 @@ export function useRecording({ roomId, userLogin, meetingId }: UseRecordingProps
     try {
       console.log('[Recording] Iniciando gravação...');
       
-      // Limpar AudioContext anterior se existir
-      if (audioContextRef.current) {
-        try {
-          await audioContextRef.current.close();
-        } catch (e) {
-          console.warn('[Recording] Erro ao fechar AudioContext anterior:', e);
-        }
-        audioContextRef.current = null;
+      // Liberar AudioContext anterior se existir
+      if (audioContextIdRef.current) {
+        audioContextManager.release(audioContextIdRef.current);
+        audioContextIdRef.current = null;
       }
       
       // Criar canvas de composição
@@ -244,12 +241,15 @@ export function useRecording({ roomId, userLogin, meetingId }: UseRecordingProps
       // Capturar stream do canvas
       const canvasStream = canvas.captureStream(30); // 30 FPS
       
+      // Usar AudioContext Manager (singleton) para evitar limite de 6 contextos
+      const contextId = `recording_${Date.now()}`;
+      audioContextIdRef.current = contextId;
+      const audioContext = audioContextManager.acquire(contextId);
+      const destination = audioContext.createMediaStreamDestination();
+      
       // Capturar áudio de todos os vídeos E do elemento de áudio do Chime
       const videos = Array.from(document.querySelectorAll('video')) as HTMLVideoElement[];
       const audios = Array.from(document.querySelectorAll('audio')) as HTMLAudioElement[];
-      const audioContext = new AudioContext();
-      audioContextRef.current = audioContext;
-      const destination = audioContext.createMediaStreamDestination();
       
       let hasAudio = false;
       
@@ -370,13 +370,10 @@ export function useRecording({ roomId, userLogin, meetingId }: UseRecordingProps
         // Limpar recursos
         chunksRef.current = [];
         streamRef.current?.getTracks().forEach(t => t.stop());
-        if (audioContextRef.current) {
-          try {
-            await audioContextRef.current.close();
-          } catch (e) {
-            console.warn('[Recording] Erro ao fechar AudioContext:', e);
-          }
-          audioContextRef.current = null;
+        // Liberar AudioContext via Manager (não fechar diretamente)
+        if (audioContextIdRef.current) {
+          audioContextManager.release(audioContextIdRef.current);
+          audioContextIdRef.current = null;
         }
       };
 
@@ -482,7 +479,11 @@ export function useRecording({ roomId, userLogin, meetingId }: UseRecordingProps
         mediaRecorderRef.current.stop();
       }
       streamRef.current?.getTracks().forEach(t => t.stop());
-      audioContextRef.current?.close();
+      // Liberar AudioContext via Manager
+      if (audioContextIdRef.current) {
+        audioContextManager.release(audioContextIdRef.current);
+        audioContextIdRef.current = null;
+      }
     };
   }, []);
 

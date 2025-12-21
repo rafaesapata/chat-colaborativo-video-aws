@@ -23,8 +23,8 @@ import { interviewAIService, InterviewReport } from '../services/interviewAIServ
 import { featureDetector } from '../utils/featureDetection';
 
 // Versão do aplicativo - atualizar a cada deploy
-const APP_VERSION = '3.5.3';
-const BUILD_DATE = '2025-12-21 03:30';
+const APP_VERSION = '3.5.4';
+const BUILD_DATE = '2025-12-21 04:00';
 
 interface Message {
   id: string;
