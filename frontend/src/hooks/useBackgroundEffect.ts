@@ -2,7 +2,7 @@
  * Hook para Background Blur e Virtual Background usando Amazon Chime SDK
  * 
  * - Convidados: Blur automático (médio)
- * - Autenticados: Escolha de níveis de blur e backgrounds virtuais
+ * - Autenticados: Escolha de níveis de blur e backgrounds virtuais (incluindo personalizados do admin)
  */
 
 import { useState, useEffect, useRef, useCallback } from 'react';
@@ -14,14 +14,19 @@ import {
   ConsoleLogger,
   LogLevel,
 } from 'amazon-chime-sdk-js';
+import { backgroundService, CustomBackground } from '../services/backgroundService';
 
-// Backgrounds virtuais disponíveis
-export const VIRTUAL_BACKGROUNDS = [
+// Backgrounds virtuais padrão
+export const DEFAULT_BACKGROUNDS = [
   { id: 'none', name: 'Nenhum', type: 'none' as const, preview: '❌', strength: 0 },
   { id: 'blur-light', name: 'Desfoque Leve', type: 'blur' as const, strength: 7, preview: '🌫️' },
   { id: 'blur-medium', name: 'Desfoque Médio', type: 'blur' as const, strength: 15, preview: '🌁' },
   { id: 'blur-strong', name: 'Desfoque Forte', type: 'blur' as const, strength: 25, preview: '☁️' },
-  { id: 'office', name: 'Escritório', type: 'image' as const, strength: 0, preview: '🏢', url: 'https://images.unsplash.com/photo-497366216548-37526070297c?w=1280&h=720&fit=crop' },
+];
+
+// Backgrounds de imagem padrão (fallback se não houver personalizados)
+export const DEFAULT_IMAGE_BACKGROUNDS = [
+  { id: 'office', name: 'Escritório', type: 'image' as const, strength: 0, preview: '🏢', url: 'https://images.unsplash.com/photo-1497366216548-37526070297c?w=1280&h=720&fit=crop' },
   { id: 'nature', name: 'Natureza', type: 'image' as const, strength: 0, preview: '🌿', url: 'https://images.unsplash.com/photo-1441974231531-c6227db76b6e?w=1280&h=720&fit=crop' },
   { id: 'abstract', name: 'Abstrato', type: 'image' as const, strength: 0, preview: '🎨', url: 'https://images.unsplash.com/photo-1557672172-298e090bd0f1?w=1280&h=720&fit=crop' },
 ];
@@ -36,6 +41,7 @@ export interface BackgroundOption {
   url?: string;
   preview: string | null;
 }
+
 
 interface UseBackgroundEffectProps {
   isAuthenticated: boolean;
@@ -96,8 +102,9 @@ export function useBackgroundEffect({
   const [isBlurSupported, setIsBlurSupported] = useState(false);
   const [isReplacementSupported, setIsReplacementSupported] = useState(false);
   const [isProcessing, setIsProcessing] = useState(false);
-  const [currentBackground, setCurrentBackground] = useState<BackgroundOption>(VIRTUAL_BACKGROUNDS[0]);
+  const [currentBackground, setCurrentBackground] = useState<BackgroundOption>(DEFAULT_BACKGROUNDS[0]);
   const [error, setError] = useState<string | null>(null);
+  const [customBackgrounds, setCustomBackgrounds] = useState<CustomBackground[]>([]);
   
   const processorRef = useRef<VideoFrameProcessor | null>(null);
   const transformDeviceRef = useRef<DefaultVideoTransformDevice | null>(null);
@@ -111,6 +118,15 @@ export function useBackgroundEffect({
       loggerRef.current = new ConsoleLogger('BackgroundEffect', LogLevel.ERROR);
     }
   }, []);
+
+  // Carregar backgrounds personalizados do admin
+  useEffect(() => {
+    if (isAuthenticated) {
+      backgroundService.getBackgrounds().then(backgrounds => {
+        setCustomBackgrounds(backgrounds.filter(b => b.isActive));
+      });
+    }
+  }, [isAuthenticated]);
 
   // Verificar suporte ao inicializar
   useEffect(() => {
@@ -148,8 +164,33 @@ export function useBackgroundEffect({
     }
   }, [isAuthenticated, isVideoEnabled, isBlurSupported, audioVideo]);
 
+
+  // Combinar backgrounds padrão com personalizados
+  const allBackgrounds = useCallback((): BackgroundOption[] => {
+    const customBgOptions: BackgroundOption[] = customBackgrounds.map(cb => ({
+      id: `custom-${cb.id}`,
+      name: cb.name,
+      type: 'image' as const,
+      strength: 0,
+      url: cb.url,
+      preview: cb.preview || '🖼️',
+    }));
+    
+    // Se há backgrounds personalizados, usar apenas eles para imagens
+    // Caso contrário, usar os padrão
+    const imageBackgrounds = customBgOptions.length > 0 
+      ? customBgOptions 
+      : DEFAULT_IMAGE_BACKGROUNDS.map(b => ({ ...b, preview: b.preview || null }));
+    
+    return [
+      ...DEFAULT_BACKGROUNDS.map(b => ({ ...b, preview: b.preview || null })),
+      ...imageBackgrounds,
+    ];
+  }, [customBackgrounds]);
+
   const setBackground = useCallback(async (backgroundId: string) => {
-    const background = VIRTUAL_BACKGROUNDS.find(b => b.id === backgroundId);
+    const backgrounds = allBackgrounds();
+    const background = backgrounds.find(b => b.id === backgroundId);
     if (!background) {
       setError('Background não encontrado');
       return;
@@ -302,13 +343,13 @@ export function useBackgroundEffect({
     } finally {
       setIsProcessing(false);
     }
-  }, [audioVideo, isAuthenticated, isBlurSupported, isReplacementSupported]);
+  }, [audioVideo, isAuthenticated, isBlurSupported, isReplacementSupported, allBackgrounds]);
 
   const disableBackground = useCallback(async () => {
     await setBackground('none');
   }, [setBackground]);
 
-  const availableBackgrounds = VIRTUAL_BACKGROUNDS.filter(b => {
+  const availableBackgrounds = allBackgrounds().filter(b => {
     if (b.type === 'none') return true;
     if (b.type === 'blur') return isBlurSupported;
     if (b.type === 'image') return isAuthenticated && isReplacementSupported;

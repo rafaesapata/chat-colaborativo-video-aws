@@ -4,9 +4,11 @@ import {
   Shield, Users, Video, Trash2, UserX, RefreshCw, 
   Clock, Server, Activity, ArrowLeft, AlertTriangle,
   ChevronDown, ChevronUp, UserPlus, Crown, Calendar,
-  Key, Copy, Eye, EyeOff, Plus, ExternalLink, FileText
+  Key, Copy, Eye, EyeOff, Plus, ExternalLink, FileText,
+  Image, ToggleLeft, ToggleRight, Link, Check, X as XIcon
 } from 'lucide-react';
 import { useAuth } from '../contexts/AuthContext';
+import { backgroundService, CustomBackground } from '../services/backgroundService';
 
 const CHIME_API_URL = import.meta.env.VITE_CHIME_API_URL || '';
 
@@ -86,7 +88,7 @@ export default function AdminPanel({ darkMode }: AdminPanelProps) {
   const [expandedRoom, setExpandedRoom] = useState<string | null>(null);
   const [actionLoading, setActionLoading] = useState<string | null>(null);
   const [newAdminInput, setNewAdminInput] = useState('');
-  const [activeTab, setActiveTab] = useState<'rooms' | 'admins' | 'schedule' | 'apikeys'>('rooms');
+  const [activeTab, setActiveTab] = useState<'rooms' | 'admins' | 'schedule' | 'apikeys' | 'backgrounds'>('rooms');
   const [cleanupResult, setCleanupResult] = useState<string | null>(null);
   
   // Schedule state
@@ -106,6 +108,13 @@ export default function AdminPanel({ darkMode }: AdminPanelProps) {
   const [newApiKeyName, setNewApiKeyName] = useState('');
   const [newApiKey, setNewApiKey] = useState<string | null>(null);
   const [showApiKey, setShowApiKey] = useState(false);
+
+  // Backgrounds state
+  const [customBackgrounds, setCustomBackgrounds] = useState<CustomBackground[]>([]);
+  const [showBackgroundForm, setShowBackgroundForm] = useState(false);
+  const [backgroundForm, setBackgroundForm] = useState({ name: '', url: '' });
+  const [backgroundValidating, setBackgroundValidating] = useState(false);
+  const [backgroundPreviewValid, setBackgroundPreviewValid] = useState<boolean | null>(null);
 
   const fetchData = useCallback(async () => {
     if (!user?.login) return;
@@ -158,6 +167,10 @@ export default function AdminPanel({ darkMode }: AdminPanelProps) {
       setAdminUsers(adminsData);
       setScheduledMeetings(scheduleData.meetings || []);
       setApiKeys(apiKeysData.apiKeys || []);
+      
+      // Buscar backgrounds personalizados
+      const backgrounds = await backgroundService.getBackgrounds();
+      setCustomBackgrounds(backgrounds);
     } catch (err: any) {
       setError(err.message || 'Erro ao carregar dados');
     } finally {
@@ -420,6 +433,79 @@ export default function AdminPanel({ darkMode }: AdminPanelProps) {
     }
   };
 
+  // Background handlers
+  const handleValidateBackgroundUrl = async (url: string) => {
+    if (!url.trim()) {
+      setBackgroundPreviewValid(null);
+      return;
+    }
+    setBackgroundValidating(true);
+    const isValid = await backgroundService.validateImageUrl(url);
+    setBackgroundPreviewValid(isValid);
+    setBackgroundValidating(false);
+  };
+
+  const handleAddBackground = async () => {
+    if (!backgroundForm.name.trim() || !backgroundForm.url.trim()) {
+      alert('Preencha nome e URL da imagem');
+      return;
+    }
+    
+    if (backgroundPreviewValid === false) {
+      alert('URL da imagem inválida');
+      return;
+    }
+    
+    setActionLoading('add-background');
+    const result = await backgroundService.addBackground(
+      user?.login || '',
+      backgroundForm.name.trim(),
+      backgroundForm.url.trim()
+    );
+    
+    if (result.success && result.background) {
+      setCustomBackgrounds(prev => [...prev, result.background!]);
+      setBackgroundForm({ name: '', url: '' });
+      setBackgroundPreviewValid(null);
+      setShowBackgroundForm(false);
+    } else {
+      alert(result.error || 'Erro ao adicionar background');
+    }
+    setActionLoading(null);
+  };
+
+  const handleRemoveBackground = async (backgroundId: string) => {
+    if (!confirm('Remover este background?')) return;
+    
+    setActionLoading(backgroundId);
+    const result = await backgroundService.removeBackground(user?.login || '', backgroundId);
+    
+    if (result.success) {
+      setCustomBackgrounds(prev => prev.filter(b => b.id !== backgroundId));
+    } else {
+      alert(result.error || 'Erro ao remover background');
+    }
+    setActionLoading(null);
+  };
+
+  const handleToggleBackground = async (backgroundId: string, currentActive: boolean) => {
+    setActionLoading(backgroundId);
+    const result = await backgroundService.toggleBackground(
+      user?.login || '',
+      backgroundId,
+      !currentActive
+    );
+    
+    if (result.success) {
+      setCustomBackgrounds(prev => 
+        prev.map(b => b.id === backgroundId ? { ...b, isActive: !currentActive } : b)
+      );
+    } else {
+      alert(result.error || 'Erro ao atualizar background');
+    }
+    setActionLoading(null);
+  };
+
   const copyToClipboard = (text: string) => {
     navigator.clipboard.writeText(text);
     alert('Copiado para a área de transferência!');
@@ -622,6 +708,17 @@ export default function AdminPanel({ darkMode }: AdminPanelProps) {
           >
             <Key size={18} />
             API Keys
+          </button>
+          <button
+            onClick={() => setActiveTab('backgrounds')}
+            className={`flex-1 py-2 px-4 rounded-lg font-medium transition flex items-center justify-center gap-2 ${
+              activeTab === 'backgrounds'
+                ? darkMode ? 'bg-gray-700 text-white' : 'bg-white text-gray-900 shadow'
+                : darkMode ? 'text-gray-400 hover:text-white' : 'text-gray-600 hover:text-gray-900'
+            }`}
+          >
+            <Image size={18} />
+            Backgrounds
           </button>
         </div>
 
@@ -1240,6 +1337,226 @@ export default function AdminPanel({ darkMode }: AdminPanelProps) {
   -H "X-API-Key: sua-chave-aqui" \\
   -d '{"title": "Reunião", "scheduledAt": "2025-01-15T10:00:00Z"}'`}
               </pre>
+            </div>
+          </div>
+        )}
+
+        {/* Backgrounds Tab */}
+        {activeTab === 'backgrounds' && (
+          <div className={`rounded-xl ${darkMode ? 'bg-gray-800' : 'bg-white'} shadow-lg overflow-hidden`}>
+            <div className={`px-6 py-4 border-b ${darkMode ? 'border-gray-700' : 'border-gray-200'} flex items-center justify-between`}>
+              <h2 className="text-lg font-semibold flex items-center gap-2">
+                <Image size={20} />
+                Backgrounds Personalizados ({customBackgrounds.filter(b => b.isActive).length} ativos)
+              </h2>
+              <button
+                onClick={() => setShowBackgroundForm(!showBackgroundForm)}
+                className={`flex items-center gap-2 px-4 py-2 rounded-lg ${
+                  darkMode ? 'bg-green-600 hover:bg-green-700' : 'bg-green-500 hover:bg-green-600'
+                } text-white`}
+              >
+                <Plus size={18} />
+                Novo Background
+              </button>
+            </div>
+
+            {/* Add Background Form */}
+            {showBackgroundForm && (
+              <div className={`px-6 py-4 border-b ${darkMode ? 'border-gray-700 bg-gray-700/30' : 'border-gray-200 bg-gray-50'}`}>
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                  <div>
+                    <label className={`block text-sm font-medium mb-1 ${darkMode ? 'text-gray-300' : 'text-gray-700'}`}>
+                      Nome *
+                    </label>
+                    <input
+                      type="text"
+                      value={backgroundForm.name}
+                      onChange={(e) => setBackgroundForm(prev => ({ ...prev, name: e.target.value }))}
+                      placeholder="Ex: Sala de Reuniões"
+                      className={`w-full px-4 py-2 rounded-lg border ${
+                        darkMode 
+                          ? 'bg-gray-700 border-gray-600 text-white placeholder-gray-400' 
+                          : 'bg-white border-gray-300 text-gray-900'
+                      }`}
+                    />
+                  </div>
+                  <div>
+                    <label className={`block text-sm font-medium mb-1 ${darkMode ? 'text-gray-300' : 'text-gray-700'}`}>
+                      URL da Imagem *
+                    </label>
+                    <div className="flex gap-2">
+                      <input
+                        type="url"
+                        value={backgroundForm.url}
+                        onChange={(e) => {
+                          setBackgroundForm(prev => ({ ...prev, url: e.target.value }));
+                          setBackgroundPreviewValid(null);
+                        }}
+                        onBlur={(e) => handleValidateBackgroundUrl(e.target.value)}
+                        placeholder="https://exemplo.com/imagem.jpg"
+                        className={`flex-1 px-4 py-2 rounded-lg border ${
+                          darkMode 
+                            ? 'bg-gray-700 border-gray-600 text-white placeholder-gray-400' 
+                            : 'bg-white border-gray-300 text-gray-900'
+                        } ${backgroundPreviewValid === false ? 'border-red-500' : backgroundPreviewValid === true ? 'border-green-500' : ''}`}
+                      />
+                      {backgroundValidating && (
+                        <div className="flex items-center px-2">
+                          <RefreshCw size={18} className="animate-spin text-blue-500" />
+                        </div>
+                      )}
+                      {!backgroundValidating && backgroundPreviewValid === true && (
+                        <div className="flex items-center px-2">
+                          <Check size={18} className="text-green-500" />
+                        </div>
+                      )}
+                      {!backgroundValidating && backgroundPreviewValid === false && (
+                        <div className="flex items-center px-2">
+                          <XIcon size={18} className="text-red-500" />
+                        </div>
+                      )}
+                    </div>
+                    {backgroundPreviewValid === false && (
+                      <p className="text-xs text-red-500 mt-1">URL inválida ou imagem não acessível</p>
+                    )}
+                  </div>
+                </div>
+
+                {/* Preview */}
+                {backgroundForm.url && backgroundPreviewValid === true && (
+                  <div className="mt-4">
+                    <label className={`block text-sm font-medium mb-2 ${darkMode ? 'text-gray-300' : 'text-gray-700'}`}>
+                      Preview
+                    </label>
+                    <div className="w-48 h-28 rounded-lg overflow-hidden border border-gray-600">
+                      <img 
+                        src={backgroundForm.url} 
+                        alt="Preview" 
+                        className="w-full h-full object-cover"
+                      />
+                    </div>
+                  </div>
+                )}
+
+                <div className="flex justify-end gap-2 mt-4">
+                  <button
+                    onClick={() => {
+                      setShowBackgroundForm(false);
+                      setBackgroundForm({ name: '', url: '' });
+                      setBackgroundPreviewValid(null);
+                    }}
+                    className={`px-4 py-2 rounded-lg ${
+                      darkMode ? 'bg-gray-600 hover:bg-gray-500' : 'bg-gray-200 hover:bg-gray-300'
+                    }`}
+                  >
+                    Cancelar
+                  </button>
+                  <button
+                    onClick={handleAddBackground}
+                    disabled={actionLoading === 'add-background' || !backgroundForm.name.trim() || !backgroundForm.url.trim() || backgroundPreviewValid === false}
+                    className={`px-4 py-2 rounded-lg flex items-center gap-2 ${
+                      darkMode ? 'bg-green-600 hover:bg-green-700' : 'bg-green-500 hover:bg-green-600'
+                    } text-white ${(actionLoading === 'add-background' || !backgroundForm.name.trim() || !backgroundForm.url.trim()) ? 'opacity-50' : ''}`}
+                  >
+                    <Image size={18} />
+                    Adicionar
+                  </button>
+                </div>
+
+                {/* Dicas */}
+                <div className={`mt-4 p-3 rounded-lg ${darkMode ? 'bg-blue-900/20' : 'bg-blue-50'}`}>
+                  <p className={`text-xs ${darkMode ? 'text-blue-300' : 'text-blue-700'}`}>
+                    💡 Dicas: Use imagens de alta qualidade (1280x720 ou maior). URLs do Unsplash funcionam bem.
+                    Exemplo: https://images.unsplash.com/photo-1497366216548-37526070297c?w=1280&h=720&fit=crop
+                  </p>
+                </div>
+              </div>
+            )}
+
+            {/* Backgrounds List */}
+            {customBackgrounds.length === 0 ? (
+              <div className="p-8 text-center">
+                <Image size={48} className={`mx-auto mb-4 ${darkMode ? 'text-gray-600' : 'text-gray-300'}`} />
+                <p className={darkMode ? 'text-gray-400' : 'text-gray-500'}>Nenhum background personalizado</p>
+                <p className={`text-sm mt-2 ${darkMode ? 'text-gray-500' : 'text-gray-400'}`}>
+                  Adicione backgrounds que ficarão disponíveis para todos os usuários autenticados
+                </p>
+              </div>
+            ) : (
+              <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4 p-6">
+                {customBackgrounds.map(bg => (
+                  <div 
+                    key={bg.id} 
+                    className={`rounded-xl overflow-hidden border ${
+                      bg.isActive 
+                        ? darkMode ? 'border-green-600' : 'border-green-400'
+                        : darkMode ? 'border-gray-700' : 'border-gray-200'
+                    } ${!bg.isActive ? 'opacity-60' : ''}`}
+                  >
+                    {/* Image Preview */}
+                    <div className="relative h-32 bg-gray-900">
+                      <img 
+                        src={bg.url} 
+                        alt={bg.name}
+                        className="w-full h-full object-cover"
+                        onError={(e) => {
+                          (e.target as HTMLImageElement).src = 'data:image/svg+xml,<svg xmlns="http://www.w3.org/2000/svg" width="100" height="100"><rect fill="%23333" width="100" height="100"/><text fill="%23666" x="50%" y="50%" text-anchor="middle" dy=".3em">Erro</text></svg>';
+                        }}
+                      />
+                      {/* Status Badge */}
+                      <div className={`absolute top-2 right-2 px-2 py-1 rounded text-xs font-medium ${
+                        bg.isActive 
+                          ? 'bg-green-500 text-white' 
+                          : 'bg-gray-600 text-gray-300'
+                      }`}>
+                        {bg.isActive ? 'Ativo' : 'Inativo'}
+                      </div>
+                    </div>
+
+                    {/* Info */}
+                    <div className={`p-3 ${darkMode ? 'bg-gray-700/50' : 'bg-gray-50'}`}>
+                      <h3 className="font-semibold truncate">{bg.name}</h3>
+                      <p className={`text-xs mt-1 ${darkMode ? 'text-gray-400' : 'text-gray-500'}`}>
+                        Por {bg.createdBy} • {new Date(bg.createdAt).toLocaleDateString('pt-BR')}
+                      </p>
+
+                      {/* Actions */}
+                      <div className="flex items-center justify-between mt-3">
+                        <button
+                          onClick={() => handleToggleBackground(bg.id, bg.isActive)}
+                          disabled={actionLoading === bg.id}
+                          className={`flex items-center gap-1 px-3 py-1.5 rounded-lg text-sm transition ${
+                            bg.isActive
+                              ? darkMode ? 'bg-yellow-600/20 text-yellow-400 hover:bg-yellow-600/30' : 'bg-yellow-100 text-yellow-700 hover:bg-yellow-200'
+                              : darkMode ? 'bg-green-600/20 text-green-400 hover:bg-green-600/30' : 'bg-green-100 text-green-700 hover:bg-green-200'
+                          } ${actionLoading === bg.id ? 'opacity-50' : ''}`}
+                        >
+                          {bg.isActive ? <ToggleRight size={16} /> : <ToggleLeft size={16} />}
+                          {bg.isActive ? 'Desativar' : 'Ativar'}
+                        </button>
+                        <button
+                          onClick={() => handleRemoveBackground(bg.id)}
+                          disabled={actionLoading === bg.id}
+                          className={`p-1.5 rounded-lg transition ${
+                            darkMode ? 'hover:bg-red-900/50 text-red-400' : 'hover:bg-red-100 text-red-500'
+                          } ${actionLoading === bg.id ? 'opacity-50' : ''}`}
+                          title="Remover"
+                        >
+                          <Trash2 size={16} />
+                        </button>
+                      </div>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            )}
+
+            {/* Info */}
+            <div className={`px-6 py-4 ${darkMode ? 'bg-gray-700/30 border-t border-gray-700' : 'bg-gray-50 border-t border-gray-200'}`}>
+              <p className={`text-sm ${darkMode ? 'text-gray-400' : 'text-gray-600'}`}>
+                <strong>ℹ️ Como funciona:</strong> Os backgrounds ativos ficam disponíveis para todos os usuários autenticados 
+                na opção "Fundo de Tela" durante as videochamadas. Backgrounds inativos não aparecem para os usuários.
+              </p>
             </div>
           </div>
         )}

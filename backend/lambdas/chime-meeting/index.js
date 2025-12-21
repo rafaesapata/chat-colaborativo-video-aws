@@ -521,6 +521,11 @@ const routes = Object.freeze({
   'POST:/admin/api-keys': handleAdminListApiKeys,
   'POST:/admin/api-keys/create': handleAdminCreateApiKey,
   'POST:/admin/api-keys/revoke': handleAdminRevokeApiKey,
+  // Custom Backgrounds management
+  'GET:/admin/backgrounds': handleGetBackgrounds,
+  'POST:/admin/backgrounds/add': handleAdminAddBackground,
+  'POST:/admin/backgrounds/remove': handleAdminRemoveBackground,
+  'POST:/admin/backgrounds/toggle': handleAdminToggleBackground,
   // Documentação
   'GET:/docs': handleDocsPage,
   'GET:/docs/swagger.json': handleSwaggerJson,
@@ -2028,4 +2033,154 @@ async function handleSwaggerJson(body, event) {
   };
   
   return { statusCode: 200, headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(swagger) };
+}
+
+// ============ CUSTOM BACKGROUNDS MANAGEMENT ============
+const BACKGROUNDS_KEY = 'custom_backgrounds_list';
+
+async function getCustomBackgrounds() {
+  if (!CONFIG.USE_DYNAMO) return [];
+  
+  try {
+    const result = await dynamoClient.send(new GetItemCommand({
+      TableName: CONFIG.MEETINGS_TABLE,
+      Key: { roomId: { S: BACKGROUNDS_KEY } }
+    }));
+    
+    if (result.Item?.backgrounds?.S) {
+      return JSON.parse(result.Item.backgrounds.S);
+    }
+    return [];
+  } catch (e) {
+    log(LOG_LEVELS.WARN, 'Erro ao buscar backgrounds', { error: e.message });
+    return [];
+  }
+}
+
+async function saveCustomBackgrounds(backgrounds) {
+  if (!CONFIG.USE_DYNAMO) return false;
+  
+  try {
+    await dynamoClient.send(new PutItemCommand({
+      TableName: CONFIG.MEETINGS_TABLE,
+      Item: {
+        roomId: { S: BACKGROUNDS_KEY },
+        backgrounds: { S: JSON.stringify(backgrounds) },
+        updatedAt: { N: String(Math.floor(Date.now() / 1000)) }
+      }
+    }));
+    return true;
+  } catch (e) {
+    log(LOG_LEVELS.ERROR, 'Erro ao salvar backgrounds', { error: e.message });
+    return false;
+  }
+}
+
+// GET /admin/backgrounds - Lista backgrounds (público para usuários autenticados)
+async function handleGetBackgrounds() {
+  const backgrounds = await getCustomBackgrounds();
+  return successResponse({ backgrounds });
+}
+
+// POST /admin/backgrounds/add - Adiciona novo background (apenas admin)
+async function handleAdminAddBackground(body) {
+  const { userLogin, name, url } = body;
+  
+  if (!userLogin || !await isAdmin(userLogin)) {
+    return errorResponse(403, 'Acesso negado');
+  }
+  
+  if (!name || !url) {
+    return errorResponse(400, 'Nome e URL são obrigatórios');
+  }
+  
+  // Validar URL
+  try {
+    new URL(url);
+  } catch {
+    return errorResponse(400, 'URL inválida');
+  }
+  
+  const backgrounds = await getCustomBackgrounds();
+  
+  const newBackground = {
+    id: crypto.randomUUID(),
+    name: name.trim().substring(0, 50),
+    url: url.trim(),
+    preview: url.trim(), // Usar mesma URL como preview
+    createdBy: userLogin,
+    createdAt: Date.now(),
+    isActive: true
+  };
+  
+  backgrounds.push(newBackground);
+  
+  const saved = await saveCustomBackgrounds(backgrounds);
+  if (!saved) {
+    return errorResponse(500, 'Erro ao salvar background');
+  }
+  
+  log(LOG_LEVELS.INFO, 'Background adicionado', { id: newBackground.id, name, createdBy: userLogin });
+  
+  return successResponse({ background: newBackground });
+}
+
+// POST /admin/backgrounds/remove - Remove background (apenas admin)
+async function handleAdminRemoveBackground(body) {
+  const { userLogin, backgroundId } = body;
+  
+  if (!userLogin || !await isAdmin(userLogin)) {
+    return errorResponse(403, 'Acesso negado');
+  }
+  
+  if (!backgroundId) {
+    return errorResponse(400, 'backgroundId é obrigatório');
+  }
+  
+  const backgrounds = await getCustomBackgrounds();
+  const filtered = backgrounds.filter(b => b.id !== backgroundId);
+  
+  if (filtered.length === backgrounds.length) {
+    return errorResponse(404, 'Background não encontrado');
+  }
+  
+  const saved = await saveCustomBackgrounds(filtered);
+  if (!saved) {
+    return errorResponse(500, 'Erro ao remover background');
+  }
+  
+  log(LOG_LEVELS.INFO, 'Background removido', { backgroundId, removedBy: userLogin });
+  
+  return successResponse({ success: true });
+}
+
+// POST /admin/backgrounds/toggle - Ativa/desativa background (apenas admin)
+async function handleAdminToggleBackground(body) {
+  const { userLogin, backgroundId, isActive } = body;
+  
+  if (!userLogin || !await isAdmin(userLogin)) {
+    return errorResponse(403, 'Acesso negado');
+  }
+  
+  if (!backgroundId || typeof isActive !== 'boolean') {
+    return errorResponse(400, 'backgroundId e isActive são obrigatórios');
+  }
+  
+  const backgrounds = await getCustomBackgrounds();
+  const index = backgrounds.findIndex(b => b.id === backgroundId);
+  
+  if (index === -1) {
+    return errorResponse(404, 'Background não encontrado');
+  }
+  
+  backgrounds[index].isActive = isActive;
+  
+  const saved = await saveCustomBackgrounds(backgrounds);
+  if (!saved) {
+    return errorResponse(500, 'Erro ao atualizar background');
+  }
+  
+  log(LOG_LEVELS.INFO, 'Background atualizado', { backgroundId, isActive, updatedBy: userLogin });
+  
+  return successResponse({ success: true });
 }
