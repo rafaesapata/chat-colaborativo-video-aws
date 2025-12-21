@@ -13,16 +13,17 @@ const RECORDINGS_TABLE = process.env.RECORDINGS_TABLE;
 exports.handler = async (event) => {
   console.log('Recording Manager Event:', JSON.stringify(event, null, 2));
 
+  // NOTA: NÃO adicionar headers CORS aqui se a Lambda Function URL já está configurada com CORS
+  // Headers CORS duplicados causam erro: "multiple values '*, https://...'"
+  // A Lambda Function URL já adiciona Access-Control-Allow-Origin automaticamente
   const headers = {
     'Content-Type': 'application/json',
-    'Access-Control-Allow-Origin': '*',
-    'Access-Control-Allow-Headers': 'Content-Type,Authorization',
-    'Access-Control-Allow-Methods': 'GET,POST,OPTIONS',
+    // CORS headers removidos - gerenciados pela Lambda Function URL
   };
 
-  // Handle CORS preflight
-  if (event.httpMethod === 'OPTIONS') {
-    return { statusCode: 200, headers, body: '' };
+  // Handle CORS preflight - retornar vazio, Lambda Function URL adiciona headers
+  if (event.httpMethod === 'OPTIONS' || event.requestContext?.http?.method === 'OPTIONS') {
+    return { statusCode: 204, headers, body: '' };
   }
 
   try {

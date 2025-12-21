@@ -159,8 +159,18 @@ export function useRecording({ roomId, userLogin, meetingId }: UseRecordingProps
     try {
       console.log('[Recording] Iniciando upload...', blob.size, 'bytes');
       
+      // Validar tipo MIME (segurança)
+      const allowedTypes = ['video/webm', 'video/mp4', 'video/ogg', 'audio/webm'];
+      const contentType = allowedTypes.includes(blob.type) ? blob.type : 'video/webm';
+      
+      // Sanitizar componentes do filename (prevenir path traversal)
+      const sanitize = (s: string) => s.replace(/[^a-zA-Z0-9_.-]/g, '_').substring(0, 64);
+      const safeUserLogin = sanitize(userLogin);
+      const safeRoomId = sanitize(roomId);
+      const safeMeetingId = sanitize(meetingId);
+      
       // Gerar nome do arquivo
-      const filename = `${userLogin}/${roomId}/${meetingId}_${Date.now()}.webm`;
+      const filename = `${safeUserLogin}/${safeRoomId}/${safeMeetingId}_${Date.now()}.webm`;
       
       // Obter URL pré-assinada do backend
       const response = await fetch(`${RECORDING_API_URL}/recording/upload-url`, {
@@ -168,10 +178,10 @@ export function useRecording({ roomId, userLogin, meetingId }: UseRecordingProps
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           filename,
-          contentType: blob.type,
-          userLogin,
-          roomId,
-          meetingId,
+          contentType,
+          userLogin: safeUserLogin,
+          roomId: safeRoomId,
+          meetingId: safeMeetingId,
           duration,
         }),
       });

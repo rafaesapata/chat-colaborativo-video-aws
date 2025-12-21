@@ -13,9 +13,13 @@ interface BufferedMessage {
 const MAX_BUFFER_SIZE = 50;
 const MAX_RETRIES = 3;
 const MESSAGE_TTL = 30000; // 30 segundos
-const ZOMBIE_PING_INTERVAL = 25000; // 25 segundos
-const ZOMBIE_PONG_TIMEOUT = 10000; // 10 segundos para resposta
-const ZOMBIE_MAX_MISSED = 3; // 3 pongs perdidos = zombie
+
+// Zombie Detection - TIMING CRÍTICO:
+// HEARTBEAT_INTERVAL (30s) < ZOMBIE_PONG_TIMEOUT (35s) < ZOMBIE_CHECK_INTERVAL (40s)
+// Isso garante que o pong tenha tempo de chegar antes da verificação
+const ZOMBIE_CHECK_INTERVAL = 40000; // 40 segundos - verificar APÓS o timeout
+const ZOMBIE_PONG_TIMEOUT = 35000; // 35 segundos - tempo para pong chegar após heartbeat
+const ZOMBIE_MAX_MISSED = 2; // 2 pongs perdidos = zombie (mais conservador)
 
 export function useWebSocket(
   url: string,
@@ -128,20 +132,24 @@ export function useWebSocket(
             }
           }, HEARTBEAT_INTERVAL);
           
-          // Iniciar zombie detection
+          // Iniciar zombie detection - verificar APÓS o timeout do pong
+          lastPongTimeRef.current = Date.now(); // Inicializar com tempo atual
+          missedPongsRef.current = 0;
           zombieCheckIntervalRef.current = window.setInterval(() => {
             const timeSinceLastPong = Date.now() - lastPongTimeRef.current;
+            // Só considerar zombie se passou mais tempo que o timeout E o heartbeat já foi enviado
             if (timeSinceLastPong > ZOMBIE_PONG_TIMEOUT) {
               missedPongsRef.current++;
-              console.warn('[WebSocket] 🧟 Pong perdido:', missedPongsRef.current);
+              console.warn(`[WebSocket] 🧟 Pong atrasado (${Math.round(timeSinceLastPong/1000)}s): ${missedPongsRef.current}/${ZOMBIE_MAX_MISSED}`);
               
               if (missedPongsRef.current >= ZOMBIE_MAX_MISSED) {
                 console.error('[WebSocket] 🧟 Conexão zombie detectada! Reconectando...');
                 missedPongsRef.current = 0;
+                lastPongTimeRef.current = Date.now(); // Reset para evitar loop
                 ws.close(4000, 'Zombie connection detected');
               }
             }
-          }, ZOMBIE_PING_INTERVAL);
+          }, ZOMBIE_CHECK_INTERVAL);
         };
 
         ws.onmessage = (event) => {
