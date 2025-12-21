@@ -1,6 +1,8 @@
 /**
  * Hook para Amazon Chime SDK
  * Substitui o WebRTC P2P por infraestrutura gerenciada da AWS
+ * 
+ * v3.5.0 - Integração com utilitários de estabilidade
  */
 
 import { useState, useEffect, useRef, useCallback } from 'react';
@@ -15,18 +17,30 @@ import {
   MeetingSessionStatusCode,
   VideoTileState,
   DefaultActiveSpeakerPolicy,
+  AudioVideoObserver,
 } from 'amazon-chime-sdk-js';
+
+// Utilitários de estabilidade
+import { chimeCircuitBreaker, CircuitOpenError } from '../utils/circuitBreaker';
+import { requestCoalescer } from '../utils/requestCoalescer';
+import { createReconnectionStrategy, ReconnectionStrategy } from '../utils/reconnectionStrategy';
+import { tracing } from '../utils/tracing';
 
 const CHIME_API_URL = import.meta.env.VITE_CHIME_API_URL || import.meta.env.VITE_API_URL || '';
 const FETCH_TIMEOUT = 15000; // 15 segundos
 
-// Helper para fetch com timeout
+// Helper para fetch com timeout e tracing
 async function fetchWithTimeout(url: string, options: RequestInit, timeout = FETCH_TIMEOUT): Promise<Response> {
   const controller = new AbortController();
   const timeoutId = setTimeout(() => controller.abort(), timeout);
   
   try {
-    const response = await fetch(url, { ...options, signal: controller.signal });
+    // Adicionar headers de tracing
+    const headers = {
+      ...options.headers,
+      ...tracing.getTraceHeaders(),
+    };
+    const response = await fetch(url, { ...options, headers, signal: controller.signal });
     return response;
   } finally {
     clearTimeout(timeoutId);
@@ -57,6 +71,8 @@ interface VideoTile {
 export function useChimeMeeting({ roomId, odUserId, userName = 'Usuário', isAuthenticated = false }: UseChimeMeetingProps) {
   const [isJoined, setIsJoined] = useState(false);
   const [isJoining, setIsJoining] = useState(false);
+  const [isReconnecting, setIsReconnecting] = useState(false);
+  const [reconnectAttempt, setReconnectAttempt] = useState(0);
   const [error, setError] = useState<string | null>(null);
   const [attendees, setAttendees] = useState<ChimeAttendee[]>([]);
   const [videoTiles, setVideoTiles] = useState<VideoTile[]>([]);
@@ -75,22 +91,41 @@ export function useChimeMeeting({ roomId, odUserId, userName = 'Usuário', isAut
   const odAttendeeIdRef = useRef<string | null>(null);
   const videoElementsRef = useRef<Map<number, HTMLVideoElement>>(new Map());
   const [localAudioStream, setLocalAudioStream] = useState<MediaStream | null>(null);
+  
+  // Refs para utilitários de estabilidade
+  const observerRef = useRef<AudioVideoObserver | null>(null);
+  const reconnectionStrategyRef = useRef<ReconnectionStrategy | null>(null);
+  const isCleaningUpRef = useRef(false);
 
   // Criar sessão do Chime
   const joinMeeting = useCallback(async () => {
-    if (isJoining || isJoined) return;
+    if (isJoining || isJoined || isCleaningUpRef.current) return;
     
+    // Usar request coalescing para evitar chamadas duplicadas
+    const coalesceKey = `join-meeting-${roomId}-${odUserId}`;
+    if (requestCoalescer.isInflight(coalesceKey)) {
+      console.log('[Chime] Request já em andamento, ignorando duplicata');
+      return;
+    }
+
     setIsJoining(true);
     setError(null);
+
+    // Iniciar trace
+    const trace = tracing.startTrace('joinMeeting');
 
     try {
       console.log('[Chime] Entrando na reunião:', roomId);
 
-      // 1. Obter credenciais do backend (com timeout)
-      const response = await fetchWithTimeout(`${CHIME_API_URL}/meeting/join`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ roomId, odUserId, userName, isAuthenticated }),
+      // 1. Obter credenciais do backend (com Circuit Breaker e Request Coalescing)
+      const response = await requestCoalescer.coalesce(coalesceKey, async () => {
+        return chimeCircuitBreaker.execute(async () => {
+          return fetchWithTimeout(`${CHIME_API_URL}/meeting/join`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ roomId, odUserId, userName, isAuthenticated }),
+          });
+        });
       });
 
       if (!response.ok) {
@@ -145,32 +180,61 @@ export function useChimeMeeting({ roomId, odUserId, userName = 'Usuário', isAut
         })));
       }
 
+      // Finalizar trace com sucesso
+      tracing.endSpan(trace.spanId, 'ok', { meetingId: meeting.MeetingId });
       console.log('[Chime] ✅ Conectado com sucesso!');
-    } catch (err: any) {
-      console.error('[Chime] Erro ao entrar:', err);
-      setError(err.message || 'Erro ao entrar na reunião');
+    } catch (err: unknown) {
+      const error = err as Error & { name?: string };
+      console.error('[Chime] Erro ao entrar:', error);
+      
+      // Finalizar trace com erro
+      tracing.endSpan(trace.spanId, 'error', { error: error.message });
+      
+      // Tratamento especial para Circuit Breaker aberto
+      if (error instanceof CircuitOpenError) {
+        setError('Serviço temporariamente indisponível. Tente novamente em alguns segundos.');
+      } else {
+        setError(error.message || 'Erro ao entrar na reunião');
+      }
       setIsJoining(false);
     }
   }, [roomId, odUserId, userName, isAuthenticated, isJoining, isJoined]);
 
-  // Configurar observers do Chime
+  // Configurar observers do Chime (com referência para cleanup)
   const setupObservers = useCallback((session: DefaultMeetingSession) => {
     const audioVideo = session.audioVideo;
 
-    // Observer de status da sessão
-    audioVideo.addObserver({
+    // Remover observer anterior se existir
+    if (observerRef.current) {
+      audioVideo.removeObserver(observerRef.current);
+    }
+
+    // Criar observer nomeado para poder remover depois
+    const observer: AudioVideoObserver = {
       audioVideoDidStart: () => {
         console.log('[Chime] Sessão de áudio/vídeo iniciada');
+        setIsReconnecting(false);
+        setReconnectAttempt(0);
       },
       audioVideoDidStop: (sessionStatus: MeetingSessionStatus) => {
-        console.log('[Chime] Sessão parou:', sessionStatus.statusCode());
-        if (sessionStatus.statusCode() === MeetingSessionStatusCode.MeetingEnded) {
+        const code = sessionStatus.statusCode();
+        console.log('[Chime] Sessão parou:', code);
+        
+        if (code === MeetingSessionStatusCode.MeetingEnded) {
           setIsJoined(false);
           setError('A reunião foi encerrada');
+        } else if (code === MeetingSessionStatusCode.AudioDisconnectAudio ||
+                   code === MeetingSessionStatusCode.ConnectionHealthReconnect) {
+          // Tentar reconectar automaticamente
+          console.log('[Chime] Tentando reconectar...');
+          reconnectionStrategyRef.current?.trigger(`status_code_${code}`);
         }
       },
       audioVideoDidStartConnecting: (reconnecting: boolean) => {
         console.log('[Chime] Conectando...', reconnecting ? '(reconectando)' : '');
+        if (reconnecting) {
+          setIsReconnecting(true);
+        }
       },
       connectionDidBecomePoor: () => {
         console.warn('[Chime] Conexão ficou ruim');
@@ -216,7 +280,11 @@ export function useChimeMeeting({ roomId, odUserId, userName = 'Usuário', isAut
         setVideoTiles(prev => prev.filter(t => t.odTileId !== tileId));
         videoElementsRef.current.delete(tileId);
       },
-    });
+    };
+
+    // Registrar observer
+    observerRef.current = observer;
+    audioVideo.addObserver(observer);
 
     // Observer de participantes
     audioVideo.realtimeSubscribeToAttendeeIdPresence((attendeeId: string, present: boolean, externalUserId?: string) => {
@@ -470,9 +538,53 @@ export function useChimeMeeting({ roomId, odUserId, userName = 'Usuário', isAut
     }
   }, [roomId, odUserId, isJoined, isJoining, joinMeeting]);
 
+  // Inicializar estratégia de reconexão
+  useEffect(() => {
+    reconnectionStrategyRef.current = createReconnectionStrategy(
+      async () => {
+        // Tentar reconectar
+        try {
+          await joinMeeting();
+          return isJoined;
+        } catch {
+          return false;
+        }
+      },
+      () => {
+        // Máximo de tentativas atingido
+        setError('Não foi possível reconectar. Recarregue a página.');
+        setIsReconnecting(false);
+      },
+      (status, attempt) => {
+        // Callback de status
+        setIsReconnecting(status === 'reconnecting');
+        setReconnectAttempt(attempt);
+      }
+    );
+
+    return () => {
+      reconnectionStrategyRef.current?.abort();
+    };
+  }, [joinMeeting, isJoined]);
+
   // Cleanup ao desmontar - síncrono para garantir limpeza
   useEffect(() => {
     return () => {
+      isCleaningUpRef.current = true;
+      
+      // Abortar reconexão em andamento
+      reconnectionStrategyRef.current?.abort();
+      
+      // Remover observer se existir
+      if (observerRef.current && audioVideoRef.current) {
+        try {
+          audioVideoRef.current.removeObserver(observerRef.current);
+        } catch (e) {
+          console.warn('[Chime] Erro ao remover observer:', e);
+        }
+        observerRef.current = null;
+      }
+      
       // Cleanup síncrono imediato
       if (audioVideoRef.current) {
         try {
@@ -505,6 +617,8 @@ export function useChimeMeeting({ roomId, odUserId, userName = 'Usuário', isAut
     // Estado
     isJoined,
     isJoining,
+    isReconnecting,
+    reconnectAttempt,
     error,
     attendees,
     videoTiles,

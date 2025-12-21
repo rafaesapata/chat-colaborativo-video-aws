@@ -9,6 +9,7 @@ import MeetingSetupModal from './MeetingSetupModal';
 import InterviewSuggestions from './InterviewSuggestions';
 import EndMeetingModal from './EndMeetingModal';
 import InterviewReportModal from './InterviewReportModal';
+import { FeatureErrorBoundary } from './FeatureErrorBoundary';
 import { useWebSocket } from '../hooks/useWebSocket';
 import { useChimeMeeting } from '../hooks/useChimeMeeting';
 import { useTranscription } from '../hooks/useTranscription';
@@ -19,10 +20,11 @@ import { useRecording } from '../hooks/useRecording';
 import { useTabSync } from '../hooks/useStability';
 import { meetingHistoryService } from '../services/meetingHistoryService';
 import { interviewAIService, InterviewReport } from '../services/interviewAIService';
+import { featureDetector } from '../utils/featureDetection';
 
 // Versão do aplicativo - atualizar a cada deploy
-const APP_VERSION = '3.5.0';
-const BUILD_DATE = '2025-12-21 00:50';
+const APP_VERSION = '3.5.1';
+const BUILD_DATE = '2025-12-21 02:30';
 
 interface Message {
   id: string;
@@ -39,6 +41,11 @@ export default function MeetingRoom({ darkMode }: { darkMode: boolean }) {
   const { isAuthenticated, user } = useAuth();
   
   const userName = sessionStorage.getItem('videochat_user_name') || 'Usuário';
+  
+  // Verificar features críticas no início
+  const criticalFeaturesCheck = useMemo(() => {
+    return featureDetector.checkCriticalFeatures();
+  }, []);
   
   const userId = useMemo(() => {
     const storageKey = `video-chat-userId-${roomId}`;
@@ -388,6 +395,46 @@ export default function MeetingRoom({ darkMode }: { darkMode: boolean }) {
     );
   }
 
+  // Se features críticas não são suportadas
+  if (!criticalFeaturesCheck.supported) {
+    return (
+      <div className={`h-screen w-screen flex items-center justify-center ${
+        darkMode ? 'bg-gray-900' : 'bg-gray-50'
+      }`}>
+        <div className={`text-center p-8 rounded-2xl ${
+          darkMode ? 'bg-gray-800' : 'bg-white'
+        } shadow-xl max-w-md mx-4`}>
+          <AlertTriangle size={48} className="mx-auto mb-4 text-orange-500" />
+          <h2 className={`text-xl font-bold mb-2 ${darkMode ? 'text-white' : 'text-gray-900'}`}>
+            Navegador Incompatível
+          </h2>
+          <p className={`mb-4 ${darkMode ? 'text-gray-400' : 'text-gray-600'}`}>
+            Seu navegador não suporta as funcionalidades necessárias para videochamadas:
+          </p>
+          <ul className={`text-left mb-4 ${darkMode ? 'text-gray-300' : 'text-gray-700'}`}>
+            {criticalFeaturesCheck.missing.map((feature, i) => (
+              <li key={i} className="flex items-center gap-2 mb-1">
+                <span className="text-red-500">✗</span> {feature}
+              </li>
+            ))}
+          </ul>
+          <p className={`text-sm mb-4 ${darkMode ? 'text-gray-500' : 'text-gray-500'}`}>
+            Recomendamos usar Chrome, Firefox, Edge ou Safari atualizados.
+          </p>
+          <button
+            onClick={() => navigate('/')}
+            className={`px-6 py-2 rounded-lg font-medium ${
+              darkMode ? 'bg-purple-600 hover:bg-purple-700 text-white' 
+                       : 'bg-indigo-600 hover:bg-indigo-700 text-white'
+            }`}
+          >
+            Voltar ao Início
+          </button>
+        </div>
+      </div>
+    );
+  }
+
   // Tela de carregamento enquanto conecta ao Chime
   if (isJoining) {
     return (
@@ -453,106 +500,122 @@ export default function MeetingRoom({ darkMode }: { darkMode: boolean }) {
       darkMode ? 'bg-gray-900' : 'bg-gray-50'
     }`}>
       {/* Video Grid usando Chime SDK */}
-      <div className={`h-full ${isMobile ? 'p-1' : 'p-4'}`}>
-        <ChimeVideoGrid
-          videoTiles={videoTiles}
-          activeSpeakers={activeSpeakers}
-          localUserId={userId}
-          isLocalVideoEnabled={isVideoEnabled}
-          isLocalAudioEnabled={isAudioEnabled}
-          bindVideoElement={bindVideoElement}
-          bindAudioElement={bindAudioElement}
+      <FeatureErrorBoundary feature="VideoGrid" darkMode={darkMode}>
+        <div className={`h-full ${isMobile ? 'p-1' : 'p-4'}`}>
+          <ChimeVideoGrid
+            videoTiles={videoTiles}
+            activeSpeakers={activeSpeakers}
+            localUserId={userId}
+            isLocalVideoEnabled={isVideoEnabled}
+            isLocalAudioEnabled={isAudioEnabled}
+            bindVideoElement={bindVideoElement}
+            bindAudioElement={bindAudioElement}
+            darkMode={darkMode}
+          />
+        </div>
+      </FeatureErrorBoundary>
+
+      <FeatureErrorBoundary feature="ControlBar" darkMode={darkMode}>
+        <ControlBar
+          visible={controlsVisible}
+          isMuted={!isAudioEnabled}
+          isVideoOff={!isVideoEnabled}
+          isScreenSharing={isScreenSharing}
+          isTranscriptionActive={isTranscriptionEnabled}
+          isAuthenticated={isAuthenticated}
+          isSpeakerMode={isSpeakerMode}
+          onToggleMute={handleToggleMute}
+          onToggleVideo={handleToggleVideo}
+          onToggleScreenShare={handleToggleScreenShare}
+          onToggleTranscriptionActive={handleToggleTranscriptionActive}
+          onToggleSpeakerMode={handleToggleSpeakerMode}
+          onLeaveMeeting={handleLeaveMeeting}
+          onToggleChat={handleToggleChat}
+          onToggleTranscriptionPanel={handleToggleTranscription}
+          onStartRecording={startRecording}
+          onStopRecording={stopRecording}
+          isRecording={isRecordingMeeting}
+          recordingDuration={recordingDuration}
+          unreadCount={unreadCount}
+          transcriptionCount={transcriptions.length}
           darkMode={darkMode}
         />
-      </div>
+      </FeatureErrorBoundary>
 
-      <ControlBar
-        visible={controlsVisible}
-        isMuted={!isAudioEnabled}
-        isVideoOff={!isVideoEnabled}
-        isScreenSharing={isScreenSharing}
-        isTranscriptionActive={isTranscriptionEnabled}
-        isAuthenticated={isAuthenticated}
-        isSpeakerMode={isSpeakerMode}
-        onToggleMute={handleToggleMute}
-        onToggleVideo={handleToggleVideo}
-        onToggleScreenShare={handleToggleScreenShare}
-        onToggleTranscriptionActive={handleToggleTranscriptionActive}
-        onToggleSpeakerMode={handleToggleSpeakerMode}
-        onLeaveMeeting={handleLeaveMeeting}
-        onToggleChat={handleToggleChat}
-        onToggleTranscriptionPanel={handleToggleTranscription}
-        onStartRecording={startRecording}
-        onStopRecording={stopRecording}
-        isRecording={isRecordingMeeting}
-        recordingDuration={recordingDuration}
-        unreadCount={unreadCount}
-        transcriptionCount={transcriptions.length}
-        darkMode={darkMode}
-      />
+      <FeatureErrorBoundary feature="ChatSidebar" darkMode={darkMode}>
+        <ChatSidebar
+          isOpen={isChatOpen}
+          onClose={() => setIsChatOpen(false)}
+          messages={messages}
+          onSendMessage={handleSendMessage}
+          darkMode={darkMode}
+        />
+      </FeatureErrorBoundary>
 
-      <ChatSidebar
-        isOpen={isChatOpen}
-        onClose={() => setIsChatOpen(false)}
-        messages={messages}
-        onSendMessage={handleSendMessage}
-        darkMode={darkMode}
-      />
-
-      <TranscriptionPanel
-        isOpen={isTranscriptionOpen}
-        onClose={() => setIsTranscriptionOpen(false)}
-        transcriptions={transcriptions}
-        isTranscriptionEnabled={isTranscriptionEnabled}
-        isRecording={isRecording}
-        onToggleTranscription={toggleTranscription}
-        speakingUsers={new Set(activeSpeakers)}
-        darkMode={darkMode}
-        isSpeechRecognitionSupported={isSpeechRecognitionSupported}
-      />
+      <FeatureErrorBoundary feature="TranscriptionPanel" darkMode={darkMode}>
+        <TranscriptionPanel
+          isOpen={isTranscriptionOpen}
+          onClose={() => setIsTranscriptionOpen(false)}
+          transcriptions={transcriptions}
+          isTranscriptionEnabled={isTranscriptionEnabled}
+          isRecording={isRecording}
+          onToggleTranscription={toggleTranscription}
+          speakingUsers={new Set(activeSpeakers)}
+          darkMode={darkMode}
+          isSpeechRecognitionSupported={isSpeechRecognitionSupported}
+        />
+      </FeatureErrorBoundary>
 
 
       {/* Meeting Setup Modal */}
       {isAuthenticated && (
-        <MeetingSetupModal
-          isOpen={showMeetingSetup}
-          onClose={() => { setShowMeetingSetup(false); setHasSetupCompleted(true); }}
-          onConfirm={handleMeetingSetup}
-          darkMode={darkMode}
-        />
+        <FeatureErrorBoundary feature="MeetingSetupModal" darkMode={darkMode}>
+          <MeetingSetupModal
+            isOpen={showMeetingSetup}
+            onClose={() => { setShowMeetingSetup(false); setHasSetupCompleted(true); }}
+            onConfirm={handleMeetingSetup}
+            darkMode={darkMode}
+          />
+        </FeatureErrorBoundary>
       )}
 
       {/* Interview Suggestions */}
       {isAuthenticated && meetingType === 'ENTREVISTA' && hasSetupCompleted && (
-        <InterviewSuggestions
-          suggestions={interviewSuggestions}
-          isGenerating={isGeneratingSuggestions}
-          onMarkAsRead={markSuggestionAsRead}
-          onDismiss={dismissSuggestion}
-          darkMode={darkMode}
-          meetingTopic={meetingTopic}
-        />
+        <FeatureErrorBoundary feature="InterviewSuggestions" darkMode={darkMode}>
+          <InterviewSuggestions
+            suggestions={interviewSuggestions}
+            isGenerating={isGeneratingSuggestions}
+            onMarkAsRead={markSuggestionAsRead}
+            onDismiss={dismissSuggestion}
+            darkMode={darkMode}
+            meetingTopic={meetingTopic}
+          />
+        </FeatureErrorBoundary>
       )}
 
       {/* End Meeting Modal */}
-      <EndMeetingModal
-        isOpen={showEndModal}
-        onClose={() => setShowEndModal(false)}
-        onLeave={handleLeaveOnly}
-        onEndRoom={handleEndRoom}
-        isAuthenticated={isAuthenticated}
-        isGeneratingReport={isGeneratingReport}
-        meetingType={meetingType}
-        darkMode={darkMode}
-      />
+      <FeatureErrorBoundary feature="EndMeetingModal" darkMode={darkMode}>
+        <EndMeetingModal
+          isOpen={showEndModal}
+          onClose={() => setShowEndModal(false)}
+          onLeave={handleLeaveOnly}
+          onEndRoom={handleEndRoom}
+          isAuthenticated={isAuthenticated}
+          isGeneratingReport={isGeneratingReport}
+          meetingType={meetingType}
+          darkMode={darkMode}
+        />
+      </FeatureErrorBoundary>
 
       {/* Interview Report Modal */}
-      <InterviewReportModal
-        isOpen={showReportModal}
-        onClose={handleCloseReport}
-        report={interviewReport}
-        darkMode={darkMode}
-      />
+      <FeatureErrorBoundary feature="InterviewReportModal" darkMode={darkMode}>
+        <InterviewReportModal
+          isOpen={showReportModal}
+          onClose={handleCloseReport}
+          report={interviewReport}
+          darkMode={darkMode}
+        />
+      </FeatureErrorBoundary>
 
       {/* Version Info Button */}
       <button

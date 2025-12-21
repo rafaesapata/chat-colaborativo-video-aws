@@ -1,9 +1,11 @@
 import { useEffect, useRef, useState, useCallback } from 'react';
+import { createMessageQueue, MessageQueue } from '../utils/messageQueue';
+import { wsCircuitBreaker } from '../utils/circuitBreaker';
 
 // Buffer de mensagens offline
 interface BufferedMessage {
   id: string;
-  payload: any;
+  payload: unknown;
   timestamp: number;
   retries: number;
 }
@@ -25,8 +27,9 @@ export function useWebSocket(
   const reconnectTimeoutRef = useRef<number>();
   const heartbeatIntervalRef = useRef<number>();
   const reconnectAttemptsRef = useRef(0);
-  const pendingMessages = useRef<any[]>([]); // Fila de mensagens recebidas pendentes
+  const pendingMessages = useRef<unknown[]>([]); // Fila de mensagens recebidas pendentes
   const offlineBuffer = useRef<BufferedMessage[]>([]); // Buffer de mensagens para enviar
+  const messageQueueRef = useRef<MessageQueue | null>(null); // Message queue com backpressure
   const MAX_RECONNECT_ATTEMPTS = 5;
   const RECONNECT_DELAY = 3000;
   const HEARTBEAT_INTERVAL = 30000; // 30 segundos
@@ -35,6 +38,18 @@ export function useWebSocket(
   useEffect(() => {
     onMessageRef.current = onMessage;
   }, [onMessage]);
+
+  // Inicializar message queue
+  useEffect(() => {
+    messageQueueRef.current = createMessageQueue((data) => {
+      onMessageRef.current(data);
+      messageHandlers.current.forEach(handler => handler(data as Record<string, unknown>));
+    });
+
+    return () => {
+      messageQueueRef.current?.clear();
+    };
+  }, []);
 
   useEffect(() => {
     if (!url || !userId) {
@@ -104,12 +119,10 @@ export function useWebSocket(
               console.error('[WebSocket] ❌ Erro do servidor:', data);
               console.log('[WebSocket] URL usada:', wsUrl);
               console.log('[WebSocket] Parâmetros:', { userId, roomId });
-              console.log('[WebSocket] Stack trace:', new Error().stack);
               
               // Se for Forbidden, desconectar e tentar reconectar
               if (data.message === 'Forbidden') {
                 console.warn('[WebSocket] Forbidden - fechando conexão para reconectar');
-                // Usar código válido: 1000 (normal) ou 3000-4999 (custom)
                 ws.close(3000, 'Forbidden error - reconnecting');
               }
               return;
@@ -118,14 +131,12 @@ export function useWebSocket(
             // Ignorar mensagens de pong
             if (data.type === 'pong') return;
             
-            // Usar a ref para evitar dependência
-            onMessageRef.current(data);
-            
-            // Se não há handlers registrados ainda, guardar na fila
-            if (messageHandlers.current.size === 0) {
-              console.log('[WebSocket] 📦 Guardando mensagem na fila (sem handlers):', data.type);
-              pendingMessages.current.push(data);
+            // Usar message queue com backpressure para processar mensagens
+            if (messageQueueRef.current) {
+              messageQueueRef.current.enqueue(data);
             } else {
+              // Fallback se queue não inicializada
+              onMessageRef.current(data);
               messageHandlers.current.forEach(handler => handler(data));
             }
           } catch (error) {
@@ -229,7 +240,8 @@ export function useWebSocket(
       const messages = [...pendingMessages.current];
       pendingMessages.current = [];
       messages.forEach(msg => {
-        console.log('[WebSocket] 📨 Reprocessando mensagem pendente:', msg.type);
+        const typedMsg = msg as { type?: string };
+        console.log('[WebSocket] 📨 Reprocessando mensagem pendente:', typedMsg.type);
         handler(msg);
       });
     }

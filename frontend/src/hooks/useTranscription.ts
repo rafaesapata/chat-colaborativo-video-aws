@@ -1,4 +1,5 @@
 import { useState, useEffect, useRef, useCallback } from 'react';
+import { transcriptionDeduplicator } from '../utils/transcriptionDeduplicator';
 
 // SEC-004: Sanitização básica de texto (sem dependência externa)
 const sanitizeText = (text: string): string => {
@@ -84,6 +85,16 @@ export function useTranscription({
         speakerLabel: sanitizeText(speakerName),
         isPartial: transcriptionData.isPartial || false
       };
+
+      // Verificar duplicação (apenas para transcrições finais)
+      if (transcriptionDeduplicator.isDuplicate({
+        odUserId: newTranscription.userId,
+        transcribedText: newTranscription.transcribedText,
+        isPartial: newTranscription.isPartial
+      })) {
+        console.log('[Transcription] Transcrição duplicada ignorada');
+        return;
+      }
 
       console.log('[Transcription] Nova transcrição recebida:', {
         from: speakerName,
