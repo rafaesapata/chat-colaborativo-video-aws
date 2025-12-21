@@ -507,6 +507,23 @@ const routes = Object.freeze({
   'POST:/admin/users/remove': handleAdminRemoveUser,
   'POST:/admin/cleanup': handleAdminCleanup,
   'POST:/admin/check-role': handleCheckUserRole,
+  // Agendamento de reuniões
+  'POST:/schedule/create': handleScheduleCreate,
+  'POST:/schedule/list': handleScheduleList,
+  'POST:/schedule/cancel': handleScheduleCancel,
+  'POST:/schedule/update': handleScheduleUpdate,
+  'GET:/schedule/:id': handleScheduleGet,
+  // API de integração externa
+  'POST:/api/v1/meetings/schedule': handleApiScheduleMeeting,
+  'GET:/api/v1/meetings/scheduled': handleApiListScheduled,
+  'DELETE:/api/v1/meetings/scheduled/:id': handleApiCancelScheduled,
+  // API Keys management
+  'POST:/admin/api-keys': handleAdminListApiKeys,
+  'POST:/admin/api-keys/create': handleAdminCreateApiKey,
+  'POST:/admin/api-keys/revoke': handleAdminRevokeApiKey,
+  // Documentação
+  'GET:/docs': handleDocsPage,
+  'GET:/docs/swagger.json': handleSwaggerJson,
 });
 
 // ============ HANDLER PRINCIPAL ============
@@ -1312,6 +1329,11 @@ async function handleAdminCleanup(body) {
     checked: 0,
     ended: 0,
     errors: 0,
+    skipped: {
+      scheduled_meetings: 0,
+      api_keys: 0,
+      system_records: 0,
+    },
     reasons: {
       empty_room: 0,
       max_age_exceeded: 0,
@@ -1333,13 +1355,30 @@ async function handleAdminCleanup(body) {
     const meetings = [];
     for (const item of scanResult.Items || []) {
       if (item.meetingId?.S && item.roomId?.S) {
-        if (item.roomId.S.startsWith('ratelimit_') || 
-            item.roomId.S.startsWith('lock_') ||
-            item.roomId.S === 'admin_users_list') {
+        const roomId = item.roomId.S;
+        
+        // Ignorar registros de sistema
+        if (roomId.startsWith('ratelimit_') || 
+            roomId.startsWith('lock_') ||
+            roomId === 'admin_users_list') {
+          stats.skipped.system_records++;
           continue;
         }
+        
+        // Ignorar agendamentos (scheduled_*)
+        if (roomId.startsWith(SCHEDULED_MEETINGS_PREFIX)) {
+          stats.skipped.scheduled_meetings++;
+          continue;
+        }
+        
+        // Ignorar API Keys (apikey_*)
+        if (roomId.startsWith(API_KEYS_PREFIX)) {
+          stats.skipped.api_keys++;
+          continue;
+        }
+        
         meetings.push({
-          roomId: item.roomId.S,
+          roomId: roomId,
           meetingId: item.meetingId.S,
           createdBy: item.createdBy?.S || 'unknown',
           createdAt: parseInt(item.createdAt?.N || '0'),
@@ -1453,4 +1492,540 @@ async function handleCheckUserRole(body) {
   
   // Usuário comum
   return successResponse({ role: 'user', userLogin });
+}
+
+// ============ SCHEDULED MEETINGS TABLE ============
+const SCHEDULED_MEETINGS_PREFIX = 'scheduled_';
+const API_KEYS_PREFIX = 'apikey_';
+
+// ============ SCHEDULE: CREATE ============
+async function handleScheduleCreate(body) {
+  const { userLogin, title, description, scheduledAt, duration, participants, notifyEmail } = body;
+  
+  if (!userLogin) return errorResponse(400, 'userLogin é obrigatório');
+  if (!await isAdmin(userLogin)) return errorResponse(403, 'Acesso negado');
+  if (!title) return errorResponse(400, 'title é obrigatório');
+  if (!scheduledAt) return errorResponse(400, 'scheduledAt é obrigatório');
+  
+  const scheduledTime = new Date(scheduledAt).getTime();
+  if (isNaN(scheduledTime) || scheduledTime < Date.now()) {
+    return errorResponse(400, 'scheduledAt deve ser uma data futura válida');
+  }
+  
+  const scheduleId = `sch_${Date.now()}_${crypto.randomBytes(4).toString('hex')}`;
+  const roomId = `room_${crypto.randomBytes(8).toString('hex')}`;
+  
+  const item = {
+    roomId: { S: `${SCHEDULED_MEETINGS_PREFIX}${scheduleId}` },
+    scheduleId: { S: scheduleId },
+    title: { S: title },
+    description: { S: description || '' },
+    scheduledAt: { N: String(scheduledTime) },
+    duration: { N: String(duration || 60) },
+    createdBy: { S: userLogin },
+    createdAt: { N: String(Date.now()) },
+    meetingRoomId: { S: roomId },
+    participants: { S: JSON.stringify(participants || []) },
+    notifyEmail: { BOOL: notifyEmail !== false },
+    status: { S: 'scheduled' },
+    ttl: { N: String(Math.floor(scheduledTime / 1000) + 86400 * 30) },
+  };
+  
+  await dynamoClient.send(new PutItemCommand({
+    TableName: CONFIG.MEETINGS_TABLE,
+    Item: item,
+  }));
+  
+  const meetingUrl = `https://livechat.ai.udstec.io/meeting/${roomId}`;
+  
+  log(LOG_LEVELS.INFO, 'Reunião agendada', { scheduleId, userLogin, scheduledAt });
+  
+  return successResponse({
+    scheduleId,
+    roomId,
+    meetingUrl,
+    title,
+    scheduledAt: new Date(scheduledTime).toISOString(),
+    duration: duration || 60,
+  });
+}
+
+// ============ SCHEDULE: LIST ============
+async function handleScheduleList(body) {
+  const { userLogin, status, fromDate, toDate } = body;
+  
+  if (!userLogin) return errorResponse(400, 'userLogin é obrigatório');
+  if (!await isAdmin(userLogin)) return errorResponse(403, 'Acesso negado');
+  
+  const result = await dynamoClient.send(new ScanCommand({
+    TableName: CONFIG.MEETINGS_TABLE,
+    FilterExpression: 'begins_with(roomId, :prefix)',
+    ExpressionAttributeValues: { ':prefix': { S: SCHEDULED_MEETINGS_PREFIX } },
+  }));
+  
+  let meetings = (result.Items || []).map(item => ({
+    scheduleId: item.scheduleId?.S,
+    title: item.title?.S,
+    description: item.description?.S,
+    scheduledAt: item.scheduledAt?.N ? new Date(parseInt(item.scheduledAt.N)).toISOString() : null,
+    duration: parseInt(item.duration?.N || '60'),
+    createdBy: item.createdBy?.S,
+    roomId: item.meetingRoomId?.S,
+    meetingUrl: `https://livechat.ai.udstec.io/meeting/${item.meetingRoomId?.S}`,
+    participants: JSON.parse(item.participants?.S || '[]'),
+    status: item.status?.S || 'scheduled',
+    createdAt: item.createdAt?.N ? new Date(parseInt(item.createdAt.N)).toISOString() : null,
+  }));
+  
+  if (status) meetings = meetings.filter(m => m.status === status);
+  if (fromDate) meetings = meetings.filter(m => new Date(m.scheduledAt) >= new Date(fromDate));
+  if (toDate) meetings = meetings.filter(m => new Date(m.scheduledAt) <= new Date(toDate));
+  
+  meetings.sort((a, b) => new Date(a.scheduledAt).getTime() - new Date(b.scheduledAt).getTime());
+  
+  return successResponse({ meetings, total: meetings.length });
+}
+
+// ============ SCHEDULE: CANCEL ============
+async function handleScheduleCancel(body) {
+  const { userLogin, scheduleId } = body;
+  
+  if (!userLogin) return errorResponse(400, 'userLogin é obrigatório');
+  if (!scheduleId) return errorResponse(400, 'scheduleId é obrigatório');
+  if (!await isAdmin(userLogin)) return errorResponse(403, 'Acesso negado');
+  
+  await dynamoClient.send(new UpdateItemCommand({
+    TableName: CONFIG.MEETINGS_TABLE,
+    Key: { roomId: { S: `${SCHEDULED_MEETINGS_PREFIX}${scheduleId}` } },
+    UpdateExpression: 'SET #status = :status, cancelledAt = :now, cancelledBy = :user',
+    ExpressionAttributeNames: { '#status': 'status' },
+    ExpressionAttributeValues: {
+      ':status': { S: 'cancelled' },
+      ':now': { N: String(Date.now()) },
+      ':user': { S: userLogin },
+    },
+  }));
+  
+  log(LOG_LEVELS.INFO, 'Reunião cancelada', { scheduleId, userLogin });
+  return successResponse({ success: true, scheduleId });
+}
+
+// ============ SCHEDULE: UPDATE ============
+async function handleScheduleUpdate(body) {
+  const { userLogin, scheduleId, title, description, scheduledAt, duration, participants } = body;
+  
+  if (!userLogin) return errorResponse(400, 'userLogin é obrigatório');
+  if (!scheduleId) return errorResponse(400, 'scheduleId é obrigatório');
+  if (!await isAdmin(userLogin)) return errorResponse(403, 'Acesso negado');
+  
+  const updates = [];
+  const names = {};
+  const values = {};
+  
+  if (title) { updates.push('#title = :title'); names['#title'] = 'title'; values[':title'] = { S: title }; }
+  if (description !== undefined) { updates.push('description = :desc'); values[':desc'] = { S: description }; }
+  if (scheduledAt) {
+    const time = new Date(scheduledAt).getTime();
+    if (isNaN(time)) return errorResponse(400, 'scheduledAt inválido');
+    updates.push('scheduledAt = :sched'); values[':sched'] = { N: String(time) };
+  }
+  if (duration) { updates.push('duration = :dur'); values[':dur'] = { N: String(duration) }; }
+  if (participants) { updates.push('participants = :parts'); values[':parts'] = { S: JSON.stringify(participants) }; }
+  
+  if (updates.length === 0) return errorResponse(400, 'Nenhum campo para atualizar');
+  
+  updates.push('updatedAt = :now'); values[':now'] = { N: String(Date.now()) };
+  updates.push('updatedBy = :user'); values[':user'] = { S: userLogin };
+  
+  await dynamoClient.send(new UpdateItemCommand({
+    TableName: CONFIG.MEETINGS_TABLE,
+    Key: { roomId: { S: `${SCHEDULED_MEETINGS_PREFIX}${scheduleId}` } },
+    UpdateExpression: `SET ${updates.join(', ')}`,
+    ExpressionAttributeNames: Object.keys(names).length > 0 ? names : undefined,
+    ExpressionAttributeValues: values,
+  }));
+  
+  return successResponse({ success: true, scheduleId });
+}
+
+// ============ SCHEDULE: GET ============
+async function handleScheduleGet(body, event) {
+  const path = event.path || event.rawPath || '';
+  const scheduleId = path.split('/').pop();
+  const { userLogin } = body;
+  
+  if (!userLogin) return errorResponse(400, 'userLogin é obrigatório');
+  if (!await isAdmin(userLogin)) return errorResponse(403, 'Acesso negado');
+  
+  const result = await dynamoClient.send(new GetItemCommand({
+    TableName: CONFIG.MEETINGS_TABLE,
+    Key: { roomId: { S: `${SCHEDULED_MEETINGS_PREFIX}${scheduleId}` } },
+  }));
+  
+  if (!result.Item) return errorResponse(404, 'Reunião não encontrada');
+  
+  const item = result.Item;
+  return successResponse({
+    scheduleId: item.scheduleId?.S,
+    title: item.title?.S,
+    description: item.description?.S,
+    scheduledAt: item.scheduledAt?.N ? new Date(parseInt(item.scheduledAt.N)).toISOString() : null,
+    duration: parseInt(item.duration?.N || '60'),
+    createdBy: item.createdBy?.S,
+    roomId: item.meetingRoomId?.S,
+    meetingUrl: `https://livechat.ai.udstec.io/meeting/${item.meetingRoomId?.S}`,
+    participants: JSON.parse(item.participants?.S || '[]'),
+    status: item.status?.S || 'scheduled',
+  });
+}
+
+// ============ API KEYS MANAGEMENT ============
+async function handleAdminListApiKeys(body) {
+  const { userLogin } = body;
+  if (!userLogin || !isSuperAdmin(userLogin)) return errorResponse(403, 'Apenas super admins');
+  
+  const result = await dynamoClient.send(new ScanCommand({
+    TableName: CONFIG.MEETINGS_TABLE,
+    FilterExpression: 'begins_with(roomId, :prefix)',
+    ExpressionAttributeValues: { ':prefix': { S: API_KEYS_PREFIX } },
+  }));
+  
+  const keys = (result.Items || []).map(item => ({
+    keyId: item.keyId?.S,
+    name: item.keyName?.S,
+    createdBy: item.createdBy?.S,
+    createdAt: item.createdAt?.N ? new Date(parseInt(item.createdAt.N)).toISOString() : null,
+    lastUsed: item.lastUsed?.N ? new Date(parseInt(item.lastUsed.N)).toISOString() : null,
+    usageCount: parseInt(item.usageCount?.N || '0'),
+    isActive: item.isActive?.BOOL !== false,
+    permissions: JSON.parse(item.permissions?.S || '["schedule"]'),
+  }));
+  
+  return successResponse({ apiKeys: keys });
+}
+
+async function handleAdminCreateApiKey(body) {
+  const { userLogin, name, permissions } = body;
+  if (!userLogin || !isSuperAdmin(userLogin)) return errorResponse(403, 'Apenas super admins');
+  if (!name) return errorResponse(400, 'name é obrigatório');
+  
+  const keyId = `key_${crypto.randomBytes(8).toString('hex')}`;
+  const apiKey = `vck_${crypto.randomBytes(32).toString('hex')}`;
+  const hashedKey = crypto.createHash('sha256').update(apiKey).digest('hex');
+  
+  await dynamoClient.send(new PutItemCommand({
+    TableName: CONFIG.MEETINGS_TABLE,
+    Item: {
+      roomId: { S: `${API_KEYS_PREFIX}${keyId}` },
+      keyId: { S: keyId },
+      keyName: { S: name },
+      hashedKey: { S: hashedKey },
+      createdBy: { S: userLogin },
+      createdAt: { N: String(Date.now()) },
+      usageCount: { N: '0' },
+      isActive: { BOOL: true },
+      permissions: { S: JSON.stringify(permissions || ['schedule']) },
+    },
+  }));
+  
+  log(LOG_LEVELS.INFO, 'API Key criada', { keyId, name, userLogin });
+  return successResponse({ keyId, apiKey, name, message: 'Guarde esta chave, ela não será exibida novamente!' });
+}
+
+async function handleAdminRevokeApiKey(body) {
+  const { userLogin, keyId } = body;
+  if (!userLogin || !isSuperAdmin(userLogin)) return errorResponse(403, 'Apenas super admins');
+  if (!keyId) return errorResponse(400, 'keyId é obrigatório');
+  
+  await dynamoClient.send(new UpdateItemCommand({
+    TableName: CONFIG.MEETINGS_TABLE,
+    Key: { roomId: { S: `${API_KEYS_PREFIX}${keyId}` } },
+    UpdateExpression: 'SET isActive = :false, revokedAt = :now, revokedBy = :user',
+    ExpressionAttributeValues: {
+      ':false': { BOOL: false },
+      ':now': { N: String(Date.now()) },
+      ':user': { S: userLogin },
+    },
+  }));
+  
+  log(LOG_LEVELS.INFO, 'API Key revogada', { keyId, userLogin });
+  return successResponse({ success: true, keyId });
+}
+
+// ============ API KEY VALIDATION ============
+async function validateApiKey(apiKey) {
+  if (!apiKey || !apiKey.startsWith('vck_')) return null;
+  
+  const hashedKey = crypto.createHash('sha256').update(apiKey).digest('hex');
+  
+  const result = await dynamoClient.send(new ScanCommand({
+    TableName: CONFIG.MEETINGS_TABLE,
+    FilterExpression: 'begins_with(roomId, :prefix) AND hashedKey = :hash AND isActive = :true',
+    ExpressionAttributeValues: {
+      ':prefix': { S: API_KEYS_PREFIX },
+      ':hash': { S: hashedKey },
+      ':true': { BOOL: true },
+    },
+  }));
+  
+  if (!result.Items || result.Items.length === 0) return null;
+  
+  const keyItem = result.Items[0];
+  
+  // Atualizar uso
+  await dynamoClient.send(new UpdateItemCommand({
+    TableName: CONFIG.MEETINGS_TABLE,
+    Key: { roomId: keyItem.roomId },
+    UpdateExpression: 'SET lastUsed = :now, usageCount = usageCount + :one',
+    ExpressionAttributeValues: { ':now': { N: String(Date.now()) }, ':one': { N: '1' } },
+  }));
+  
+  return {
+    keyId: keyItem.keyId?.S,
+    name: keyItem.keyName?.S,
+    permissions: JSON.parse(keyItem.permissions?.S || '["schedule"]'),
+  };
+}
+
+// ============ EXTERNAL API: SCHEDULE MEETING ============
+async function handleApiScheduleMeeting(body, event) {
+  const apiKey = event.headers?.['x-api-key'] || event.headers?.['X-Api-Key'];
+  const keyInfo = await validateApiKey(apiKey);
+  
+  if (!keyInfo) return errorResponse(401, 'API Key inválida ou expirada');
+  if (!keyInfo.permissions.includes('schedule')) return errorResponse(403, 'Permissão negada');
+  
+  const { title, description, scheduledAt, duration, participants, callbackUrl } = body;
+  
+  if (!title) return errorResponse(400, 'title é obrigatório');
+  if (!scheduledAt) return errorResponse(400, 'scheduledAt é obrigatório (ISO 8601)');
+  
+  const scheduledTime = new Date(scheduledAt).getTime();
+  if (isNaN(scheduledTime) || scheduledTime < Date.now()) {
+    return errorResponse(400, 'scheduledAt deve ser uma data futura válida');
+  }
+  
+  const scheduleId = `sch_${Date.now()}_${crypto.randomBytes(4).toString('hex')}`;
+  const roomId = `room_${crypto.randomBytes(8).toString('hex')}`;
+  
+  await dynamoClient.send(new PutItemCommand({
+    TableName: CONFIG.MEETINGS_TABLE,
+    Item: {
+      roomId: { S: `${SCHEDULED_MEETINGS_PREFIX}${scheduleId}` },
+      scheduleId: { S: scheduleId },
+      title: { S: title },
+      description: { S: description || '' },
+      scheduledAt: { N: String(scheduledTime) },
+      duration: { N: String(duration || 60) },
+      createdBy: { S: `api:${keyInfo.name}` },
+      createdAt: { N: String(Date.now()) },
+      meetingRoomId: { S: roomId },
+      participants: { S: JSON.stringify(participants || []) },
+      callbackUrl: { S: callbackUrl || '' },
+      status: { S: 'scheduled' },
+      apiKeyId: { S: keyInfo.keyId },
+      ttl: { N: String(Math.floor(scheduledTime / 1000) + 86400 * 30) },
+    },
+  }));
+  
+  log(LOG_LEVELS.INFO, 'Reunião agendada via API', { scheduleId, apiKey: keyInfo.keyId });
+  
+  return successResponse({
+    scheduleId,
+    roomId,
+    meetingUrl: `https://livechat.ai.udstec.io/meeting/${roomId}`,
+    title,
+    scheduledAt: new Date(scheduledTime).toISOString(),
+    duration: duration || 60,
+  });
+}
+
+// ============ EXTERNAL API: LIST SCHEDULED ============
+async function handleApiListScheduled(body, event) {
+  const apiKey = event.headers?.['x-api-key'] || event.headers?.['X-Api-Key'];
+  const keyInfo = await validateApiKey(apiKey);
+  
+  if (!keyInfo) return errorResponse(401, 'API Key inválida ou expirada');
+  
+  const result = await dynamoClient.send(new ScanCommand({
+    TableName: CONFIG.MEETINGS_TABLE,
+    FilterExpression: 'begins_with(roomId, :prefix) AND apiKeyId = :keyId',
+    ExpressionAttributeValues: {
+      ':prefix': { S: SCHEDULED_MEETINGS_PREFIX },
+      ':keyId': { S: keyInfo.keyId },
+    },
+  }));
+  
+  const meetings = (result.Items || []).map(item => ({
+    scheduleId: item.scheduleId?.S,
+    title: item.title?.S,
+    scheduledAt: item.scheduledAt?.N ? new Date(parseInt(item.scheduledAt.N)).toISOString() : null,
+    duration: parseInt(item.duration?.N || '60'),
+    roomId: item.meetingRoomId?.S,
+    meetingUrl: `https://livechat.ai.udstec.io/meeting/${item.meetingRoomId?.S}`,
+    status: item.status?.S || 'scheduled',
+  }));
+  
+  return successResponse({ meetings });
+}
+
+// ============ EXTERNAL API: CANCEL SCHEDULED ============
+async function handleApiCancelScheduled(body, event) {
+  const apiKey = event.headers?.['x-api-key'] || event.headers?.['X-Api-Key'];
+  const keyInfo = await validateApiKey(apiKey);
+  
+  if (!keyInfo) return errorResponse(401, 'API Key inválida ou expirada');
+  
+  const path = event.path || event.rawPath || '';
+  const scheduleId = path.split('/').pop();
+  
+  if (!scheduleId) return errorResponse(400, 'scheduleId é obrigatório');
+  
+  // Verificar se pertence a esta API key
+  const existing = await dynamoClient.send(new GetItemCommand({
+    TableName: CONFIG.MEETINGS_TABLE,
+    Key: { roomId: { S: `${SCHEDULED_MEETINGS_PREFIX}${scheduleId}` } },
+  }));
+  
+  if (!existing.Item) return errorResponse(404, 'Reunião não encontrada');
+  if (existing.Item.apiKeyId?.S !== keyInfo.keyId) return errorResponse(403, 'Acesso negado');
+  
+  await dynamoClient.send(new UpdateItemCommand({
+    TableName: CONFIG.MEETINGS_TABLE,
+    Key: { roomId: { S: `${SCHEDULED_MEETINGS_PREFIX}${scheduleId}` } },
+    UpdateExpression: 'SET #status = :status, cancelledAt = :now',
+    ExpressionAttributeNames: { '#status': 'status' },
+    ExpressionAttributeValues: {
+      ':status': { S: 'cancelled' },
+      ':now': { N: String(Date.now()) },
+    },
+  }));
+  
+  return successResponse({ success: true, scheduleId });
+}
+
+// ============ DOCUMENTATION ============
+async function handleDocsPage(body, event) {
+  // Verificar autenticação via header ou query param
+  const authHeader = event.headers?.authorization || event.headers?.Authorization;
+  const userLogin = event.queryStringParameters?.user;
+  
+  if (!authHeader && !userLogin) {
+    return {
+      statusCode: 401,
+      headers: { 'Content-Type': 'text/html' },
+      body: '<html><body><h1>Autenticação necessária</h1><p>Adicione ?user=seu_login na URL</p></body></html>',
+    };
+  }
+  
+  const login = userLogin || (authHeader?.replace('Bearer ', ''));
+  if (!await isAdmin(login)) {
+    return {
+      statusCode: 403,
+      headers: { 'Content-Type': 'text/html' },
+      body: '<html><body><h1>Acesso negado</h1><p>Apenas administradores podem acessar a documentação.</p></body></html>',
+    };
+  }
+  
+  const html = `<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+  <meta charset="UTF-8">
+  <title>Video Chat API - Documentação</title>
+  <link rel="stylesheet" href="https://unpkg.com/swagger-ui-dist@5/swagger-ui.css">
+  <style>
+    body { margin: 0; padding: 0; }
+    .swagger-ui .topbar { display: none; }
+  </style>
+</head>
+<body>
+  <div id="swagger-ui"></div>
+  <script src="https://unpkg.com/swagger-ui-dist@5/swagger-ui-bundle.js"></script>
+  <script>
+    SwaggerUIBundle({
+      url: '/docs/swagger.json?user=${login}',
+      dom_id: '#swagger-ui',
+      presets: [SwaggerUIBundle.presets.apis, SwaggerUIBundle.SwaggerUIStandalonePreset],
+      layout: "BaseLayout"
+    });
+  </script>
+</body>
+</html>`;
+  
+  return { statusCode: 200, headers: { 'Content-Type': 'text/html' }, body: html };
+}
+
+async function handleSwaggerJson(body, event) {
+  const userLogin = event.queryStringParameters?.user;
+  if (!userLogin || !await isAdmin(userLogin)) {
+    return errorResponse(403, 'Acesso negado');
+  }
+  
+  const swagger = {
+    openapi: '3.0.3',
+    info: {
+      title: 'Video Chat API',
+      version: '1.0.0',
+      description: 'API para integração com o sistema de Video Chat. Permite agendar reuniões programaticamente.',
+    },
+    servers: [{ url: 'https://q565matpkz62gs4pmzyfbusy4i0zeqfi.lambda-url.us-east-1.on.aws', description: 'Produção' }],
+    security: [{ ApiKeyAuth: [] }],
+    components: {
+      securitySchemes: {
+        ApiKeyAuth: { type: 'apiKey', in: 'header', name: 'X-Api-Key', description: 'Chave de API gerada no painel admin' }
+      },
+      schemas: {
+        ScheduleMeetingRequest: {
+          type: 'object',
+          required: ['title', 'scheduledAt'],
+          properties: {
+            title: { type: 'string', example: 'Reunião de Alinhamento' },
+            description: { type: 'string', example: 'Discussão sobre o projeto X' },
+            scheduledAt: { type: 'string', format: 'date-time', example: '2025-12-25T14:00:00Z' },
+            duration: { type: 'integer', default: 60, example: 30 },
+            participants: { type: 'array', items: { type: 'string' }, example: ['user1@email.com', 'user2@email.com'] },
+            callbackUrl: { type: 'string', example: 'https://seu-sistema.com/webhook/meeting' }
+          }
+        },
+        ScheduleMeetingResponse: {
+          type: 'object',
+          properties: {
+            scheduleId: { type: 'string' },
+            roomId: { type: 'string' },
+            meetingUrl: { type: 'string' },
+            title: { type: 'string' },
+            scheduledAt: { type: 'string', format: 'date-time' },
+            duration: { type: 'integer' }
+          }
+        }
+      }
+    },
+    paths: {
+      '/api/v1/meetings/schedule': {
+        post: {
+          summary: 'Agendar nova reunião',
+          tags: ['Meetings'],
+          requestBody: { required: true, content: { 'application/json': { schema: { '$ref': '#/components/schemas/ScheduleMeetingRequest' } } } },
+          responses: { '200': { description: 'Reunião agendada', content: { 'application/json': { schema: { '$ref': '#/components/schemas/ScheduleMeetingResponse' } } } } }
+        }
+      },
+      '/api/v1/meetings/scheduled': {
+        get: {
+          summary: 'Listar reuniões agendadas',
+          tags: ['Meetings'],
+          responses: { '200': { description: 'Lista de reuniões' } }
+        }
+      },
+      '/api/v1/meetings/scheduled/{scheduleId}': {
+        delete: {
+          summary: 'Cancelar reunião agendada',
+          tags: ['Meetings'],
+          parameters: [{ name: 'scheduleId', in: 'path', required: true, schema: { type: 'string' } }],
+          responses: { '200': { description: 'Reunião cancelada' } }
+        }
+      }
+    }
+  };
+  
+  return { statusCode: 200, headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(swagger) };
 }

@@ -41,34 +41,12 @@ export default function PreviewScreen({ darkMode, onJoin }: PreviewScreenProps) 
   const animationRef = useRef<number>();
   const streamRef = useRef<MediaStream | null>(null);
 
-  // Carregar dispositivos disponíveis
+  // Carregar dispositivos disponíveis e inicializar stream
   useEffect(() => {
-    const loadDevices = async () => {
-      try {
-        // Primeiro solicitar permissão para obter labels dos dispositivos
-        const tempStream = await navigator.mediaDevices.getUserMedia({ video: true, audio: true });
-        tempStream.getTracks().forEach(track => track.stop());
-        
-        const deviceList = await navigator.mediaDevices.enumerateDevices();
-        setDevices({
-          video: deviceList.filter(d => d.kind === 'videoinput'),
-          audio: deviceList.filter(d => d.kind === 'audioinput')
-        });
-      } catch (err) {
-        console.error('Erro ao listar dispositivos:', err);
-      }
-    };
-    loadDevices();
-  }, []);
-
-  // Inicializar stream de preview - apenas uma vez ou quando dispositivo mudar
-  useEffect(() => {
-    // Evitar múltiplas inicializações
-    if (hasInitialized && !selectedVideoDevice && !selectedAudioDevice) {
-      return;
-    }
-
-    const initStream = async () => {
+    let isMounted = true;
+    let localStream: MediaStream | null = null;
+    
+    const initMedia = async () => {
       setIsLoading(true);
       setError(null);
       
@@ -79,74 +57,120 @@ export default function PreviewScreen({ darkMode, onJoin }: PreviewScreenProps) 
           streamRef.current = null;
         }
 
+        // Obter stream de mídia
         const constraints: MediaStreamConstraints = {
-          video: {
-            deviceId: selectedVideoDevice ? { exact: selectedVideoDevice } : undefined,
-            width: { ideal: 1280 },
-            height: { ideal: 720 },
-            facingMode: 'user'
-          },
-          audio: {
-            deviceId: selectedAudioDevice ? { exact: selectedAudioDevice } : undefined,
-            echoCancellation: true,
-            noiseSuppression: true
-          }
+          video: selectedVideoDevice 
+            ? { deviceId: { exact: selectedVideoDevice }, width: { ideal: 1280 }, height: { ideal: 720 } }
+            : { width: { ideal: 1280 }, height: { ideal: 720 }, facingMode: 'user' },
+          audio: selectedAudioDevice
+            ? { deviceId: { exact: selectedAudioDevice }, echoCancellation: true, noiseSuppression: true }
+            : { echoCancellation: true, noiseSuppression: true }
         };
 
-        const mediaStream = await navigator.mediaDevices.getUserMedia(constraints);
-        streamRef.current = mediaStream;
-        setStream(mediaStream);
+        console.log('[PreviewScreen] Solicitando mídia...');
+        localStream = await navigator.mediaDevices.getUserMedia(constraints);
+        console.log('[PreviewScreen] Mídia obtida:', localStream.getTracks().map(t => t.kind));
+        
+        if (!isMounted) {
+          localStream.getTracks().forEach(track => track.stop());
+          return;
+        }
+        
+        streamRef.current = localStream;
+        setStream(localStream);
         setHasInitialized(true);
 
-        if (videoRef.current) {
-          videoRef.current.srcObject = mediaStream;
+        // Listar dispositivos após obter permissão
+        const deviceList = await navigator.mediaDevices.enumerateDevices();
+        if (isMounted) {
+          setDevices({
+            video: deviceList.filter(d => d.kind === 'videoinput'),
+            audio: deviceList.filter(d => d.kind === 'audioinput')
+          });
+        }
+
+        // Conectar ao elemento de vídeo
+        if (videoRef.current && isMounted) {
+          console.log('[PreviewScreen] Conectando stream ao elemento de vídeo');
+          videoRef.current.srcObject = localStream;
+          videoRef.current.onloadedmetadata = () => {
+            console.log('[PreviewScreen] Video metadata carregado, iniciando play');
+            videoRef.current?.play()
+              .then(() => console.log('[PreviewScreen] Video play iniciado com sucesso'))
+              .catch(e => console.warn('[PreviewScreen] Play error:', e));
+          };
+        } else {
+          console.warn('[PreviewScreen] videoRef ou isMounted inválido:', { 
+            hasVideoRef: !!videoRef.current, 
+            isMounted 
+          });
         }
 
         // Configurar analisador de áudio
-        if (!audioContextRef.current || audioContextRef.current.state === 'closed') {
-          audioContextRef.current = new AudioContext();
-        }
-        
-        const source = audioContextRef.current.createMediaStreamSource(mediaStream);
-        const analyser = audioContextRef.current.createAnalyser();
-        analyser.fftSize = 256;
-        source.connect(analyser);
-        analyserRef.current = analyser;
+        try {
+          if (audioContextRef.current && audioContextRef.current.state !== 'closed') {
+            await audioContextRef.current.close();
+          }
+          
+          const audioCtx = new AudioContext();
+          audioContextRef.current = audioCtx;
+          
+          const source = audioCtx.createMediaStreamSource(localStream);
+          const analyser = audioCtx.createAnalyser();
+          analyser.fftSize = 256;
+          source.connect(analyser);
+          analyserRef.current = analyser;
 
-        // Monitorar nível de áudio
-        const checkAudioLevel = () => {
-          if (analyserRef.current) {
+          // Monitorar nível de áudio
+          const checkAudioLevel = () => {
+            if (!isMounted || !analyserRef.current) return;
+            
             const dataArray = new Uint8Array(analyserRef.current.frequencyBinCount);
             analyserRef.current.getByteFrequencyData(dataArray);
             const average = dataArray.reduce((a, b) => a + b) / dataArray.length;
             setAudioLevel(Math.min(100, average * 2));
-          }
-          animationRef.current = requestAnimationFrame(checkAudioLevel);
-        };
-        checkAudioLevel();
+            
+            animationRef.current = requestAnimationFrame(checkAudioLevel);
+          };
+          checkAudioLevel();
+        } catch (audioErr) {
+          console.warn('Erro ao configurar analisador de áudio:', audioErr);
+        }
 
       } catch (err) {
-        console.error('Erro ao acessar mídia:', err);
+        console.error('[PreviewScreen] Erro ao acessar mídia:', err);
+        if (!isMounted) return;
+        
         if (err instanceof Error) {
           if (err.name === 'NotAllowedError') {
-            setError('Permissão negada. Clique no ícone da câmera na barra de endereços.');
+            setError('Permissão negada. Clique no ícone da câmera na barra de endereços e permita o acesso.');
           } else if (err.name === 'NotFoundError') {
             setError('Câmera ou microfone não encontrados.');
+          } else if (err.name === 'NotReadableError') {
+            setError('Câmera em uso por outro aplicativo. Feche outros apps que usam a câmera.');
+          } else if (err.name === 'OverconstrainedError') {
+            setError('Dispositivo selecionado não disponível.');
           } else {
-            setError(`Erro: ${err.message}`);
+            setError(`Erro ao acessar câmera: ${err.message}`);
           }
         }
       } finally {
-        setIsLoading(false);
+        if (isMounted) {
+          setIsLoading(false);
+        }
       }
     };
 
-    initStream();
+    // Iniciar após pequeno delay
+    const timer = setTimeout(initMedia, 200);
 
     return () => {
+      isMounted = false;
+      clearTimeout(timer);
       if (animationRef.current) {
         cancelAnimationFrame(animationRef.current);
       }
+      // Não parar o stream aqui - será parado no cleanup geral ou ao trocar dispositivo
     };
   }, [selectedVideoDevice, selectedAudioDevice]);
 
@@ -182,32 +206,53 @@ export default function PreviewScreen({ darkMode, onJoin }: PreviewScreenProps) 
     }
   };
 
-  const handleJoin = () => {
-    if (!name.trim()) return;
+  const [isJoining, setIsJoining] = useState(false);
+
+  const handleJoin = async () => {
+    if (!name.trim() || isJoining) return;
     
-    // Salvar nome para usuário autenticado
-    if (isAuthenticated && user?.login) {
-      authService.saveUserName(user.login, name.trim());
-    }
+    setIsJoining(true);
     
-    // Parar stream de preview (será recriado na sala)
-    if (streamRef.current) {
-      streamRef.current.getTracks().forEach(track => track.stop());
-    }
-    
-    // Salvar preferências e nome em sessionStorage (não na URL)
-    sessionStorage.setItem('videochat_user_name', name.trim());
-    sessionStorage.setItem('videochat_video_enabled', String(isVideoEnabled));
-    sessionStorage.setItem('videochat_audio_enabled', String(isAudioEnabled));
-    if (selectedVideoDevice) sessionStorage.setItem('videochat_video_device', selectedVideoDevice);
-    if (selectedAudioDevice) sessionStorage.setItem('videochat_audio_device', selectedAudioDevice);
-    
-    // Notificar o wrapper que o nome foi definido (força re-render)
-    if (onJoin) {
-      onJoin();
-    } else {
-      // Fallback: navegar (não deve acontecer, mas por segurança)
-      navigate(`/meeting/${roomId}`);
+    try {
+      // Salvar nome para usuário autenticado
+      if (isAuthenticated && user?.login) {
+        authService.saveUserName(user.login, name.trim());
+      }
+      
+      // Parar stream de preview (será recriado na sala)
+      if (streamRef.current) {
+        streamRef.current.getTracks().forEach(track => track.stop());
+        streamRef.current = null;
+      }
+      
+      // Parar animação de áudio
+      if (animationRef.current) {
+        cancelAnimationFrame(animationRef.current);
+        animationRef.current = undefined;
+      }
+      
+      // Fechar AudioContext
+      if (audioContextRef.current && audioContextRef.current.state !== 'closed') {
+        await audioContextRef.current.close().catch(() => {});
+      }
+      
+      // Salvar preferências e nome em sessionStorage (não na URL)
+      sessionStorage.setItem('videochat_user_name', name.trim());
+      sessionStorage.setItem('videochat_video_enabled', String(isVideoEnabled));
+      sessionStorage.setItem('videochat_audio_enabled', String(isAudioEnabled));
+      if (selectedVideoDevice) sessionStorage.setItem('videochat_video_device', selectedVideoDevice);
+      if (selectedAudioDevice) sessionStorage.setItem('videochat_audio_device', selectedAudioDevice);
+      
+      // Notificar o wrapper que o nome foi definido (força re-render)
+      if (onJoin) {
+        onJoin();
+      } else {
+        // Fallback: navegar (não deve acontecer, mas por segurança)
+        navigate(`/meeting/${roomId}`);
+      }
+    } catch (err) {
+      console.error('Erro ao entrar na sala:', err);
+      setIsJoining(false);
     }
   };
 
@@ -406,15 +451,24 @@ export default function PreviewScreen({ darkMode, onJoin }: PreviewScreenProps) 
 
               <button
                 onClick={handleJoin}
-                disabled={!name.trim() || isLoading}
-                className={`w-full py-4 rounded-xl transition-all font-semibold text-lg flex items-center justify-center gap-3 shadow-lg hover:shadow-xl transform hover:-translate-y-0.5 disabled:opacity-50 disabled:cursor-not-allowed ${
+                disabled={!name.trim() || isLoading || isJoining}
+                className={`w-full py-4 rounded-xl transition-all font-semibold text-lg flex items-center justify-center gap-3 shadow-lg hover:shadow-xl transform hover:-translate-y-0.5 disabled:opacity-50 disabled:cursor-not-allowed disabled:transform-none ${
                   darkMode 
                     ? 'bg-gradient-to-r from-purple-600 to-violet-600 hover:from-purple-700 hover:to-violet-700 text-white' 
                     : 'bg-gradient-to-r from-indigo-600 to-purple-600 hover:from-indigo-700 hover:to-purple-700 text-white'
                 }`}
               >
-                <Video size={24} />
-                Entrar na Sala
+                {isJoining ? (
+                  <>
+                    <RefreshCw size={24} className="animate-spin" />
+                    Entrando...
+                  </>
+                ) : (
+                  <>
+                    <Video size={24} />
+                    Entrar na Sala
+                  </>
+                )}
               </button>
 
               <button

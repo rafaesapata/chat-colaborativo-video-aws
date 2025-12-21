@@ -1,4 +1,5 @@
-import { Mic, MicOff, Video, VideoOff, Monitor, PhoneOff, MessageCircle, FileText, FileTextIcon, Circle, Volume2, VolumeX } from 'lucide-react';
+import { useState, useRef, useEffect } from 'react';
+import { Mic, MicOff, Video, VideoOff, Monitor, PhoneOff, MessageCircle, FileText, FileTextIcon, Circle, Volume2, VolumeX, Image, Settings, X } from 'lucide-react';
 import { useMobile } from '../hooks/useMobile';
 
 interface ControlBarProps {
@@ -10,11 +11,13 @@ interface ControlBarProps {
   isAuthenticated: boolean;
   isAdmin?: boolean;
   isSpeakerMode?: boolean;
+  hasBackgroundEffect?: boolean;
   onToggleMute: () => void;
   onToggleVideo: () => void;
   onToggleScreenShare: () => void;
   onToggleTranscriptionActive: () => void;
   onToggleSpeakerMode?: () => void;
+  onToggleBackgroundSelector?: () => void;
   onLeaveMeeting: () => void;
   onToggleChat: () => void;
   onToggleTranscriptionPanel: () => void;
@@ -36,11 +39,13 @@ export default function ControlBar({
   isAuthenticated,
   isAdmin = false,
   isSpeakerMode = true,
+  hasBackgroundEffect = false,
   onToggleMute,
   onToggleVideo,
   onToggleScreenShare,
   onToggleTranscriptionActive,
   onToggleSpeakerMode,
+  onToggleBackgroundSelector,
   onLeaveMeeting,
   onToggleChat,
   onToggleTranscriptionPanel,
@@ -53,14 +58,29 @@ export default function ControlBar({
   darkMode
 }: ControlBarProps) {
   const { isMobile, isTouch } = useMobile();
+  const [showSettingsMenu, setShowSettingsMenu] = useState(false);
+  const settingsMenuRef = useRef<HTMLDivElement>(null);
   
   // No mobile/touch, controles sempre visíveis
   const isVisible = isTouch || visible;
   
-  // Tamanhos adaptativos
-  const buttonSize = isMobile ? 'w-12 h-12' : 'w-13 h-13';
-  const iconSize = isMobile ? 18 : 20;
-  const roundButtonSize = isMobile ? 'w-11 h-11' : 'w-13 h-13';
+  // Tamanhos adaptativos - reduzidos em 20%
+  const buttonSize = isMobile ? 'w-10 h-10' : 'w-11 h-11';
+  const iconSize = isMobile ? 15 : 16;
+  const roundButtonSize = isMobile ? 'w-9 h-9' : 'w-10 h-10';
+
+  // Fechar menu ao clicar fora
+  useEffect(() => {
+    const handleClickOutside = (event: MouseEvent) => {
+      if (settingsMenuRef.current && !settingsMenuRef.current.contains(event.target as Node)) {
+        setShowSettingsMenu(false);
+      }
+    };
+    if (showSettingsMenu) {
+      document.addEventListener('mousedown', handleClickOutside);
+    }
+    return () => document.removeEventListener('mousedown', handleClickOutside);
+  }, [showSettingsMenu]);
 
   // Formatar duração da gravação
   const formatDuration = (seconds: number) => {
@@ -68,6 +88,9 @@ export default function ControlBar({
     const secs = seconds % 60;
     return `${mins.toString().padStart(2, '0')}:${secs.toString().padStart(2, '0')}`;
   };
+
+  // Verificar se alguma configuração está ativa
+  const hasActiveSettings = isScreenSharing || hasBackgroundEffect || isTranscriptionActive;
 
   return (
     <>
@@ -77,10 +100,10 @@ export default function ControlBar({
           isVisible ? 'translate-y-0 opacity-100' : 'translate-y-full opacity-0'
         }`}
       >
-        <div className={`flex items-center ${isMobile ? 'gap-1.5 px-3 py-2' : 'gap-2 px-6 py-3'} rounded-2xl shadow-lg backdrop-blur-xl ${
+        <div className={`flex items-center ${isMobile ? 'gap-1 px-2.5 py-1.5' : 'gap-1.5 px-4 py-2'} rounded-xl shadow-lg backdrop-blur-xl ${
           darkMode 
-            ? 'bg-gray-900/60 border border-white/10' 
-            : 'bg-white/40 border border-white/30'
+            ? 'bg-gray-900/40 border border-white/10' 
+            : 'bg-white/30 border border-white/20'
         }`}
         style={{ 
           backdropFilter: 'blur(20px)',
@@ -96,6 +119,7 @@ export default function ControlBar({
                 ? 'bg-white/10 text-white hover:bg-white/20'
                 : 'bg-black/5 text-gray-700 hover:bg-black/10'
             }`}
+            title={isMuted ? 'Ativar microfone' : 'Desativar microfone'}
           >
             {isMuted ? <MicOff size={iconSize} /> : <Mic size={iconSize} />}
           </button>
@@ -110,6 +134,7 @@ export default function ControlBar({
                 ? 'bg-white/10 text-white hover:bg-white/20'
                 : 'bg-black/5 text-gray-700 hover:bg-black/10'
             }`}
+            title={isVideoOff ? 'Ativar câmera' : 'Desativar câmera'}
           >
             {isVideoOff ? <VideoOff size={iconSize} /> : <Video size={iconSize} />}
           </button>
@@ -133,46 +158,150 @@ export default function ControlBar({
             </button>
           )}
 
-          {/* Screen Share - esconder no mobile (não suportado na maioria) */}
-          {!isMobile && (
+          {/* Settings Button with Submenu */}
+          <div className="relative" ref={settingsMenuRef}>
             <button
-              onClick={onToggleScreenShare}
+              onClick={() => setShowSettingsMenu(!showSettingsMenu)}
               className={`${buttonSize} rounded-xl flex items-center justify-center transition-all duration-150 hover:scale-105 active:scale-95 ${
-                isScreenSharing
+                hasActiveSettings || showSettingsMenu
                   ? 'bg-blue-500/90 text-white'
                   : darkMode
                   ? 'bg-white/10 text-white hover:bg-white/20'
                   : 'bg-black/5 text-gray-700 hover:bg-black/10'
               }`}
+              title="Configurações"
             >
-              <Monitor size={iconSize} />
+              <Settings size={iconSize} className={showSettingsMenu ? 'rotate-90' : ''} style={{ transition: 'transform 0.2s' }} />
             </button>
-          )}
 
-          {/* Transcription Toggle - só para usuários autenticados */}
-          {!isMobile && isAuthenticated && (
-            <button
-              onClick={onToggleTranscriptionActive}
-              className={`${buttonSize} rounded-xl flex items-center justify-center transition-all duration-150 hover:scale-105 active:scale-95 ${
-                isTranscriptionActive
-                  ? 'bg-green-500/90 text-white'
-                  : darkMode
-                  ? 'bg-white/10 text-white hover:bg-white/20'
-                  : 'bg-black/5 text-gray-700 hover:bg-black/10'
-              }`}
-              title={isTranscriptionActive ? 'Desativar transcrição' : 'Ativar transcrição'}
-            >
-              {isTranscriptionActive ? <FileText size={iconSize} /> : <FileTextIcon size={iconSize} className="opacity-50" />}
-            </button>
-          )}
+            {/* Settings Submenu */}
+            {showSettingsMenu && (
+              <div 
+                className={`absolute bottom-full left-1/2 -translate-x-1/2 mb-3 rounded-xl shadow-xl overflow-hidden ${
+                  darkMode 
+                    ? 'bg-gray-900/40 border border-white/10' 
+                    : 'bg-white/30 border border-white/20'
+                }`}
+                style={{ 
+                  backdropFilter: 'blur(20px)',
+                  WebkitBackdropFilter: 'blur(20px)',
+                  minWidth: '180px'
+                }}
+              >
+                <div className={`px-2.5 py-1.5 border-b ${darkMode ? 'border-white/10' : 'border-black/10'}`}>
+                  <div className="flex items-center justify-between">
+                    <span className={`text-[10px] font-semibold ${darkMode ? 'text-white/70' : 'text-gray-600'}`}>
+                      Configurações
+                    </span>
+                    <button 
+                      onClick={() => setShowSettingsMenu(false)}
+                      className={`p-0.5 rounded hover:bg-white/10 ${darkMode ? 'text-white/70' : 'text-gray-500'}`}
+                    >
+                      <X size={12} />
+                    </button>
+                  </div>
+                </div>
+
+                <div className="py-0.5">
+                  {/* Screen Share - esconder no mobile */}
+                  {!isMobile && (
+                    <button
+                      onClick={() => { onToggleScreenShare(); setShowSettingsMenu(false); }}
+                      className={`w-full px-2.5 py-2 flex items-center gap-2.5 transition-colors ${
+                        darkMode 
+                          ? 'hover:bg-white/10 text-white' 
+                          : 'hover:bg-black/5 text-gray-700'
+                      }`}
+                    >
+                      <div className={`w-6 h-6 rounded-md flex items-center justify-center ${
+                        isScreenSharing 
+                          ? 'bg-blue-500/90 text-white' 
+                          : darkMode ? 'bg-white/10' : 'bg-black/10'
+                      }`}>
+                        <Monitor size={13} />
+                      </div>
+                      <div className="flex-1 text-left">
+                        <div className={`text-xs font-medium ${darkMode ? 'text-white' : 'text-gray-900'}`}>
+                          Compartilhar Tela
+                        </div>
+                        <div className={`text-[10px] ${darkMode ? 'text-white/50' : 'text-gray-500'}`}>
+                          {isScreenSharing ? 'Compartilhando' : 'Desativado'}
+                        </div>
+                      </div>
+                      <div className={`w-1.5 h-1.5 rounded-full ${isScreenSharing ? 'bg-blue-500' : darkMode ? 'bg-white/30' : 'bg-gray-400'}`} />
+                    </button>
+                  )}
+
+                  {/* Background Effect */}
+                  {onToggleBackgroundSelector && (
+                    <button
+                      onClick={() => { onToggleBackgroundSelector(); setShowSettingsMenu(false); }}
+                      className={`w-full px-2.5 py-2 flex items-center gap-2.5 transition-colors ${
+                        darkMode 
+                          ? 'hover:bg-white/10 text-white' 
+                          : 'hover:bg-black/5 text-gray-700'
+                      }`}
+                    >
+                      <div className={`w-6 h-6 rounded-md flex items-center justify-center ${
+                        hasBackgroundEffect 
+                          ? 'bg-purple-500/90 text-white' 
+                          : darkMode ? 'bg-white/10' : 'bg-black/10'
+                      }`}>
+                        <Image size={13} />
+                      </div>
+                      <div className="flex-1 text-left">
+                        <div className={`text-xs font-medium ${darkMode ? 'text-white' : 'text-gray-900'}`}>
+                          Fundo de Tela
+                        </div>
+                        <div className={`text-[10px] ${darkMode ? 'text-white/50' : 'text-gray-500'}`}>
+                          {hasBackgroundEffect ? 'Efeito ativo' : 'Sem efeito'}
+                        </div>
+                      </div>
+                      <div className={`w-1.5 h-1.5 rounded-full ${hasBackgroundEffect ? 'bg-purple-500' : darkMode ? 'bg-white/30' : 'bg-gray-400'}`} />
+                    </button>
+                  )}
+
+                  {/* Transcription Toggle - só para usuários autenticados */}
+                  {isAuthenticated && (
+                    <button
+                      onClick={() => { onToggleTranscriptionActive(); setShowSettingsMenu(false); }}
+                      className={`w-full px-2.5 py-2 flex items-center gap-2.5 transition-colors ${
+                        darkMode 
+                          ? 'hover:bg-white/10 text-white' 
+                          : 'hover:bg-black/5 text-gray-700'
+                      }`}
+                    >
+                      <div className={`w-6 h-6 rounded-md flex items-center justify-center ${
+                        isTranscriptionActive 
+                          ? 'bg-green-500/90 text-white' 
+                          : darkMode ? 'bg-white/10' : 'bg-black/10'
+                      }`}>
+                        {isTranscriptionActive ? <FileText size={13} /> : <FileTextIcon size={13} />}
+                      </div>
+                      <div className="flex-1 text-left">
+                        <div className={`text-xs font-medium ${darkMode ? 'text-white' : 'text-gray-900'}`}>
+                          Transcrição
+                        </div>
+                        <div className={`text-[10px] ${darkMode ? 'text-white/50' : 'text-gray-500'}`}>
+                          {isTranscriptionActive ? 'Ativa' : 'Desativada'}
+                        </div>
+                      </div>
+                      <div className={`w-1.5 h-1.5 rounded-full ${isTranscriptionActive ? 'bg-green-500' : darkMode ? 'bg-white/30' : 'bg-gray-400'}`} />
+                    </button>
+                  )}
+                </div>
+              </div>
+            )}
+          </div>
 
           {/* Separator */}
-          <div className={`w-px ${isMobile ? 'h-6 mx-1' : 'h-8 mx-2'} ${darkMode ? 'bg-white/20' : 'bg-black/10'}`} />
+          <div className={`w-px ${isMobile ? 'h-5 mx-0.5' : 'h-6 mx-1'} ${darkMode ? 'bg-white/20' : 'bg-black/10'}`} />
 
           {/* Leave Meeting */}
           <button
             onClick={onLeaveMeeting}
             className={`${buttonSize} rounded-xl bg-red-500/90 text-white flex items-center justify-center transition-all duration-150 hover:scale-105 active:scale-95 hover:bg-red-600`}
+            title="Sair da reunião"
           >
             <PhoneOff size={iconSize} />
           </button>
@@ -249,6 +378,7 @@ export default function ControlBar({
             backdropFilter: 'blur(20px)',
             WebkitBackdropFilter: 'blur(20px)'
           }}
+          title="Chat"
         >
           <MessageCircle size={iconSize} />
           

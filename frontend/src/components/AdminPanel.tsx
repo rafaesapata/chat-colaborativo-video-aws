@@ -3,7 +3,8 @@ import { useNavigate } from 'react-router-dom';
 import { 
   Shield, Users, Video, Trash2, UserX, RefreshCw, 
   Clock, Server, Activity, ArrowLeft, AlertTriangle,
-  ChevronDown, ChevronUp, UserPlus, Crown
+  ChevronDown, ChevronUp, UserPlus, Crown, Calendar,
+  Key, Copy, Eye, EyeOff, Plus, ExternalLink, FileText
 } from 'lucide-react';
 import { useAuth } from '../contexts/AuthContext';
 
@@ -46,6 +47,30 @@ interface AdminUsers {
   currentUser: string;
 }
 
+interface ScheduledMeeting {
+  scheduleId: string;
+  title: string;
+  description?: string;
+  scheduledAt: string;
+  duration: number;
+  createdBy: string;
+  roomId: string;
+  meetingUrl: string;
+  participants: string[];
+  status: string;
+}
+
+interface ApiKey {
+  keyId: string;
+  name: string;
+  createdBy: string;
+  createdAt: string;
+  lastUsed?: string;
+  usageCount: number;
+  isActive: boolean;
+  permissions: string[];
+}
+
 interface AdminPanelProps {
   darkMode: boolean;
 }
@@ -61,8 +86,26 @@ export default function AdminPanel({ darkMode }: AdminPanelProps) {
   const [expandedRoom, setExpandedRoom] = useState<string | null>(null);
   const [actionLoading, setActionLoading] = useState<string | null>(null);
   const [newAdminInput, setNewAdminInput] = useState('');
-  const [activeTab, setActiveTab] = useState<'rooms' | 'admins'>('rooms');
+  const [activeTab, setActiveTab] = useState<'rooms' | 'admins' | 'schedule' | 'apikeys'>('rooms');
   const [cleanupResult, setCleanupResult] = useState<string | null>(null);
+  
+  // Schedule state
+  const [scheduledMeetings, setScheduledMeetings] = useState<ScheduledMeeting[]>([]);
+  const [showScheduleForm, setShowScheduleForm] = useState(false);
+  const [scheduleForm, setScheduleForm] = useState({
+    title: '',
+    description: '',
+    scheduledAt: '',
+    duration: 60,
+    participants: '',
+  });
+  
+  // API Keys state
+  const [apiKeys, setApiKeys] = useState<ApiKey[]>([]);
+  const [showApiKeyForm, setShowApiKeyForm] = useState(false);
+  const [newApiKeyName, setNewApiKeyName] = useState('');
+  const [newApiKey, setNewApiKey] = useState<string | null>(null);
+  const [showApiKey, setShowApiKey] = useState(false);
 
   const fetchData = useCallback(async () => {
     if (!user?.login) return;
@@ -71,7 +114,7 @@ export default function AdminPanel({ darkMode }: AdminPanelProps) {
     setError(null);
     
     try {
-      const [roomsRes, statsRes, adminsRes] = await Promise.all([
+      const [roomsRes, statsRes, adminsRes, scheduleRes, apiKeysRes] = await Promise.all([
         fetch(`${CHIME_API_URL}/admin/rooms`, {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
@@ -87,6 +130,16 @@ export default function AdminPanel({ darkMode }: AdminPanelProps) {
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({ userLogin: user.login }),
         }),
+        fetch(`${CHIME_API_URL}/schedule/list`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ userLogin: user.login }),
+        }),
+        fetch(`${CHIME_API_URL}/admin/api-keys`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ userLogin: user.login }),
+        }),
       ]);
 
       if (!roomsRes.ok || !statsRes.ok) {
@@ -97,10 +150,14 @@ export default function AdminPanel({ darkMode }: AdminPanelProps) {
       const roomsData = await roomsRes.json();
       const statsData = await statsRes.json();
       const adminsData = adminsRes.ok ? await adminsRes.json() : null;
+      const scheduleData = scheduleRes.ok ? await scheduleRes.json() : { meetings: [] };
+      const apiKeysData = apiKeysRes.ok ? await apiKeysRes.json() : { apiKeys: [] };
 
       setRooms(roomsData.rooms || []);
       setStats(statsData.stats || null);
       setAdminUsers(adminsData);
+      setScheduledMeetings(scheduleData.meetings || []);
+      setApiKeys(apiKeysData.apiKeys || []);
     } catch (err: any) {
       setError(err.message || 'Erro ao carregar dados');
     } finally {
@@ -256,6 +313,116 @@ export default function AdminPanel({ darkMode }: AdminPanelProps) {
     } finally {
       setActionLoading(null);
     }
+  };
+
+  // Schedule handlers
+  const handleCreateSchedule = async () => {
+    if (!scheduleForm.title || !scheduleForm.scheduledAt) {
+      alert('Preencha título e data/hora');
+      return;
+    }
+    
+    setActionLoading('create-schedule');
+    try {
+      const res = await fetch(`${CHIME_API_URL}/schedule/create`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          userLogin: user?.login,
+          title: scheduleForm.title,
+          description: scheduleForm.description,
+          scheduledAt: new Date(scheduleForm.scheduledAt).toISOString(),
+          duration: scheduleForm.duration,
+          participants: scheduleForm.participants.split(',').map(p => p.trim()).filter(Boolean),
+        }),
+      });
+
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error || 'Falha ao agendar');
+      
+      setScheduledMeetings(prev => [...prev, data.meeting]);
+      setShowScheduleForm(false);
+      setScheduleForm({ title: '', description: '', scheduledAt: '', duration: 60, participants: '' });
+    } catch (err: any) {
+      alert(err.message || 'Erro ao agendar reunião');
+    } finally {
+      setActionLoading(null);
+    }
+  };
+
+  const handleCancelSchedule = async (scheduleId: string) => {
+    if (!confirm('Cancelar este agendamento?')) return;
+    
+    setActionLoading(scheduleId);
+    try {
+      const res = await fetch(`${CHIME_API_URL}/schedule/cancel`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ userLogin: user?.login, scheduleId }),
+      });
+
+      if (!res.ok) throw new Error('Falha ao cancelar');
+      
+      setScheduledMeetings(prev => prev.filter(m => m.scheduleId !== scheduleId));
+    } catch (err) {
+      alert('Erro ao cancelar agendamento');
+    } finally {
+      setActionLoading(null);
+    }
+  };
+
+  // API Key handlers
+  const handleCreateApiKey = async () => {
+    if (!newApiKeyName.trim()) {
+      alert('Digite um nome para a chave');
+      return;
+    }
+    
+    setActionLoading('create-apikey');
+    try {
+      const res = await fetch(`${CHIME_API_URL}/admin/api-keys/create`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ userLogin: user?.login, name: newApiKeyName }),
+      });
+
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error || 'Falha ao criar chave');
+      
+      setNewApiKey(data.apiKey);
+      setApiKeys(prev => [...prev, data.keyInfo]);
+      setNewApiKeyName('');
+    } catch (err: any) {
+      alert(err.message || 'Erro ao criar API Key');
+    } finally {
+      setActionLoading(null);
+    }
+  };
+
+  const handleRevokeApiKey = async (keyId: string) => {
+    if (!confirm('Revogar esta chave? Esta ação não pode ser desfeita.')) return;
+    
+    setActionLoading(keyId);
+    try {
+      const res = await fetch(`${CHIME_API_URL}/admin/api-keys/revoke`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ userLogin: user?.login, keyId }),
+      });
+
+      if (!res.ok) throw new Error('Falha ao revogar');
+      
+      setApiKeys(prev => prev.map(k => k.keyId === keyId ? { ...k, isActive: false } : k));
+    } catch (err) {
+      alert('Erro ao revogar chave');
+    } finally {
+      setActionLoading(null);
+    }
+  };
+
+  const copyToClipboard = (text: string) => {
+    navigator.clipboard.writeText(text);
+    alert('Copiado para a área de transferência!');
   };
 
   if (!isAuthenticated) {
@@ -433,6 +600,28 @@ export default function AdminPanel({ darkMode }: AdminPanelProps) {
           >
             <Shield size={18} />
             Administradores
+          </button>
+          <button
+            onClick={() => setActiveTab('schedule')}
+            className={`flex-1 py-2 px-4 rounded-lg font-medium transition flex items-center justify-center gap-2 ${
+              activeTab === 'schedule'
+                ? darkMode ? 'bg-gray-700 text-white' : 'bg-white text-gray-900 shadow'
+                : darkMode ? 'text-gray-400 hover:text-white' : 'text-gray-600 hover:text-gray-900'
+            }`}
+          >
+            <Calendar size={18} />
+            Agendamentos
+          </button>
+          <button
+            onClick={() => setActiveTab('apikeys')}
+            className={`flex-1 py-2 px-4 rounded-lg font-medium transition flex items-center justify-center gap-2 ${
+              activeTab === 'apikeys'
+                ? darkMode ? 'bg-gray-700 text-white' : 'bg-white text-gray-900 shadow'
+                : darkMode ? 'text-gray-400 hover:text-white' : 'text-gray-600 hover:text-gray-900'
+            }`}
+          >
+            <Key size={18} />
+            API Keys
           </button>
         </div>
 
@@ -672,6 +861,386 @@ export default function AdminPanel({ darkMode }: AdminPanelProps) {
                 </p>
               </div>
             )}
+          </div>
+        )}
+
+        {/* Schedule Tab */}
+        {activeTab === 'schedule' && (
+          <div className={`rounded-xl ${darkMode ? 'bg-gray-800' : 'bg-white'} shadow-lg overflow-hidden`}>
+            <div className={`px-6 py-4 border-b ${darkMode ? 'border-gray-700' : 'border-gray-200'} flex items-center justify-between`}>
+              <h2 className="text-lg font-semibold flex items-center gap-2">
+                <Calendar size={20} />
+                Agendamentos ({scheduledMeetings.length})
+              </h2>
+              <button
+                onClick={() => setShowScheduleForm(!showScheduleForm)}
+                className={`flex items-center gap-2 px-4 py-2 rounded-lg ${
+                  darkMode ? 'bg-green-600 hover:bg-green-700' : 'bg-green-500 hover:bg-green-600'
+                } text-white`}
+              >
+                <Plus size={18} />
+                Agendar Reunião
+              </button>
+            </div>
+
+            {/* Schedule Form */}
+            {showScheduleForm && (
+              <div className={`px-6 py-4 border-b ${darkMode ? 'border-gray-700 bg-gray-700/30' : 'border-gray-200 bg-gray-50'}`}>
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                  <div>
+                    <label className={`block text-sm font-medium mb-1 ${darkMode ? 'text-gray-300' : 'text-gray-700'}`}>
+                      Título *
+                    </label>
+                    <input
+                      type="text"
+                      value={scheduleForm.title}
+                      onChange={(e) => setScheduleForm(prev => ({ ...prev, title: e.target.value }))}
+                      placeholder="Reunião de Equipe"
+                      className={`w-full px-4 py-2 rounded-lg border ${
+                        darkMode 
+                          ? 'bg-gray-700 border-gray-600 text-white placeholder-gray-400' 
+                          : 'bg-white border-gray-300 text-gray-900'
+                      }`}
+                    />
+                  </div>
+                  <div>
+                    <label className={`block text-sm font-medium mb-1 ${darkMode ? 'text-gray-300' : 'text-gray-700'}`}>
+                      Data e Hora *
+                    </label>
+                    <input
+                      type="datetime-local"
+                      value={scheduleForm.scheduledAt}
+                      onChange={(e) => setScheduleForm(prev => ({ ...prev, scheduledAt: e.target.value }))}
+                      className={`w-full px-4 py-2 rounded-lg border ${
+                        darkMode 
+                          ? 'bg-gray-700 border-gray-600 text-white' 
+                          : 'bg-white border-gray-300 text-gray-900'
+                      }`}
+                    />
+                  </div>
+                  <div>
+                    <label className={`block text-sm font-medium mb-1 ${darkMode ? 'text-gray-300' : 'text-gray-700'}`}>
+                      Duração (minutos)
+                    </label>
+                    <input
+                      type="number"
+                      value={scheduleForm.duration}
+                      onChange={(e) => setScheduleForm(prev => ({ ...prev, duration: parseInt(e.target.value) || 60 }))}
+                      min={15}
+                      max={480}
+                      className={`w-full px-4 py-2 rounded-lg border ${
+                        darkMode 
+                          ? 'bg-gray-700 border-gray-600 text-white' 
+                          : 'bg-white border-gray-300 text-gray-900'
+                      }`}
+                    />
+                  </div>
+                  <div>
+                    <label className={`block text-sm font-medium mb-1 ${darkMode ? 'text-gray-300' : 'text-gray-700'}`}>
+                      Participantes (emails separados por vírgula)
+                    </label>
+                    <input
+                      type="text"
+                      value={scheduleForm.participants}
+                      onChange={(e) => setScheduleForm(prev => ({ ...prev, participants: e.target.value }))}
+                      placeholder="user1@email.com, user2@email.com"
+                      className={`w-full px-4 py-2 rounded-lg border ${
+                        darkMode 
+                          ? 'bg-gray-700 border-gray-600 text-white placeholder-gray-400' 
+                          : 'bg-white border-gray-300 text-gray-900'
+                      }`}
+                    />
+                  </div>
+                  <div className="md:col-span-2">
+                    <label className={`block text-sm font-medium mb-1 ${darkMode ? 'text-gray-300' : 'text-gray-700'}`}>
+                      Descrição
+                    </label>
+                    <textarea
+                      value={scheduleForm.description}
+                      onChange={(e) => setScheduleForm(prev => ({ ...prev, description: e.target.value }))}
+                      placeholder="Descrição da reunião..."
+                      rows={2}
+                      className={`w-full px-4 py-2 rounded-lg border ${
+                        darkMode 
+                          ? 'bg-gray-700 border-gray-600 text-white placeholder-gray-400' 
+                          : 'bg-white border-gray-300 text-gray-900'
+                      }`}
+                    />
+                  </div>
+                </div>
+                <div className="flex justify-end gap-2 mt-4">
+                  <button
+                    onClick={() => setShowScheduleForm(false)}
+                    className={`px-4 py-2 rounded-lg ${
+                      darkMode ? 'bg-gray-600 hover:bg-gray-500' : 'bg-gray-200 hover:bg-gray-300'
+                    }`}
+                  >
+                    Cancelar
+                  </button>
+                  <button
+                    onClick={handleCreateSchedule}
+                    disabled={actionLoading === 'create-schedule'}
+                    className={`px-4 py-2 rounded-lg flex items-center gap-2 ${
+                      darkMode ? 'bg-green-600 hover:bg-green-700' : 'bg-green-500 hover:bg-green-600'
+                    } text-white ${actionLoading === 'create-schedule' ? 'opacity-50' : ''}`}
+                  >
+                    <Calendar size={18} />
+                    Agendar
+                  </button>
+                </div>
+              </div>
+            )}
+
+            {/* Scheduled Meetings List */}
+            {scheduledMeetings.length === 0 ? (
+              <div className="p-8 text-center">
+                <Calendar size={48} className={`mx-auto mb-4 ${darkMode ? 'text-gray-600' : 'text-gray-300'}`} />
+                <p className={darkMode ? 'text-gray-400' : 'text-gray-500'}>Nenhuma reunião agendada</p>
+              </div>
+            ) : (
+              <div className="divide-y divide-gray-700">
+                {scheduledMeetings.map(meeting => (
+                  <div key={meeting.scheduleId} className={`px-6 py-4 ${darkMode ? 'hover:bg-gray-700/50' : 'hover:bg-gray-50'}`}>
+                    <div className="flex items-center justify-between">
+                      <div className="flex-1">
+                        <div className="flex items-center gap-3">
+                          <span className="font-semibold">{meeting.title}</span>
+                          <span className={`text-xs px-2 py-1 rounded ${
+                            meeting.status === 'scheduled' 
+                              ? darkMode ? 'bg-blue-900/50 text-blue-300' : 'bg-blue-100 text-blue-700'
+                              : meeting.status === 'completed'
+                              ? darkMode ? 'bg-green-900/50 text-green-300' : 'bg-green-100 text-green-700'
+                              : darkMode ? 'bg-red-900/50 text-red-300' : 'bg-red-100 text-red-700'
+                          }`}>
+                            {meeting.status === 'scheduled' ? 'Agendada' : meeting.status === 'completed' ? 'Concluída' : 'Cancelada'}
+                          </span>
+                        </div>
+                        <div className={`mt-1 text-sm ${darkMode ? 'text-gray-400' : 'text-gray-500'}`}>
+                          <span className="flex items-center gap-1">
+                            <Clock size={12} />
+                            {new Date(meeting.scheduledAt).toLocaleString('pt-BR')} • {meeting.duration} min
+                          </span>
+                          {meeting.description && (
+                            <p className="mt-1">{meeting.description}</p>
+                          )}
+                        </div>
+                        <div className={`mt-2 text-xs ${darkMode ? 'text-gray-500' : 'text-gray-400'}`}>
+                          Sala: <span className="font-mono">{meeting.roomId}</span>
+                        </div>
+                      </div>
+                      <div className="flex items-center gap-2">
+                        <button
+                          onClick={() => copyToClipboard(meeting.meetingUrl)}
+                          className={`p-2 rounded-lg transition ${
+                            darkMode ? 'hover:bg-gray-600 text-gray-400' : 'hover:bg-gray-200 text-gray-500'
+                          }`}
+                          title="Copiar link"
+                        >
+                          <Copy size={18} />
+                        </button>
+                        <a
+                          href={meeting.meetingUrl}
+                          target="_blank"
+                          rel="noopener noreferrer"
+                          className={`p-2 rounded-lg transition ${
+                            darkMode ? 'hover:bg-blue-900/50 text-blue-400' : 'hover:bg-blue-100 text-blue-500'
+                          }`}
+                          title="Abrir sala"
+                        >
+                          <ExternalLink size={18} />
+                        </a>
+                        {meeting.status === 'scheduled' && (
+                          <button
+                            onClick={() => handleCancelSchedule(meeting.scheduleId)}
+                            disabled={actionLoading === meeting.scheduleId}
+                            className={`p-2 rounded-lg transition ${
+                              darkMode ? 'hover:bg-red-900/50 text-red-400' : 'hover:bg-red-100 text-red-500'
+                            } ${actionLoading === meeting.scheduleId ? 'opacity-50' : ''}`}
+                            title="Cancelar"
+                          >
+                            <Trash2 size={18} />
+                          </button>
+                        )}
+                      </div>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            )}
+          </div>
+        )}
+
+        {/* API Keys Tab */}
+        {activeTab === 'apikeys' && (
+          <div className={`rounded-xl ${darkMode ? 'bg-gray-800' : 'bg-white'} shadow-lg overflow-hidden`}>
+            <div className={`px-6 py-4 border-b ${darkMode ? 'border-gray-700' : 'border-gray-200'} flex items-center justify-between`}>
+              <h2 className="text-lg font-semibold flex items-center gap-2">
+                <Key size={20} />
+                API Keys ({apiKeys.filter(k => k.isActive).length} ativas)
+              </h2>
+              <div className="flex items-center gap-2">
+                <a
+                  href={`${CHIME_API_URL}/docs`}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className={`flex items-center gap-2 px-4 py-2 rounded-lg ${
+                    darkMode ? 'bg-blue-600 hover:bg-blue-700' : 'bg-blue-500 hover:bg-blue-600'
+                  } text-white`}
+                >
+                  <FileText size={18} />
+                  Documentação API
+                </a>
+                <button
+                  onClick={() => setShowApiKeyForm(!showApiKeyForm)}
+                  className={`flex items-center gap-2 px-4 py-2 rounded-lg ${
+                    darkMode ? 'bg-green-600 hover:bg-green-700' : 'bg-green-500 hover:bg-green-600'
+                  } text-white`}
+                >
+                  <Plus size={18} />
+                  Nova Chave
+                </button>
+              </div>
+            </div>
+
+            {/* New API Key Form */}
+            {showApiKeyForm && (
+              <div className={`px-6 py-4 border-b ${darkMode ? 'border-gray-700 bg-gray-700/30' : 'border-gray-200 bg-gray-50'}`}>
+                <div className="flex gap-2">
+                  <input
+                    type="text"
+                    value={newApiKeyName}
+                    onChange={(e) => setNewApiKeyName(e.target.value)}
+                    placeholder="Nome da chave (ex: Integração CRM)"
+                    className={`flex-1 px-4 py-2 rounded-lg border ${
+                      darkMode 
+                        ? 'bg-gray-700 border-gray-600 text-white placeholder-gray-400' 
+                        : 'bg-white border-gray-300 text-gray-900'
+                    }`}
+                    onKeyDown={(e) => e.key === 'Enter' && handleCreateApiKey()}
+                  />
+                  <button
+                    onClick={handleCreateApiKey}
+                    disabled={actionLoading === 'create-apikey' || !newApiKeyName.trim()}
+                    className={`px-4 py-2 rounded-lg flex items-center gap-2 ${
+                      darkMode ? 'bg-green-600 hover:bg-green-700' : 'bg-green-500 hover:bg-green-600'
+                    } text-white ${(actionLoading === 'create-apikey' || !newApiKeyName.trim()) ? 'opacity-50' : ''}`}
+                  >
+                    <Key size={18} />
+                    Criar
+                  </button>
+                </div>
+              </div>
+            )}
+
+            {/* New API Key Display */}
+            {newApiKey && (
+              <div className={`px-6 py-4 border-b ${darkMode ? 'border-green-700 bg-green-900/20' : 'border-green-200 bg-green-50'}`}>
+                <div className="flex items-center justify-between">
+                  <div>
+                    <p className={`text-sm font-medium ${darkMode ? 'text-green-300' : 'text-green-700'}`}>
+                      ✓ Chave criada com sucesso! Copie agora, ela não será exibida novamente.
+                    </p>
+                    <div className="flex items-center gap-2 mt-2">
+                      <code className={`px-3 py-1 rounded font-mono text-sm ${
+                        darkMode ? 'bg-gray-700 text-green-300' : 'bg-white text-green-700'
+                      }`}>
+                        {showApiKey ? newApiKey : '••••••••••••••••••••••••••••••••'}
+                      </code>
+                      <button
+                        onClick={() => setShowApiKey(!showApiKey)}
+                        className={`p-1 rounded ${darkMode ? 'hover:bg-gray-600' : 'hover:bg-gray-200'}`}
+                      >
+                        {showApiKey ? <EyeOff size={16} /> : <Eye size={16} />}
+                      </button>
+                      <button
+                        onClick={() => copyToClipboard(newApiKey)}
+                        className={`p-1 rounded ${darkMode ? 'hover:bg-gray-600' : 'hover:bg-gray-200'}`}
+                      >
+                        <Copy size={16} />
+                      </button>
+                    </div>
+                  </div>
+                  <button
+                    onClick={() => { setNewApiKey(null); setShowApiKey(false); }}
+                    className={`px-3 py-1 rounded text-sm ${
+                      darkMode ? 'bg-gray-600 hover:bg-gray-500' : 'bg-gray-200 hover:bg-gray-300'
+                    }`}
+                  >
+                    Fechar
+                  </button>
+                </div>
+              </div>
+            )}
+
+            {/* API Keys List */}
+            {apiKeys.length === 0 ? (
+              <div className="p-8 text-center">
+                <Key size={48} className={`mx-auto mb-4 ${darkMode ? 'text-gray-600' : 'text-gray-300'}`} />
+                <p className={darkMode ? 'text-gray-400' : 'text-gray-500'}>Nenhuma API Key criada</p>
+                <p className={`text-sm mt-2 ${darkMode ? 'text-gray-500' : 'text-gray-400'}`}>
+                  Crie uma chave para integrar sistemas externos
+                </p>
+              </div>
+            ) : (
+              <div className="divide-y divide-gray-700">
+                {apiKeys.map(key => (
+                  <div key={key.keyId} className={`px-6 py-4 ${darkMode ? 'hover:bg-gray-700/50' : 'hover:bg-gray-50'} ${!key.isActive ? 'opacity-50' : ''}`}>
+                    <div className="flex items-center justify-between">
+                      <div className="flex-1">
+                        <div className="flex items-center gap-3">
+                          <span className="font-semibold">{key.name}</span>
+                          <span className={`text-xs px-2 py-1 rounded ${
+                            key.isActive 
+                              ? darkMode ? 'bg-green-900/50 text-green-300' : 'bg-green-100 text-green-700'
+                              : darkMode ? 'bg-red-900/50 text-red-300' : 'bg-red-100 text-red-700'
+                          }`}>
+                            {key.isActive ? 'Ativa' : 'Revogada'}
+                          </span>
+                        </div>
+                        <div className={`mt-1 text-sm ${darkMode ? 'text-gray-400' : 'text-gray-500'}`}>
+                          <span>Criada em {new Date(key.createdAt).toLocaleDateString('pt-BR')} por {key.createdBy}</span>
+                          {key.lastUsed && (
+                            <span className="ml-3">• Último uso: {new Date(key.lastUsed).toLocaleDateString('pt-BR')}</span>
+                          )}
+                          <span className="ml-3">• {key.usageCount} requisições</span>
+                        </div>
+                        <div className={`mt-1 text-xs ${darkMode ? 'text-gray-500' : 'text-gray-400'}`}>
+                          ID: <span className="font-mono">{key.keyId}</span>
+                        </div>
+                      </div>
+                      {key.isActive && (
+                        <button
+                          onClick={() => handleRevokeApiKey(key.keyId)}
+                          disabled={actionLoading === key.keyId}
+                          className={`p-2 rounded-lg transition ${
+                            darkMode ? 'hover:bg-red-900/50 text-red-400' : 'hover:bg-red-100 text-red-500'
+                          } ${actionLoading === key.keyId ? 'opacity-50' : ''}`}
+                          title="Revogar chave"
+                        >
+                          <Trash2 size={18} />
+                        </button>
+                      )}
+                    </div>
+                  </div>
+                ))}
+              </div>
+            )}
+
+            {/* API Documentation Info */}
+            <div className={`px-6 py-4 ${darkMode ? 'bg-blue-900/20 border-t border-gray-700' : 'bg-blue-50 border-t border-gray-200'}`}>
+              <h3 className={`text-sm font-semibold mb-2 ${darkMode ? 'text-blue-300' : 'text-blue-700'}`}>
+                Como usar a API
+              </h3>
+              <p className={`text-sm ${darkMode ? 'text-gray-400' : 'text-gray-600'}`}>
+                Adicione o header <code className={`px-1 rounded ${darkMode ? 'bg-gray-700' : 'bg-gray-200'}`}>X-API-Key</code> com sua chave em todas as requisições.
+              </p>
+              <pre className={`mt-2 p-3 rounded-lg text-xs overflow-x-auto ${darkMode ? 'bg-gray-700' : 'bg-gray-100'}`}>
+{`curl -X POST ${CHIME_API_URL}/api/v1/meetings/schedule \\
+  -H "Content-Type: application/json" \\
+  -H "X-API-Key: sua-chave-aqui" \\
+  -d '{"title": "Reunião", "scheduledAt": "2025-01-15T10:00:00Z"}'`}
+              </pre>
+            </div>
           </div>
         )}
 

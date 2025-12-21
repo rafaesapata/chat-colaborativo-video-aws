@@ -9,11 +9,13 @@ import MeetingSetupModal from './MeetingSetupModal';
 import InterviewSuggestions from './InterviewSuggestions';
 import EndMeetingModal from './EndMeetingModal';
 import InterviewReportModal from './InterviewReportModal';
+import BackgroundSelector from './BackgroundSelector';
 import { FeatureErrorBoundary } from './FeatureErrorBoundary';
 import { useWebSocket } from '../hooks/useWebSocket';
 import { useChimeMeeting } from '../hooks/useChimeMeeting';
 import { useTranscription } from '../hooks/useTranscription';
 import { useInterviewAssistant } from '../hooks/useInterviewAssistant';
+import { useBackgroundEffect } from '../hooks/useBackgroundEffect';
 import { useMobile } from '../hooks/useMobile';
 import { useAuth } from '../contexts/AuthContext';
 import { useRecording } from '../hooks/useRecording';
@@ -116,6 +118,7 @@ export default function MeetingRoom({ darkMode }: { darkMode: boolean }) {
     leaveMeeting: leaveChimeMeeting,
     bindVideoElement,
     bindAudioElement,
+    audioVideo, // Para background effect
   } = useChimeMeeting({
     roomId: roomId || '',
     odUserId: userId,
@@ -193,6 +196,31 @@ export default function MeetingRoom({ darkMode }: { darkMode: boolean }) {
     userLogin: user?.login || '',
     meetingId: currentMeetingId || '',
   });
+
+  // Background Effect (blur/virtual background)
+  const [showBackgroundSelector, setShowBackgroundSelector] = useState(false);
+  const {
+    isSupported: isBackgroundSupported,
+    isProcessing: isBackgroundProcessing,
+    currentBackground,
+    availableBackgrounds,
+    error: backgroundError,
+    setBackground,
+  } = useBackgroundEffect({
+    isAuthenticated,
+    audioVideo,
+    isVideoEnabled,
+  });
+
+  // Debug log para background effect
+  useEffect(() => {
+    console.log('[MeetingRoom] Background Effect:', {
+      isBackgroundSupported,
+      currentBackground: currentBackground?.name,
+      availableBackgrounds: availableBackgrounds?.length,
+      isAuthenticated
+    });
+  }, [isBackgroundSupported, currentBackground, availableBackgrounds, isAuthenticated]);
 
   // Ref para controlar se a gravação automática já foi iniciada
   const autoRecordingStartedRef = useRef(false);
@@ -542,11 +570,13 @@ export default function MeetingRoom({ darkMode }: { darkMode: boolean }) {
           isAuthenticated={isAuthenticated}
           isAdmin={isAdmin}
           isSpeakerMode={isSpeakerMode}
+          hasBackgroundEffect={currentBackground.type !== 'none'}
           onToggleMute={handleToggleMute}
           onToggleVideo={handleToggleVideo}
           onToggleScreenShare={handleToggleScreenShare}
           onToggleTranscriptionActive={handleToggleTranscriptionActive}
           onToggleSpeakerMode={handleToggleSpeakerMode}
+          onToggleBackgroundSelector={isBackgroundSupported ? () => setShowBackgroundSelector(true) : undefined}
           onLeaveMeeting={handleLeaveMeeting}
           onToggleChat={handleToggleChat}
           onToggleTranscriptionPanel={handleToggleTranscription}
@@ -634,6 +664,21 @@ export default function MeetingRoom({ darkMode }: { darkMode: boolean }) {
           darkMode={darkMode}
         />
       </FeatureErrorBoundary>
+
+      {/* Background Selector Modal */}
+      {isBackgroundSupported && (
+        <BackgroundSelector
+          isOpen={showBackgroundSelector}
+          onClose={() => setShowBackgroundSelector(false)}
+          currentBackground={currentBackground}
+          availableBackgrounds={availableBackgrounds}
+          isProcessing={isBackgroundProcessing}
+          isAuthenticated={isAuthenticated}
+          error={backgroundError}
+          onSelect={setBackground}
+          darkMode={darkMode}
+        />
+      )}
 
       {/* Version Info Button */}
       <button
