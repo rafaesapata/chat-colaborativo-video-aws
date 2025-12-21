@@ -45,6 +45,8 @@ export function useTranscription({
   const recognitionRef = useRef<SpeechRecognition | null>(null);
   const isInitializedRef = useRef(false);
   const isTranscriptionEnabledRef = useRef(false);
+  const restartAttemptsRef = useRef(0);
+  const MAX_RESTART_ATTEMPTS = 5;
 
   // Manter ref sincronizada com state
   useEffect(() => {
@@ -171,34 +173,31 @@ export function useTranscription({
       }
     };
 
-    // BUG-002: Corrigir loop de restart com limite de tentativas
-    let restartAttempts = 0;
-    const MAX_RESTART_ATTEMPTS = 5;
-
     recognition.onend = () => {
       console.log('[Transcription] Speech recognition ended');
       setIsRecording(false);
       
       // Reiniciar se ainda estiver habilitado (com limite) - usar ref para valor atual
-      if (isTranscriptionEnabledRef.current && restartAttempts < MAX_RESTART_ATTEMPTS) {
-        restartAttempts++;
+      if (isTranscriptionEnabledRef.current && restartAttemptsRef.current < MAX_RESTART_ATTEMPTS) {
+        restartAttemptsRef.current++;
         setTimeout(() => {
           if (recognitionRef.current && isTranscriptionEnabledRef.current) {
             try {
               recognitionRef.current.start();
               // Reset contador após start bem-sucedido
-              setTimeout(() => { restartAttempts = 0; }, 5000);
+              setTimeout(() => { restartAttemptsRef.current = 0; }, 5000);
             } catch (error) {
               console.error('[Transcription] Error restarting recognition:', error);
               if (!(error as Error).message?.includes('already started')) {
-                restartAttempts++;
+                restartAttemptsRef.current++;
               }
             }
           }
         }, 100);
-      } else if (restartAttempts >= MAX_RESTART_ATTEMPTS) {
+      } else if (restartAttemptsRef.current >= MAX_RESTART_ATTEMPTS) {
         console.error('[Transcription] Max restart attempts reached, disabling');
         setIsTranscriptionEnabled(false);
+        restartAttemptsRef.current = 0;
       }
     };
 

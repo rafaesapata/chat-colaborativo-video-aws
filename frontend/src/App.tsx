@@ -1,5 +1,5 @@
 import { useState, Suspense, lazy } from 'react';
-import { BrowserRouter, Routes, Route, useNavigate, useParams } from 'react-router-dom';
+import { BrowserRouter, Routes, Route, useNavigate } from 'react-router-dom';
 import { Amplify } from 'aws-amplify';
 import Toast from './components/Toast';
 import ErrorBoundary from './components/ErrorBoundary';
@@ -11,6 +11,7 @@ const MeetingRoom = lazy(() => import('./components/MeetingRoom'));
 const PreviewScreen = lazy(() => import('./components/PreviewScreen'));
 const LoginScreen = lazy(() => import('./components/LoginScreen'));
 const MeetingHistory = lazy(() => import('./components/MeetingHistory'));
+const AdminPanel = lazy(() => import('./components/AdminPanel'));
 
 // Loading fallback
 const LoadingFallback = () => (
@@ -265,8 +266,6 @@ function HomePage({ darkMode, onToggleDarkMode }: HomePageProps) {
 
 // Componente wrapper para verificar se o usuário tem nome
 function MeetingWrapper({ darkMode }: { darkMode: boolean }) {
-  const { roomId } = useParams<{ roomId: string }>();
-  
   // Verificar nome em sessionStorage ao invés de URL
   const userName = sessionStorage.getItem('videochat_user_name');
   
@@ -314,6 +313,7 @@ function AuthenticatedRoutes() {
       <Routes>
         <Route path="/" element={<HomePage darkMode={darkMode} onToggleDarkMode={toggleDarkMode} />} />
         <Route path="/meeting/:roomId" element={<MeetingWrapper darkMode={darkMode} />} />
+        <Route path="/admin" element={<AdminPanel darkMode={darkMode} />} />
       </Routes>
     </Suspense>
   );

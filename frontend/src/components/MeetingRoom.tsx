@@ -21,8 +21,8 @@ import { meetingHistoryService } from '../services/meetingHistoryService';
 import { interviewAIService, InterviewReport } from '../services/interviewAIService';
 
 // Versão do aplicativo - atualizar a cada deploy
-const APP_VERSION = '3.0.3';
-const BUILD_DATE = '2025-12-20 17:45';
+const APP_VERSION = '3.5.0';
+const BUILD_DATE = '2025-12-21 00:50';
 
 interface Message {
   id: string;
@@ -101,9 +101,11 @@ export default function MeetingRoom({ darkMode }: { darkMode: boolean }) {
     isScreenSharing,
     connectionQuality,
     localAudioStream,
+    isSpeakerMode,
     toggleVideo,
     toggleAudio,
     toggleScreenShare,
+    toggleSpeakerMode,
     leaveMeeting: leaveChimeMeeting,
     bindVideoElement,
     bindAudioElement,
@@ -111,6 +113,7 @@ export default function MeetingRoom({ darkMode }: { darkMode: boolean }) {
     roomId: roomId || '',
     odUserId: userId,
     userName,
+    isAuthenticated,
   });
 
   // WebSocket para chat E transcrição
@@ -350,6 +353,10 @@ export default function MeetingRoom({ darkMode }: { darkMode: boolean }) {
     toggleTranscription();
   }, [toggleTranscription]);
 
+  const handleToggleSpeakerMode = useCallback(() => {
+    toggleSpeakerMode();
+  }, [toggleSpeakerMode]);
+
 
   // Se não é a aba principal
   if (!isMainTab) {
@@ -451,7 +458,6 @@ export default function MeetingRoom({ darkMode }: { darkMode: boolean }) {
           videoTiles={videoTiles}
           activeSpeakers={activeSpeakers}
           localUserId={userId}
-          localUserName={userName}
           isLocalVideoEnabled={isVideoEnabled}
           isLocalAudioEnabled={isAudioEnabled}
           bindVideoElement={bindVideoElement}
@@ -467,10 +473,12 @@ export default function MeetingRoom({ darkMode }: { darkMode: boolean }) {
         isScreenSharing={isScreenSharing}
         isTranscriptionActive={isTranscriptionEnabled}
         isAuthenticated={isAuthenticated}
+        isSpeakerMode={isSpeakerMode}
         onToggleMute={handleToggleMute}
         onToggleVideo={handleToggleVideo}
         onToggleScreenShare={handleToggleScreenShare}
         onToggleTranscriptionActive={handleToggleTranscriptionActive}
+        onToggleSpeakerMode={handleToggleSpeakerMode}
         onLeaveMeeting={handleLeaveMeeting}
         onToggleChat={handleToggleChat}
         onToggleTranscriptionPanel={handleToggleTranscription}
@@ -605,19 +613,6 @@ export default function MeetingRoom({ darkMode }: { darkMode: boolean }) {
           </span>
         </div>
       )}
-
-      {/* Chime SDK Badge */}
-      <div
-        className={`fixed ${isMobile ? 'bottom-24 right-2' : 'bottom-28 right-4'} z-40 flex items-center gap-1.5 px-2 py-1 rounded-full backdrop-blur-xl ${
-          darkMode ? 'bg-blue-900/60 text-blue-400 border border-blue-700/50' 
-                   : 'bg-blue-100/80 text-blue-700 border border-blue-300/50'
-        }`}
-        title="Powered by Amazon Chime SDK"
-      >
-        <span className={`${isMobile ? 'text-[9px]' : 'text-[10px]'} font-medium`}>
-          ⚡ Chime SDK
-        </span>
-      </div>
 
       {/* Version Info Modal */}
       {showVersionInfo && (

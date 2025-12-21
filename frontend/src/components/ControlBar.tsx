@@ -1,4 +1,4 @@
-import { Mic, MicOff, Video, VideoOff, Monitor, PhoneOff, MessageCircle, FileText, FileTextIcon, Circle } from 'lucide-react';
+import { Mic, MicOff, Video, VideoOff, Monitor, PhoneOff, MessageCircle, FileText, FileTextIcon, Circle, Volume2, VolumeX } from 'lucide-react';
 import { useMobile } from '../hooks/useMobile';
 
 interface ControlBarProps {
@@ -8,10 +8,12 @@ interface ControlBarProps {
   isScreenSharing: boolean;
   isTranscriptionActive: boolean;
   isAuthenticated: boolean;
+  isSpeakerMode?: boolean;
   onToggleMute: () => void;
   onToggleVideo: () => void;
   onToggleScreenShare: () => void;
   onToggleTranscriptionActive: () => void;
+  onToggleSpeakerMode?: () => void;
   onLeaveMeeting: () => void;
   onToggleChat: () => void;
   onToggleTranscriptionPanel: () => void;
@@ -31,10 +33,12 @@ export default function ControlBar({
   isScreenSharing,
   isTranscriptionActive,
   isAuthenticated,
+  isSpeakerMode = true,
   onToggleMute,
   onToggleVideo,
   onToggleScreenShare,
   onToggleTranscriptionActive,
+  onToggleSpeakerMode,
   onLeaveMeeting,
   onToggleChat,
   onToggleTranscriptionPanel,
@@ -107,6 +111,25 @@ export default function ControlBar({
           >
             {isVideoOff ? <VideoOff size={iconSize} /> : <Video size={iconSize} />}
           </button>
+
+          {/* Speaker Mode - apenas no mobile */}
+          {isMobile && onToggleSpeakerMode && (
+            <button
+              onClick={onToggleSpeakerMode}
+              className={`${buttonSize} rounded-xl flex items-center justify-center transition-all duration-150 hover:scale-105 active:scale-95 ${
+                isSpeakerMode
+                  ? darkMode
+                    ? 'bg-blue-500/90 text-white'
+                    : 'bg-blue-500/90 text-white'
+                  : darkMode
+                  ? 'bg-white/10 text-white hover:bg-white/20'
+                  : 'bg-black/5 text-gray-700 hover:bg-black/10'
+              }`}
+              title={isSpeakerMode ? 'Alto-falante ativo' : 'Fone de ouvido'}
+            >
+              {isSpeakerMode ? <Volume2 size={iconSize} /> : <VolumeX size={iconSize} />}
+            </button>
+          )}
 
           {/* Screen Share - esconder no mobile (não suportado na maioria) */}
           {!isMobile && (

@@ -17,7 +17,6 @@ interface ChimeVideoGridProps {
   videoTiles: VideoTile[];
   activeSpeakers: string[];
   localUserId: string;
-  localUserName: string;
   isLocalVideoEnabled: boolean;
   isLocalAudioEnabled: boolean;
   bindVideoElement: (tileId: number, element: HTMLVideoElement | null) => void;
@@ -139,11 +138,16 @@ const VideoTileComponent = memo(({
 
 VideoTileComponent.displayName = 'VideoTileComponent';
 
+// Sanitizar nome para evitar XSS
+const sanitizeName = (name: string): string => {
+  if (!name) return 'Participante';
+  return name.replace(/[<>"'&]/g, '').substring(0, 50) || 'Participante';
+};
+
 export default function ChimeVideoGrid({
   videoTiles,
   activeSpeakers,
   localUserId,
-  localUserName,
   isLocalVideoEnabled,
   isLocalAudioEnabled,
   bindVideoElement,
@@ -225,10 +229,10 @@ export default function ChimeVideoGrid({
           if (tile.odExternalUserId) {
             const parts = tile.odExternalUserId.split('|');
             if (parts.length > 1) {
-              userName = parts[1]; // Nome está após o pipe
+              userName = sanitizeName(parts[1]); // Nome está após o pipe
             } else {
               // Fallback para formato antigo
-              userName = tile.odExternalUserId.split('_').pop() || 'Participante';
+              userName = sanitizeName(tile.odExternalUserId.split('_').pop() || 'Participante');
             }
           }
 

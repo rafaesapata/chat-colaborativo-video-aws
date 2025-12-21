@@ -18,11 +18,26 @@ import {
 } from 'amazon-chime-sdk-js';
 
 const CHIME_API_URL = import.meta.env.VITE_CHIME_API_URL || import.meta.env.VITE_API_URL || '';
+const FETCH_TIMEOUT = 15000; // 15 segundos
+
+// Helper para fetch com timeout
+async function fetchWithTimeout(url: string, options: RequestInit, timeout = FETCH_TIMEOUT): Promise<Response> {
+  const controller = new AbortController();
+  const timeoutId = setTimeout(() => controller.abort(), timeout);
+  
+  try {
+    const response = await fetch(url, { ...options, signal: controller.signal });
+    return response;
+  } finally {
+    clearTimeout(timeoutId);
+  }
+}
 
 interface UseChimeMeetingProps {
   roomId: string;
   odUserId: string;
   userName?: string;
+  isAuthenticated?: boolean;
 }
 
 interface ChimeAttendee {
@@ -39,7 +54,7 @@ interface VideoTile {
   isContent: boolean;
 }
 
-export function useChimeMeeting({ roomId, odUserId, userName = 'Usuário' }: UseChimeMeetingProps) {
+export function useChimeMeeting({ roomId, odUserId, userName = 'Usuário', isAuthenticated = false }: UseChimeMeetingProps) {
   const [isJoined, setIsJoined] = useState(false);
   const [isJoining, setIsJoining] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -50,6 +65,8 @@ export function useChimeMeeting({ roomId, odUserId, userName = 'Usuário' }: Use
   const [isAudioEnabled, setIsAudioEnabled] = useState(true);
   const [isScreenSharing, setIsScreenSharing] = useState(false);
   const [connectionQuality, setConnectionQuality] = useState<'excellent' | 'good' | 'fair' | 'poor' | 'unknown'>('unknown');
+  const [isSpeakerMode, setIsSpeakerMode] = useState(true); // Alto-falante por padrão no mobile
+  const [audioOutputDevices, setAudioOutputDevices] = useState<MediaDeviceInfo[]>([]);
 
   const meetingSessionRef = useRef<DefaultMeetingSession | null>(null);
   const audioVideoRef = useRef<AudioVideoFacade | null>(null);
@@ -69,15 +86,16 @@ export function useChimeMeeting({ roomId, odUserId, userName = 'Usuário' }: Use
     try {
       console.log('[Chime] Entrando na reunião:', roomId);
 
-      // 1. Obter credenciais do backend
-      const response = await fetch(`${CHIME_API_URL}/meeting/join`, {
+      // 1. Obter credenciais do backend (com timeout)
+      const response = await fetchWithTimeout(`${CHIME_API_URL}/meeting/join`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ roomId, odUserId, userName }),
+        body: JSON.stringify({ roomId, odUserId, userName, isAuthenticated }),
       });
 
       if (!response.ok) {
-        throw new Error('Falha ao criar/entrar na reunião');
+        const errorData = await response.json().catch(() => ({}));
+        throw new Error(errorData.error || 'Falha ao criar/entrar na reunião');
       }
 
       const { meeting, attendee, otherAttendees } = await response.json();
@@ -133,7 +151,7 @@ export function useChimeMeeting({ roomId, odUserId, userName = 'Usuário' }: Use
       setError(err.message || 'Erro ao entrar na reunião');
       setIsJoining(false);
     }
-  }, [roomId, odUserId, userName, isJoining, isJoined]);
+  }, [roomId, odUserId, userName, isAuthenticated, isJoining, isJoined]);
 
   // Configurar observers do Chime
   const setupObservers = useCallback((session: DefaultMeetingSession) => {
@@ -275,6 +293,7 @@ export function useChimeMeeting({ roomId, odUserId, userName = 'Usuário' }: Use
 
       // Selecionar saída de áudio
       if (audioOutputDevices.length > 0) {
+        setAudioOutputDevices(audioOutputDevices);
         await audioVideo.chooseAudioOutput(audioOutputDevices[0].deviceId);
       }
 
@@ -304,20 +323,16 @@ export function useChimeMeeting({ roomId, odUserId, userName = 'Usuário' }: Use
       await deviceControllerRef.current.destroy();
     }
 
-    // Notificar backend
+    // Notificar backend (best effort, não bloqueia)
     if (meetingIdRef.current && odAttendeeIdRef.current) {
-      try {
-        await fetch(`${CHIME_API_URL}/meeting/leave`, {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({
-            meetingId: meetingIdRef.current,
-            odAttendeeId: odAttendeeIdRef.current
-          }),
-        });
-      } catch (e) {
-        console.warn('[Chime] Erro ao notificar saída:', e);
-      }
+      fetchWithTimeout(`${CHIME_API_URL}/meeting/leave`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          meetingId: meetingIdRef.current,
+          odAttendeeId: odAttendeeIdRef.current
+        }),
+      }, 5000).catch(e => console.warn('[Chime] Erro ao notificar saída:', e));
     }
 
     meetingSessionRef.current = null;
@@ -341,31 +356,33 @@ export function useChimeMeeting({ roomId, odUserId, userName = 'Usuário' }: Use
     setActiveSpeakers([]);
   }, []);
 
-  // Toggle vídeo
+  // Toggle vídeo - usando setState callback para evitar stale closure
   const toggleVideo = useCallback(() => {
     if (!audioVideoRef.current) return;
 
-    if (isVideoEnabled) {
-      audioVideoRef.current.stopLocalVideoTile();
-      setIsVideoEnabled(false);
-    } else {
-      audioVideoRef.current.startLocalVideoTile();
-      setIsVideoEnabled(true);
-    }
-  }, [isVideoEnabled]);
+    setIsVideoEnabled(prev => {
+      if (prev) {
+        audioVideoRef.current?.stopLocalVideoTile();
+      } else {
+        audioVideoRef.current?.startLocalVideoTile();
+      }
+      return !prev;
+    });
+  }, []);
 
-  // Toggle áudio
+  // Toggle áudio - usando setState callback para evitar stale closure
   const toggleAudio = useCallback(() => {
     if (!audioVideoRef.current) return;
 
-    if (isAudioEnabled) {
-      audioVideoRef.current.realtimeMuteLocalAudio();
-      setIsAudioEnabled(false);
-    } else {
-      audioVideoRef.current.realtimeUnmuteLocalAudio();
-      setIsAudioEnabled(true);
-    }
-  }, [isAudioEnabled]);
+    setIsAudioEnabled(prev => {
+      if (prev) {
+        audioVideoRef.current?.realtimeMuteLocalAudio();
+      } else {
+        audioVideoRef.current?.realtimeUnmuteLocalAudio();
+      }
+      return !prev;
+    });
+  }, []);
 
   // Compartilhar tela
   const startScreenShare = useCallback(async () => {
@@ -394,6 +411,33 @@ export function useChimeMeeting({ roomId, odUserId, userName = 'Usuário' }: Use
       await startScreenShare();
     }
   }, [isScreenSharing, startScreenShare, stopScreenShare]);
+
+  // Toggle alto-falante (para mobile)
+  const toggleSpeakerMode = useCallback(async () => {
+    if (!audioVideoRef.current || audioOutputDevices.length < 2) {
+      // Se não há dispositivos alternativos, tentar via setSinkId no elemento de áudio
+      setIsSpeakerMode(prev => !prev);
+      return;
+    }
+
+    try {
+      // Alternar entre dispositivos de saída
+      // Geralmente: índice 0 = fone/earpiece, índice 1 = alto-falante
+      const newMode = !isSpeakerMode;
+      const deviceIndex = newMode ? 0 : 1; // Alto-falante geralmente é o primeiro
+      
+      if (audioOutputDevices[deviceIndex]) {
+        await audioVideoRef.current.chooseAudioOutput(audioOutputDevices[deviceIndex].deviceId);
+      }
+      
+      setIsSpeakerMode(newMode);
+      console.log('[Chime] Modo de áudio alterado:', newMode ? 'Alto-falante' : 'Fone');
+    } catch (err) {
+      console.error('[Chime] Erro ao alternar saída de áudio:', err);
+      // Fallback: apenas alternar o estado para UI
+      setIsSpeakerMode(prev => !prev);
+    }
+  }, [isSpeakerMode, audioOutputDevices]);
 
   // Bind video element para um tile
   const bindVideoElement = useCallback((tileId: number, element: HTMLVideoElement | null) => {
@@ -426,14 +470,36 @@ export function useChimeMeeting({ roomId, odUserId, userName = 'Usuário' }: Use
     }
   }, [roomId, odUserId, isJoined, isJoining, joinMeeting]);
 
-  // Cleanup ao desmontar
+  // Cleanup ao desmontar - síncrono para garantir limpeza
   useEffect(() => {
     return () => {
-      if (isJoined) {
-        leaveMeeting();
+      // Cleanup síncrono imediato
+      if (audioVideoRef.current) {
+        try {
+          audioVideoRef.current.stop();
+        } catch (e) {
+          console.warn('[Chime] Erro ao parar audioVideo:', e);
+        }
       }
+      
+      // Limpar streams
+      setLocalAudioStream(prev => {
+        if (prev) {
+          prev.getTracks().forEach(t => t.stop());
+        }
+        return null;
+      });
+      
+      // Cleanup async em background (best effort)
+      deviceControllerRef.current?.destroy().catch(console.warn);
+      
+      // Limpar refs
+      meetingSessionRef.current = null;
+      audioVideoRef.current = null;
+      deviceControllerRef.current = null;
+      videoElementsRef.current.clear();
     };
-  }, [isJoined, leaveMeeting]);
+  }, []);
 
   return {
     // Estado
@@ -448,6 +514,7 @@ export function useChimeMeeting({ roomId, odUserId, userName = 'Usuário' }: Use
     isScreenSharing,
     connectionQuality,
     localAudioStream, // Stream para transcrição
+    isSpeakerMode, // Modo alto-falante (mobile)
     
     // Ações
     joinMeeting,
@@ -455,6 +522,7 @@ export function useChimeMeeting({ roomId, odUserId, userName = 'Usuário' }: Use
     toggleVideo,
     toggleAudio,
     toggleScreenShare,
+    toggleSpeakerMode, // Toggle alto-falante (mobile)
     bindVideoElement,
     bindAudioElement,
     

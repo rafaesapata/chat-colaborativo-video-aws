@@ -1,0 +1,10 @@
+{
+  "name": "meeting-cleanup",
+  "version": "1.0.0",
+  "description": "Lambda para limpeza automática de salas abandonadas",
+  "main": "index.js",
+  "dependencies": {
+    "@aws-sdk/client-chime-sdk-meetings": "^3.0.0",
+    "@aws-sdk/client-dynamodb": "^3.0.0"
+  }
+}

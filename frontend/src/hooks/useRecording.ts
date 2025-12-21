@@ -1,4 +1,5 @@
 import { useState, useRef, useCallback, useEffect } from 'react';
+import { meetingHistoryService } from '../services/meetingHistoryService';
 
 interface UseRecordingProps {
   roomId: string;
@@ -131,25 +132,14 @@ export function useRecording({ roomId, userLogin, meetingId }: UseRecordingProps
     }
   }, []);
 
-  // Salvar referência no histórico
-  const saveRecordingToHistory = useCallback((recordingKey: string, duration: number) => {
-    const historyKey = `videochat_meeting_history_${userLogin}`;
-    const stored = localStorage.getItem(historyKey);
-    
-    if (stored) {
-      try {
-        const history = JSON.parse(stored);
-        const meetingIndex = history.findIndex((m: any) => m.id === meetingId);
-        
-        if (meetingIndex >= 0) {
-          history[meetingIndex].recordingKey = recordingKey;
-          history[meetingIndex].recordingDuration = duration;
-          localStorage.setItem(historyKey, JSON.stringify(history));
-        }
-      } catch (e) {
-        console.error('[Recording] Erro ao salvar no histórico:', e);
-      }
+  // Salvar referência no histórico usando o service
+  const saveRecordingToHistory = useCallback((recordingKey: string, duration: number, recordingId?: string) => {
+    if (!userLogin || !meetingId) {
+      console.warn('[Recording] userLogin ou meetingId não disponível para salvar no histórico');
+      return;
     }
+    
+    meetingHistoryService.addRecording(userLogin, meetingId, recordingKey, duration, recordingId);
   }, [userLogin, meetingId]);
 
   // Fallback: salvar localmente
@@ -165,7 +155,7 @@ export function useRecording({ roomId, userLogin, meetingId }: UseRecordingProps
   }, [roomId]);
 
   // Upload para S3 via URL pré-assinada
-  const uploadRecording = useCallback(async (blob: Blob, duration: number) => {
+  const uploadRecording = useCallback(async (blob: Blob, duration: number): Promise<string> => {
     try {
       console.log('[Recording] Iniciando upload...', blob.size, 'bytes');
       
@@ -190,7 +180,7 @@ export function useRecording({ roomId, userLogin, meetingId }: UseRecordingProps
         throw new Error('Falha ao obter URL de upload');
       }
 
-      const { uploadUrl, recordingKey } = await response.json();
+      const { uploadUrl, recordingKey, recordingId } = await response.json();
 
       // Upload direto para S3
       const uploadResponse = await fetch(uploadUrl, {
@@ -208,7 +198,7 @@ export function useRecording({ roomId, userLogin, meetingId }: UseRecordingProps
       console.log('[Recording] Upload concluído:', recordingKey);
       
       // Salvar referência no histórico local
-      saveRecordingToHistory(recordingKey, duration);
+      saveRecordingToHistory(recordingKey, duration, recordingId);
       
       return recordingKey;
     } catch (error) {
@@ -219,8 +209,24 @@ export function useRecording({ roomId, userLogin, meetingId }: UseRecordingProps
 
   // Iniciar gravação
   const startRecording = useCallback(async () => {
+    // Prevenir múltiplas gravações simultâneas
+    if (isRecordingRef.current) {
+      console.warn('[Recording] Gravação já em andamento');
+      return false;
+    }
+
     try {
       console.log('[Recording] Iniciando gravação...');
+      
+      // Limpar AudioContext anterior se existir
+      if (audioContextRef.current) {
+        try {
+          await audioContextRef.current.close();
+        } catch (e) {
+          console.warn('[Recording] Erro ao fechar AudioContext anterior:', e);
+        }
+        audioContextRef.current = null;
+      }
       
       // Criar canvas de composição
       const canvas = createCompositeCanvas();
@@ -328,14 +334,22 @@ export function useRecording({ roomId, userLogin, meetingId }: UseRecordingProps
         const blob = new Blob(chunksRef.current, { type: mimeType });
         console.log('[Recording] Blob criado:', blob.size, 'bytes');
         
-        // Upload para S3 ou salvar localmente
-        if (USE_S3_STORAGE && blob.size > 0) {
+        // Validar tamanho do blob
+        const MAX_BLOB_SIZE = 500 * 1024 * 1024; // 500MB
+        if (blob.size > MAX_BLOB_SIZE) {
+          console.warn('[Recording] Gravação muito grande, salvando localmente');
+          saveRecordingLocally(blob);
+          saveRecordingToHistory(`local_${Date.now()}`, finalDuration);
+        } else if (USE_S3_STORAGE && blob.size > 0) {
+          // Upload para S3
           try {
-            await uploadRecording(blob, finalDuration);
-            console.log('[Recording] Upload para S3 concluído');
+            const recordingKey = await uploadRecording(blob, finalDuration);
+            console.log('[Recording] Upload para S3 concluído:', recordingKey);
+            // O uploadRecording já salva no histórico
           } catch (error) {
             console.warn('[Recording] Falha no upload, salvando localmente');
             saveRecordingLocally(blob);
+            saveRecordingToHistory(`local_${Date.now()}`, finalDuration);
           }
         } else if (blob.size > 0) {
           // Sem API configurada, salvar localmente
@@ -343,11 +357,17 @@ export function useRecording({ roomId, userLogin, meetingId }: UseRecordingProps
           saveRecordingToHistory(`local_${Date.now()}`, finalDuration);
         }
         
-        // Limpar
+        // Limpar recursos
         chunksRef.current = [];
         streamRef.current?.getTracks().forEach(t => t.stop());
-        audioContextRef.current?.close();
-        audioContextRef.current = null;
+        if (audioContextRef.current) {
+          try {
+            await audioContextRef.current.close();
+          } catch (e) {
+            console.warn('[Recording] Erro ao fechar AudioContext:', e);
+          }
+          audioContextRef.current = null;
+        }
       };
 
       mediaRecorderRef.current = mediaRecorder;

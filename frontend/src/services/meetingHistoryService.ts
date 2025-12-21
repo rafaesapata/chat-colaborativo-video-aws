@@ -136,6 +136,34 @@ export const meetingHistoryService = {
     }
   },
 
+  // Adicionar gravação a uma reunião
+  addRecording(
+    userLogin: string,
+    meetingId: string,
+    recordingKey: string,
+    recordingDuration: number,
+    recordingId?: string
+  ): void {
+    const history = this.getHistory(userLogin);
+    const meetingIndex = history.findIndex(m => m.id === meetingId);
+    
+    if (meetingIndex >= 0) {
+      history[meetingIndex].recordingKey = recordingKey;
+      history[meetingIndex].recordingDuration = recordingDuration;
+      if (recordingId) {
+        history[meetingIndex].recordingId = recordingId;
+      }
+      
+      localStorage.setItem(
+        `${HISTORY_STORAGE_KEY}_${userLogin}`,
+        JSON.stringify(history)
+      );
+      console.log('[MeetingHistory] Gravação adicionada:', recordingKey);
+    } else {
+      console.warn('[MeetingHistory] Reunião não encontrada para adicionar gravação:', meetingId);
+    }
+  },
+
   // Limpar todo o histórico de um usuário
   clearHistory(userLogin: string): void {
     localStorage.removeItem(`${HISTORY_STORAGE_KEY}_${userLogin}`);
