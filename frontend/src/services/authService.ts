@@ -10,6 +10,7 @@ export interface AuthUser {
   login: string;
   isAuthenticated: boolean;
   token?: string;
+  role?: 'user' | 'admin' | 'superadmin';
 }
 
 export interface LoginResponse {
@@ -20,6 +21,7 @@ export interface LoginResponse {
 
 const AUTH_STORAGE_KEY = 'videochat_auth';
 const USER_NAME_PREFIX = 'videochat_username_';
+const CHIME_API_URL = import.meta.env.VITE_CHIME_API_URL || import.meta.env.VITE_API_URL || '';
 
 export const authService = {
   async login(credentials: LoginCredentials): Promise<LoginResponse> {
@@ -44,10 +46,14 @@ export const authService = {
           }
         }
         
+        // Verificar role do usuário no backend de video chat
+        const role = await this.checkUserRole(credentials.login);
+        
         const authUser: AuthUser = {
           login: credentials.login,
           isAuthenticated: true,
           token: typeof token === 'string' ? token : 'authenticated',
+          role,
         };
         // ✅ Usar secureStorage
         secureStorage.setItem(AUTH_STORAGE_KEY, JSON.stringify(authUser));
@@ -59,6 +65,24 @@ export const authService = {
       console.error('Erro no login:', error);
       return { success: false, message: 'Erro ao conectar com o servidor' };
     }
+  },
+
+  async checkUserRole(userLogin: string): Promise<'user' | 'admin' | 'superadmin'> {
+    try {
+      const response = await fetch(`${CHIME_API_URL}/admin/check-role`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ userLogin }),
+      });
+      
+      if (response.ok) {
+        const data = await response.json();
+        return data.role || 'user';
+      }
+    } catch (error) {
+      console.warn('[Auth] Erro ao verificar role:', error);
+    }
+    return 'user';
   },
 
   logout(): void {

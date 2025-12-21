@@ -23,8 +23,8 @@ import { interviewAIService, InterviewReport } from '../services/interviewAIServ
 import { featureDetector } from '../utils/featureDetection';
 
 // Versão do aplicativo - atualizar a cada deploy
-const APP_VERSION = '3.5.4';
-const BUILD_DATE = '2025-12-21 04:00';
+const APP_VERSION = '3.5.6';
+const BUILD_DATE = '2025-12-21 05:00';
 
 interface Message {
   id: string;
@@ -38,7 +38,7 @@ export default function MeetingRoom({ darkMode }: { darkMode: boolean }) {
   const { roomId } = useParams<{ roomId: string }>();
   const navigate = useNavigate();
   const { isMobile, isTouch } = useMobile();
-  const { isAuthenticated, user } = useAuth();
+  const { isAuthenticated, user, isAdmin } = useAuth();
   
   const userName = sessionStorage.getItem('videochat_user_name') || 'Usuário';
   
@@ -193,6 +193,23 @@ export default function MeetingRoom({ darkMode }: { darkMode: boolean }) {
     userLogin: user?.login || '',
     meetingId: currentMeetingId || '',
   });
+
+  // Ref para controlar se a gravação automática já foi iniciada
+  const autoRecordingStartedRef = useRef(false);
+
+  // Auto-iniciar gravação quando entrar na sala (para todos os usuários autenticados)
+  // A gravação é silenciosa - apenas admins podem ver/controlar
+  useEffect(() => {
+    if (isJoined && isAuthenticated && user?.login && currentMeetingId && !autoRecordingStartedRef.current && !isRecordingMeeting) {
+      autoRecordingStartedRef.current = true;
+      // Pequeno delay para garantir que tudo está pronto
+      const timer = setTimeout(() => {
+        console.log('[MeetingRoom] Iniciando gravação automática...');
+        startRecording();
+      }, 2000);
+      return () => clearTimeout(timer);
+    }
+  }, [isJoined, isAuthenticated, user?.login, currentMeetingId, isRecordingMeeting, startRecording]);
 
 
   // Setup modal para usuários autenticados
@@ -523,6 +540,7 @@ export default function MeetingRoom({ darkMode }: { darkMode: boolean }) {
           isScreenSharing={isScreenSharing}
           isTranscriptionActive={isTranscriptionEnabled}
           isAuthenticated={isAuthenticated}
+          isAdmin={isAdmin}
           isSpeakerMode={isSpeakerMode}
           onToggleMute={handleToggleMute}
           onToggleVideo={handleToggleVideo}

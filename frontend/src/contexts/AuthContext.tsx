@@ -9,6 +9,8 @@ interface AuthContextType {
   logout: () => void;
   continueAsGuest: () => void;
   isGuest: boolean;
+  isAdmin: boolean;
+  isSuperAdmin: boolean;
 }
 
 const AuthContext = createContext<AuthContextType | undefined>(undefined);
@@ -61,6 +63,9 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     sessionStorage.setItem('videochat_guest', 'true');
   };
 
+  const isAdmin = user?.role === 'admin' || user?.role === 'superadmin';
+  const isSuperAdmin = user?.role === 'superadmin';
+
   return (
     <AuthContext.Provider
       value={{
@@ -71,6 +76,8 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         logout,
         continueAsGuest,
         isGuest,
+        isAdmin,
+        isSuperAdmin,
       }}
     >
       {children}

@@ -131,6 +131,9 @@ async function handlePlaybackUrl(body, headers) {
     };
   }
 
+  // Sanitizar userLogin da mesma forma que no upload
+  const sanitizedUserLogin = userLogin.replace(/[^a-zA-Z0-9_.-]/g, '_').substring(0, 64);
+  
   let key = recordingKey;
 
   // Se passou recordingId, buscar a key no DynamoDB
@@ -148,8 +151,9 @@ async function handlePlaybackUrl(body, headers) {
       };
     }
 
-    // Verificar se o usuário tem acesso
-    if (result.Item.userLogin !== userLogin) {
+    // Verificar se o usuário tem acesso (comparar com userLogin salvo no DynamoDB)
+    const savedUserLogin = result.Item.userLogin;
+    if (savedUserLogin !== userLogin && savedUserLogin !== sanitizedUserLogin) {
       return {
         statusCode: 403,
         headers,
@@ -169,7 +173,10 @@ async function handlePlaybackUrl(body, headers) {
   }
 
   // Verificar se a key pertence ao usuário (segurança)
-  if (!key.includes(userLogin)) {
+  // A key tem formato: recordings/{userLogin}/{roomId}/{meetingId}_{timestamp}.webm
+  // Verificar tanto o userLogin original quanto o sanitizado
+  if (!key.includes(userLogin) && !key.includes(sanitizedUserLogin)) {
+    console.log('Acesso negado - key:', key, 'userLogin:', userLogin, 'sanitized:', sanitizedUserLogin);
     return {
       statusCode: 403,
       headers,

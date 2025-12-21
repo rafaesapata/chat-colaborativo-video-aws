@@ -1,4 +1,4 @@
-import { useState, Suspense, lazy } from 'react';
+import { useState, Suspense, lazy, useCallback } from 'react';
 import { BrowserRouter, Routes, Route, useNavigate } from 'react-router-dom';
 import { Amplify } from 'aws-amplify';
 import Toast from './components/Toast';
@@ -266,12 +266,19 @@ function HomePage({ darkMode, onToggleDarkMode }: HomePageProps) {
 
 // Componente wrapper para verificar se o usuário tem nome
 function MeetingWrapper({ darkMode }: { darkMode: boolean }) {
-  // Verificar nome em sessionStorage ao invés de URL
-  const userName = sessionStorage.getItem('videochat_user_name');
+  // Estado local para forçar re-render quando o nome é definido
+  const [hasUserName, setHasUserName] = useState(() => {
+    return !!sessionStorage.getItem('videochat_user_name');
+  });
+
+  // Callback para quando o usuário define o nome no PreviewScreen
+  const handleNameSet = useCallback(() => {
+    setHasUserName(true);
+  }, []);
   
   // Se não tem nome, mostrar tela de preview com câmera/mic
-  if (!userName) {
-    return <PreviewScreen darkMode={darkMode} />;
+  if (!hasUserName) {
+    return <PreviewScreen darkMode={darkMode} onJoin={handleNameSet} />;
   }
   
   // Se tem nome, mostrar a sala

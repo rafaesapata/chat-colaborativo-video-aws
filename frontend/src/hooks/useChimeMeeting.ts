@@ -29,6 +29,21 @@ import { tracing } from '../utils/tracing';
 const CHIME_API_URL = import.meta.env.VITE_CHIME_API_URL || import.meta.env.VITE_API_URL || '';
 const FETCH_TIMEOUT = 15000; // 15 segundos
 
+// Gerar idempotency key única por sessão de join
+function generateIdempotencyKey(roomId: string, userId: string): string {
+  const sessionKey = sessionStorage.getItem(`idempotency_${roomId}_${userId}`);
+  if (sessionKey) return sessionKey;
+  
+  const newKey = `${roomId}-${userId}-${Date.now()}-${Math.random().toString(36).substring(2, 10)}`;
+  sessionStorage.setItem(`idempotency_${roomId}_${userId}`, newKey);
+  return newKey;
+}
+
+// Limpar idempotency key ao sair
+function clearIdempotencyKey(roomId: string, userId: string): void {
+  sessionStorage.removeItem(`idempotency_${roomId}_${userId}`);
+}
+
 // Helper para fetch com timeout e tracing
 async function fetchWithTimeout(url: string, options: RequestInit, timeout = FETCH_TIMEOUT): Promise<Response> {
   const controller = new AbortController();
@@ -118,12 +133,17 @@ export function useChimeMeeting({ roomId, odUserId, userName = 'Usuário', isAut
     try {
       console.log('[Chime] Entrando na reunião:', roomId);
 
-      // 1. Obter credenciais do backend (com Circuit Breaker e Request Coalescing)
+      // 1. Obter credenciais do backend (com Circuit Breaker, Request Coalescing e Idempotency Key)
+      const idempotencyKey = generateIdempotencyKey(roomId, odUserId);
+      
       const response = await requestCoalescer.coalesce(coalesceKey, async () => {
         return chimeCircuitBreaker.execute(async () => {
           return fetchWithTimeout(`${CHIME_API_URL}/meeting/join`, {
             method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
+            headers: { 
+              'Content-Type': 'application/json',
+              'X-Idempotency-Key': idempotencyKey,
+            },
             body: JSON.stringify({ roomId, odUserId, userName, isAuthenticated }),
           });
         });
@@ -418,6 +438,9 @@ export function useChimeMeeting({ roomId, odUserId, userName = 'Usuário', isAut
       localAudioStreamRef.current = null;
     }
     setLocalAudioStream(null);
+    
+    // Limpar idempotency key para permitir novo join
+    clearIdempotencyKey(roomId, odUserId);
 
     setIsJoined(false);
     setAttendees([]);

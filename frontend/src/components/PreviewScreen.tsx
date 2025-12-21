@@ -6,9 +6,10 @@ import { authService } from '../services/authService';
 
 interface PreviewScreenProps {
   darkMode: boolean;
+  onJoin?: () => void;
 }
 
-export default function PreviewScreen({ darkMode }: PreviewScreenProps) {
+export default function PreviewScreen({ darkMode, onJoin }: PreviewScreenProps) {
   const { roomId } = useParams<{ roomId: string }>();
   const navigate = useNavigate();
   const videoRef = useRef<HTMLVideoElement>(null);
@@ -201,8 +202,13 @@ export default function PreviewScreen({ darkMode }: PreviewScreenProps) {
     if (selectedVideoDevice) sessionStorage.setItem('videochat_video_device', selectedVideoDevice);
     if (selectedAudioDevice) sessionStorage.setItem('videochat_audio_device', selectedAudioDevice);
     
-    // Navegar sem o nome na URL
-    navigate(`/meeting/${roomId}`);
+    // Notificar o wrapper que o nome foi definido (força re-render)
+    if (onJoin) {
+      onJoin();
+    } else {
+      // Fallback: navegar (não deve acontecer, mas por segurança)
+      navigate(`/meeting/${roomId}`);
+    }
   };
 
   const handleGoHome = () => {

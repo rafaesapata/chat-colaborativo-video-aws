@@ -8,6 +8,7 @@ interface ControlBarProps {
   isScreenSharing: boolean;
   isTranscriptionActive: boolean;
   isAuthenticated: boolean;
+  isAdmin?: boolean;
   isSpeakerMode?: boolean;
   onToggleMute: () => void;
   onToggleVideo: () => void;
@@ -33,6 +34,7 @@ export default function ControlBar({
   isScreenSharing,
   isTranscriptionActive,
   isAuthenticated,
+  isAdmin = false,
   isSpeakerMode = true,
   onToggleMute,
   onToggleVideo,
@@ -183,8 +185,8 @@ export default function ControlBar({
           isVisible ? 'translate-y-0 opacity-100' : 'translate-y-full opacity-0'
         }`}
       >
-        {/* Recording Button - só para usuários autenticados */}
-        {isAuthenticated && onStartRecording && onStopRecording && (
+        {/* Recording Button - só para admins e super admins */}
+        {isAdmin && onStartRecording && onStopRecording && (
           <button
             onClick={isRecording ? onStopRecording : onStartRecording}
             className={`relative ${roundButtonSize} rounded-full flex items-center justify-center transition-all duration-150 hover:scale-105 active:scale-95 shadow-lg backdrop-blur-xl ${

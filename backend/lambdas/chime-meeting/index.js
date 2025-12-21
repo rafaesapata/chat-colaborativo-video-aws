@@ -506,6 +506,7 @@ const routes = Object.freeze({
   'POST:/admin/users/add': handleAdminAddUser,
   'POST:/admin/users/remove': handleAdminRemoveUser,
   'POST:/admin/cleanup': handleAdminCleanup,
+  'POST:/admin/check-role': handleCheckUserRole,
 });
 
 // ============ HANDLER PRINCIPAL ============
@@ -1430,4 +1431,26 @@ async function handleAdminCleanup(body) {
     log(LOG_LEVELS.ERROR, 'Erro no cleanup', { error: error.message });
     return errorResponse(500, 'Erro ao executar limpeza');
   }
+}
+
+// ============ ADMIN: CHECK USER ROLE ============
+async function handleCheckUserRole(body) {
+  const { userLogin } = body;
+  
+  if (!userLogin) {
+    return errorResponse(400, 'userLogin é obrigatório');
+  }
+  
+  // Verificar se é super admin
+  if (isSuperAdmin(userLogin)) {
+    return successResponse({ role: 'superadmin', userLogin });
+  }
+  
+  // Verificar se é admin
+  if (await isAdmin(userLogin)) {
+    return successResponse({ role: 'admin', userLogin });
+  }
+  
+  // Usuário comum
+  return successResponse({ role: 'user', userLogin });
 }
