@@ -1,4 +1,4 @@
-import { useEffect, useRef } from 'react';
+import { useEffect, useRef, useState } from 'react';
 
 interface Transcription {
   transcriptionId: string;
@@ -16,19 +16,41 @@ interface Props {
 
 export default function LiveTranscription({ transcriptions, speakingUsers }: Props) {
   const scrollRef = useRef<HTMLDivElement>(null);
-  const recentTranscriptions = transcriptions.slice(-10);
+  const [autoScroll, setAutoScroll] = useState(true);
+  const [showScrollButton, setShowScrollButton] = useState(false);
 
+  // Auto scroll quando novas transcrições chegam
   useEffect(() => {
-    console.log('[LiveTranscription] Transcrições atualizadas:', transcriptions.length);
-    if (scrollRef.current) {
-      scrollRef.current.scrollTop = scrollRef.current.scrollHeight;
+    if (autoScroll && scrollRef.current) {
+      scrollRef.current.scrollTo({
+        top: scrollRef.current.scrollHeight,
+        behavior: 'smooth'
+      });
     }
-  }, [transcriptions]);
+  }, [transcriptions, autoScroll]);
 
-  useEffect(() => {
-    console.log('[LiveTranscription] Componente montado');
-    return () => console.log('[LiveTranscription] Componente desmontado');
-  }, []);
+  // Detectar scroll manual do usuário
+  const handleScroll = () => {
+    if (!scrollRef.current) return;
+    
+    const { scrollTop, scrollHeight, clientHeight } = scrollRef.current;
+    const isAtBottom = scrollHeight - scrollTop - clientHeight < 50;
+    
+    setAutoScroll(isAtBottom);
+    setShowScrollButton(!isAtBottom && transcriptions.length > 0);
+  };
+
+  // Scroll para o final
+  const scrollToBottom = () => {
+    if (scrollRef.current) {
+      scrollRef.current.scrollTo({
+        top: scrollRef.current.scrollHeight,
+        behavior: 'smooth'
+      });
+      setAutoScroll(true);
+      setShowScrollButton(false);
+    }
+  };
 
   const getUserName = (userId: string) => {
     return `Usuário ${userId.substring(userId.length - 4)}`;
@@ -57,7 +79,7 @@ export default function LiveTranscription({ transcriptions, speakingUsers }: Pro
   };
 
   return (
-    <div className="h-full flex flex-col bg-white p-4">
+    <div className="h-full flex flex-col bg-white p-4 relative">
       <div className="flex items-center justify-between mb-3 pb-3 border-b border-gray-200">
         <h3 className="font-bold text-base flex items-center gap-2">
           <svg className="w-6 h-6 text-purple-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -78,9 +100,10 @@ export default function LiveTranscription({ transcriptions, speakingUsers }: Pro
       
       <div 
         ref={scrollRef}
+        onScroll={handleScroll}
         className="flex-1 space-y-3 overflow-y-auto pr-2 custom-scrollbar"
       >
-        {recentTranscriptions.map((trans) => {
+        {transcriptions.map((trans) => {
           const isSpeaking = speakingUsers.has(trans.userId);
           const userColor = getUserColor(trans.userId);
           
@@ -154,6 +177,19 @@ export default function LiveTranscription({ transcriptions, speakingUsers }: Pro
           </div>
         )}
       </div>
+
+      {/* Botão para voltar ao final */}
+      {showScrollButton && (
+        <button
+          onClick={scrollToBottom}
+          className="absolute bottom-20 right-6 bg-purple-600 hover:bg-purple-700 text-white rounded-full p-2 shadow-lg transition-all duration-200 flex items-center gap-1 text-xs font-medium"
+        >
+          <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 14l-7 7m0 0l-7-7m7 7V3" />
+          </svg>
+          Novas
+        </button>
+      )}
 
       <style>{`
         .custom-scrollbar::-webkit-scrollbar {
