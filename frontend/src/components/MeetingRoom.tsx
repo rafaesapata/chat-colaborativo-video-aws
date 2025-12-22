@@ -157,6 +157,9 @@ export default function MeetingRoom({ darkMode }: { darkMode: boolean }) {
   const { isMainTab } = useTabSync(roomId || '', userId);
 
   // Transcrição - usa stream de áudio do Chime
+  // Verificar se o usuário local está falando (baseado no activeSpeakers do Chime)
+  const isLocalUserSpeaking = activeSpeakers.includes(userId);
+
   const {
     transcriptions,
     isTranscriptionEnabled,
@@ -169,7 +172,8 @@ export default function MeetingRoom({ darkMode }: { darkMode: boolean }) {
     userName,
     sendMessage,
     addMessageHandler,
-    localStream: localAudioStream // Stream de áudio do Chime
+    localStream: localAudioStream, // Stream de áudio do Chime
+    isLocalUserSpeaking // Passa o estado de fala do Chime para filtrar transcrições
   });
 
   // Assistente de entrevista
