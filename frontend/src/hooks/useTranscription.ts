@@ -68,11 +68,15 @@ export function useTranscription({
       const speakerId = transcriptionData.userId;
       const isLocalUser = speakerId === userId;
       
-      // Usar o nome que veio na mensagem, ou "Você" se for o usuário local
-      let speakerName = transcriptionData.userName || transcriptionData.speakerLabel;
+      // IMPORTANTE: Ignorar transcrições do próprio usuário que vêm via WebSocket
+      // pois já foram adicionadas localmente pelo onresult do SpeechRecognition
       if (isLocalUser) {
-        speakerName = 'Você';
-      } else if (!speakerName) {
+        return;
+      }
+      
+      // Para outros usuários, usar o nome que veio na mensagem
+      let speakerName = transcriptionData.userName || transcriptionData.speakerLabel;
+      if (!speakerName) {
         speakerName = `Participante ${speakerId.substring(speakerId.length - 4)}`;
       }
       
@@ -92,15 +96,8 @@ export function useTranscription({
         transcribedText: newTranscription.transcribedText,
         isPartial: newTranscription.isPartial
       })) {
-        console.log('[Transcription] Transcrição duplicada ignorada');
         return;
       }
-
-      console.log('[Transcription] Nova transcrição recebida:', {
-        from: speakerName,
-        isLocal: isLocalUser,
-        text: newTranscription.transcribedText?.substring(0, 50)
-      });
 
       setTranscriptions(prev => {
         // Se é uma transcrição parcial, substituir a última parcial do mesmo usuário
@@ -145,8 +142,24 @@ export function useTranscription({
         }
       }
 
-      // Enviar transcrição parcial
+      // Enviar transcrição parcial e adicionar localmente
       if (interimTranscript) {
+        const transcriptionId = `trans_${Date.now()}_${Math.random().toString(36).substring(2, 9)}`;
+        
+        // Adicionar localmente primeiro (com "Você" como speaker)
+        setTranscriptions(prev => {
+          const filtered = prev.filter(t => !(t.userId === userId && t.isPartial));
+          return [...filtered, {
+            transcriptionId,
+            userId,
+            transcribedText: interimTranscript,
+            timestamp: Date.now(),
+            speakerLabel: 'Você',
+            isPartial: true
+          }];
+        });
+        
+        // Enviar via WebSocket para outros participantes
         const transcriptionData = {
           action: 'sendMessage',
           type: 'transcription',
@@ -160,8 +173,24 @@ export function useTranscription({
         sendMessage(transcriptionData);
       }
 
-      // Enviar transcrição final
+      // Enviar transcrição final e adicionar localmente
       if (finalTranscript) {
+        const transcriptionId = `trans_${Date.now()}_${Math.random().toString(36).substring(2, 9)}`;
+        
+        // Adicionar localmente primeiro (com "Você" como speaker)
+        setTranscriptions(prev => {
+          const filtered = prev.filter(t => !(t.userId === userId && t.isPartial));
+          return [...filtered, {
+            transcriptionId,
+            userId,
+            transcribedText: finalTranscript,
+            timestamp: Date.now(),
+            speakerLabel: 'Você',
+            isPartial: false
+          }];
+        });
+        
+        // Enviar via WebSocket para outros participantes
         const transcriptionData = {
           action: 'sendMessage',
           type: 'transcription',
