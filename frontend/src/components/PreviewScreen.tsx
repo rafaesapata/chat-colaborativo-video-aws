@@ -31,9 +31,10 @@ export default function PreviewScreen({ darkMode, onJoin }: PreviewScreenProps) 
   const [hasInitialized, setHasInitialized] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [audioLevel, setAudioLevel] = useState(0);
-  const [devices, setDevices] = useState<{ video: MediaDeviceInfo[], audio: MediaDeviceInfo[] }>({ video: [], audio: [] });
+  const [devices, setDevices] = useState<{ video: MediaDeviceInfo[], audio: MediaDeviceInfo[], audioOutput: MediaDeviceInfo[] }>({ video: [], audio: [], audioOutput: [] });
   const [selectedVideoDevice, setSelectedVideoDevice] = useState<string>('');
   const [selectedAudioDevice, setSelectedAudioDevice] = useState<string>('');
+  const [selectedAudioOutput, setSelectedAudioOutput] = useState<string>('');
   const [showSettings, setShowSettings] = useState(false);
 
   const audioContextRef = useRef<AudioContext | null>(null);
@@ -100,7 +101,8 @@ export default function PreviewScreen({ darkMode, onJoin }: PreviewScreenProps) 
         if (isMounted) {
           setDevices({
             video: deviceList.filter(d => d.kind === 'videoinput'),
-            audio: deviceList.filter(d => d.kind === 'audioinput')
+            audio: deviceList.filter(d => d.kind === 'audioinput'),
+            audioOutput: deviceList.filter(d => d.kind === 'audiooutput')
           });
         }
 
@@ -238,6 +240,7 @@ export default function PreviewScreen({ darkMode, onJoin }: PreviewScreenProps) 
       sessionStorage.setItem('videochat_audio_enabled', String(isAudioEnabled));
       if (selectedVideoDevice) sessionStorage.setItem('videochat_video_device', selectedVideoDevice);
       if (selectedAudioDevice) sessionStorage.setItem('videochat_audio_device', selectedAudioDevice);
+      if (selectedAudioOutput) sessionStorage.setItem('videochat_audio_output', selectedAudioOutput);
       
       // Notificar o wrapper que o nome foi definido (força re-render)
       if (onJoin) {
@@ -437,6 +440,28 @@ export default function PreviewScreen({ darkMode, onJoin }: PreviewScreenProps) 
                       {devices.audio.map(device => (
                         <option key={device.deviceId} value={device.deviceId}>
                           {device.label || `Microfone ${device.deviceId.slice(0, 8)}`}
+                        </option>
+                      ))}
+                    </select>
+                  </div>
+                  
+                  <div>
+                    <label className={`block text-xs font-medium mb-1 ${darkMode ? 'text-gray-400' : 'text-gray-600'}`}>
+                      Saída de Áudio (Fone/Speaker)
+                    </label>
+                    <select
+                      value={selectedAudioOutput}
+                      onChange={(e) => setSelectedAudioOutput(e.target.value)}
+                      className={`w-full px-3 py-2 rounded-lg text-sm ${
+                        darkMode 
+                          ? 'bg-gray-700 border-gray-600 text-white' 
+                          : 'bg-gray-50 border-gray-200'
+                      }`}
+                    >
+                      <option value="">Padrão</option>
+                      {devices.audioOutput.map(device => (
+                        <option key={device.deviceId} value={device.deviceId}>
+                          {device.label || `Saída ${device.deviceId.slice(0, 8)}`}
                         </option>
                       ))}
                     </select>

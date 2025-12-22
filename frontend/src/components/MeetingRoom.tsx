@@ -13,7 +13,7 @@ import BackgroundSelector from './BackgroundSelector';
 import { FeatureErrorBoundary } from './FeatureErrorBoundary';
 import { useWebSocket } from '../hooks/useWebSocket';
 import { useChimeMeeting } from '../hooks/useChimeMeeting';
-import { useTranscription } from '../hooks/useTranscription';
+import { useChimeTranscription } from '../hooks/useChimeTranscription';
 import { useInterviewAssistant } from '../hooks/useInterviewAssistant';
 import { useBackgroundEffect } from '../hooks/useBackgroundEffect';
 import { useMobile } from '../hooks/useMobile';
@@ -23,10 +23,11 @@ import { useTabSync } from '../hooks/useStability';
 import { meetingHistoryService } from '../services/meetingHistoryService';
 import { interviewAIService, InterviewReport } from '../services/interviewAIService';
 import { featureDetector } from '../utils/featureDetection';
+import { getRoomConfig, saveRoomConfig, RoomConfig } from '../services/roomConfigService';
 
 // Versão do aplicativo - atualizar a cada deploy
-const APP_VERSION = '3.5.6';
-const BUILD_DATE = '2025-12-21 05:00';
+const APP_VERSION = '3.7.0';
+const BUILD_DATE = '2025-12-22 16:10';
 
 interface Message {
   id: string;
@@ -67,25 +68,13 @@ export default function MeetingRoom({ darkMode }: { darkMode: boolean }) {
   const [showVersionInfo, setShowVersionInfo] = useState(false);
   const [currentMeetingId, setCurrentMeetingId] = useState<string | null>(null);
   const [showMeetingSetup, setShowMeetingSetup] = useState(false);
-  const [meetingType, setMeetingType] = useState(() => {
-    const saved = localStorage.getItem(`meeting_config_${roomId}`);
-    if (saved) {
-      try { return JSON.parse(saved).type || 'REUNIAO'; } 
-      catch { return 'REUNIAO'; }
-    }
-    return 'REUNIAO';
-  });
-  const [meetingTopic, setMeetingTopic] = useState(() => {
-    const saved = localStorage.getItem(`meeting_config_${roomId}`);
-    if (saved) {
-      try { return JSON.parse(saved).topic || ''; } 
-      catch { return ''; }
-    }
-    return '';
-  });
-  const [hasSetupCompleted, setHasSetupCompleted] = useState(() => {
-    return !!localStorage.getItem(`meeting_config_${roomId}`);
-  });
+  const [meetingType, setMeetingType] = useState<string>('REUNIAO');
+  const [meetingTopic, setMeetingTopic] = useState<string>('');
+  const [jobDescription, setJobDescription] = useState<string>('');
+  const [hasSetupCompleted, setHasSetupCompleted] = useState(false);
+  const [isLoadingConfig, setIsLoadingConfig] = useState(true);
+  const [autoStartTranscription, setAutoStartTranscription] = useState(false);
+  const [autoStartRecording, setAutoStartRecording] = useState(false);
   const [showEndModal, setShowEndModal] = useState(false);
   const [showReportModal, setShowReportModal] = useState(false);
   const [isGeneratingReport, setIsGeneratingReport] = useState(false);
@@ -98,6 +87,33 @@ export default function MeetingRoom({ darkMode }: { darkMode: boolean }) {
     isChatOpenRef.current = isChatOpen;
   }, [isChatOpen]);
 
+  // Carregar configuração da sala do DynamoDB
+  useEffect(() => {
+    if (!roomId || !isAuthenticated) {
+      setIsLoadingConfig(false);
+      return;
+    }
+
+    const loadConfig = async () => {
+      try {
+        const result = await getRoomConfig(roomId);
+        if (result.exists && result.config) {
+          setMeetingType(result.config.type);
+          setMeetingTopic(result.config.topic);
+          setJobDescription(result.config.jobDescription || '');
+          setAutoStartTranscription(result.config.autoStartTranscription);
+          setAutoStartRecording(result.config.autoStartRecording);
+          setHasSetupCompleted(true);
+        }
+      } catch (error) {
+        console.error('[MeetingRoom] Erro ao carregar config:', error);
+      } finally {
+        setIsLoadingConfig(false);
+      }
+    };
+
+    loadConfig();
+  }, [roomId, isAuthenticated]);
   // ============ AMAZON CHIME SDK ============
   const {
     isJoined,
@@ -105,20 +121,33 @@ export default function MeetingRoom({ darkMode }: { darkMode: boolean }) {
     error: chimeError,
     videoTiles,
     activeSpeakers,
+    attendees,
     isVideoEnabled,
     isAudioEnabled,
     isScreenSharing,
     connectionQuality,
     localAudioStream,
     isSpeakerMode,
+    meetingId: chimeMeetingId,
+    // Dispositivos
+    audioInputDevices,
+    audioOutputDevices,
+    videoInputDevices,
+    selectedAudioInput,
+    selectedAudioOutput,
+    selectedVideoInput,
+    // Ações
     toggleVideo,
     toggleAudio,
     toggleScreenShare,
     toggleSpeakerMode,
+    changeAudioInput,
+    changeAudioOutput,
+    changeVideoInput,
     leaveMeeting: leaveChimeMeeting,
     bindVideoElement,
     bindAudioElement,
-    audioVideo, // Para background effect
+    audioVideo, // Para background effect e transcrição
   } = useChimeMeeting({
     roomId: roomId || '',
     odUserId: userId,
@@ -126,7 +155,7 @@ export default function MeetingRoom({ darkMode }: { darkMode: boolean }) {
     isAuthenticated,
   });
 
-  // WebSocket para chat E transcrição
+  // WebSocket para chat
   const handleWebSocketMessage = useCallback((data: any) => {
     if (data.type === 'message') {
       const newMessage: Message = {
@@ -145,7 +174,6 @@ export default function MeetingRoom({ darkMode }: { darkMode: boolean }) {
         setUnreadCount(prev => prev + 1);
       }
     }
-    // Transcrições são processadas pelo hook useTranscription via addMessageHandler
   }, [userId]);
 
   const wsUrl = import.meta.env.VITE_WEBSOCKET_URL || '';
@@ -156,37 +184,42 @@ export default function MeetingRoom({ darkMode }: { darkMode: boolean }) {
   // Tab sync
   const { isMainTab } = useTabSync(roomId || '', userId);
 
-  // Transcrição - usa stream de áudio do Chime
-  // Verificar se o usuário local está falando (baseado no activeSpeakers do Chime)
-  const isLocalUserSpeaking = activeSpeakers.includes(userId);
-
+  // Transcrição via Amazon Transcribe (server-side, não usa browser Speech Recognition)
   const {
     transcriptions,
     isTranscriptionEnabled,
-    isRecording,
+    isStarting: isTranscriptionStarting,
     toggleTranscription,
     isSpeechRecognitionSupported
-  } = useTranscription({
+  } = useChimeTranscription({
     roomId: roomId || '',
-    userId,
+    odUserId: userId,
     userName,
-    sendMessage,
-    addMessageHandler,
-    localStream: localAudioStream, // Stream de áudio do Chime
-    isLocalUserSpeaking // Passa o estado de fala do Chime para filtrar transcrições
+    meetingId: chimeMeetingId,
+    audioVideo,
+    attendees,
   });
+
+  // Flag para indicar se está gravando transcrição (para UI)
+  const isRecording = isTranscriptionEnabled;
 
   // Assistente de entrevista
   const {
     suggestions: interviewSuggestions,
     isGenerating: isGeneratingSuggestions,
+    recentlyMarkedIds,
     markAsRead: markSuggestionAsRead,
     dismissSuggestion,
   } = useInterviewAssistant({
-    isEnabled: isAuthenticated && meetingType === 'ENTREVISTA' && hasSetupCompleted,
+    isEnabled:
+      isAuthenticated && meetingType === 'ENTREVISTA' && hasSetupCompleted,
     meetingType,
     topic: meetingTopic,
+    jobDescription,
     transcriptions,
+    roomId: roomId || '',
+    userLogin: user?.login,
+    userName, // Nome do entrevistador para filtrar transcrições
   });
 
   // Gravação
@@ -220,38 +253,114 @@ export default function MeetingRoom({ darkMode }: { darkMode: boolean }) {
 
   // Ref para controlar se a gravação automática já foi iniciada
   const autoRecordingStartedRef = useRef(false);
+  const autoTranscriptionStartedRef = useRef(false);
 
-  // Auto-iniciar gravação quando entrar na sala (para todos os usuários autenticados)
-  // A gravação é silenciosa - apenas admins podem ver/controlar
+  // Auto-iniciar transcrição quando configurado
   useEffect(() => {
-    if (isJoined && isAuthenticated && user?.login && currentMeetingId && !autoRecordingStartedRef.current && !isRecordingMeeting) {
-      autoRecordingStartedRef.current = true;
-      // Pequeno delay para garantir que tudo está pronto
-      const timer = setTimeout(() => {
-        startRecording();
-      }, 2000);
-      return () => clearTimeout(timer);
+    if (!isJoined || !isAuthenticated || !chimeMeetingId || !autoStartTranscription) {
+      return;
     }
-  }, [isJoined, isAuthenticated, user?.login, currentMeetingId, isRecordingMeeting, startRecording]);
+    
+    if (autoTranscriptionStartedRef.current || isTranscriptionEnabled) {
+      return;
+    }
+    
+    autoTranscriptionStartedRef.current = true;
+    
+    const timer = setTimeout(async () => {
+      try {
+        await toggleTranscription();
+        console.log('[MeetingRoom] Auto-transcrição iniciada');
+      } catch (err) {
+        console.error('[MeetingRoom] Erro ao auto-iniciar transcrição:', err);
+        autoTranscriptionStartedRef.current = false;
+      }
+    }, 2000);
+    
+    return () => clearTimeout(timer);
+  }, [isJoined, isAuthenticated, chimeMeetingId, autoStartTranscription, isTranscriptionEnabled, toggleTranscription]);
+
+  // Auto-iniciar gravação quando entrar na sala (se configurado)
+  useEffect(() => {
+    // Aguardar todas as condições estarem prontas
+    if (!isJoined || !isAuthenticated || !user?.login || !currentMeetingId) {
+      return;
+    }
+    
+    // Verificar se auto-gravação está habilitada
+    if (!autoStartRecording) {
+      console.log('[MeetingRoom] Auto-gravação não habilitada para esta sala');
+      return;
+    }
+    
+    // Evitar múltiplas tentativas
+    if (autoRecordingStartedRef.current || isRecordingMeeting) {
+      return;
+    }
+    
+    autoRecordingStartedRef.current = true;
+    console.log('[MeetingRoom] Iniciando auto-gravação...');
+    
+    // Delay maior para garantir que vídeos estão prontos
+    const timer = setTimeout(async () => {
+      try {
+        const success = await startRecording();
+        if (success) {
+          console.log('[MeetingRoom] Auto-gravação iniciada com sucesso');
+        } else {
+          console.warn('[MeetingRoom] Falha ao iniciar auto-gravação');
+          // Reset para permitir tentativa manual
+          autoRecordingStartedRef.current = false;
+        }
+      } catch (err) {
+        console.error('[MeetingRoom] Erro ao auto-iniciar gravação:', err);
+        autoRecordingStartedRef.current = false;
+      }
+    }, 3000);
+    
+    return () => clearTimeout(timer);
+  }, [isJoined, isAuthenticated, user?.login, currentMeetingId, isRecordingMeeting, startRecording, autoStartRecording]);
 
 
   // Setup modal para usuários autenticados
   useEffect(() => {
-    if (isAuthenticated && !hasSetupCompleted && isJoined) {
+    if (isAuthenticated && !hasSetupCompleted && isJoined && !isLoadingConfig) {
       const timer = setTimeout(() => setShowMeetingSetup(true), 1500);
       return () => clearTimeout(timer);
     }
-  }, [isAuthenticated, hasSetupCompleted, isJoined]);
+  }, [isAuthenticated, hasSetupCompleted, isJoined, isLoadingConfig]);
 
-  const handleMeetingSetup = useCallback((type: string, topic: string) => {
+  const handleMeetingSetup = useCallback(async (type: string, topic: string, options?: { autoStartTranscription?: boolean; autoStartRecording?: boolean; jobDescription?: string }) => {
     setMeetingType(type);
     setMeetingTopic(topic);
+    setJobDescription(options?.jobDescription || '');
     setHasSetupCompleted(true);
     setShowMeetingSetup(false);
-    localStorage.setItem(`meeting_config_${roomId}`, JSON.stringify({
-      type, topic, createdAt: Date.now()
-    }));
-  }, [roomId]);
+    
+    if (options?.autoStartTranscription) {
+      setAutoStartTranscription(true);
+    }
+    if (options?.autoStartRecording) {
+      setAutoStartRecording(true);
+    }
+    
+    // Salvar no DynamoDB
+    if (roomId) {
+      const result = await saveRoomConfig(roomId, {
+        type: type as RoomConfig['type'],
+        topic,
+        jobDescription: options?.jobDescription || '',
+        autoStartTranscription: options?.autoStartTranscription ?? false,
+        autoStartRecording: options?.autoStartRecording ?? false,
+        allowGuestAccess: true,
+        enableChat: true,
+      }, user?.login);
+      
+      if (!result.success) {
+        console.error('[MeetingRoom] Erro ao salvar config:', result.error);
+      }
+    }
+  }, [roomId, user?.login]);
 
   // Criar registro de reunião
   useEffect(() => {
@@ -356,13 +465,16 @@ export default function MeetingRoom({ darkMode }: { darkMode: boolean }) {
       setIsGeneratingReport(true);
       await new Promise(resolve => setTimeout(resolve, 2000));
       
+      // Passar jobDescription e nome do entrevistador para identificação correta
       const report = interviewAIService.generateInterviewReport(
         meetingTopic,
         transcriptions.map(t => ({
           text: t.transcribedText,
           speaker: t.speakerLabel || 'Desconhecido',
           timestamp: t.timestamp
-        }))
+        })),
+        jobDescription, // Descrição da vaga para análise técnica focada
+        userName // Nome do entrevistador para identificar corretamente o candidato
       );
       
       setInterviewReport(report);
@@ -372,7 +484,7 @@ export default function MeetingRoom({ darkMode }: { darkMode: boolean }) {
     } else {
       handleLeaveOnly();
     }
-  }, [meetingType, meetingTopic, transcriptions, handleLeaveOnly]);
+  }, [meetingType, meetingTopic, transcriptions, handleLeaveOnly, jobDescription, userName]);
 
   const handleCloseReport = useCallback(() => {
     setShowReportModal(false);
@@ -566,6 +678,17 @@ export default function MeetingRoom({ darkMode }: { darkMode: boolean }) {
           isAdmin={isAdmin}
           isSpeakerMode={isSpeakerMode}
           hasBackgroundEffect={currentBackground.type !== 'none'}
+          // Dispositivos
+          audioInputDevices={audioInputDevices}
+          audioOutputDevices={audioOutputDevices}
+          videoInputDevices={videoInputDevices}
+          selectedAudioInput={selectedAudioInput}
+          selectedAudioOutput={selectedAudioOutput}
+          selectedVideoInput={selectedVideoInput}
+          onChangeAudioInput={changeAudioInput}
+          onChangeAudioOutput={changeAudioOutput}
+          onChangeVideoInput={changeVideoInput}
+          // Ações
           onToggleMute={handleToggleMute}
           onToggleVideo={handleToggleVideo}
           onToggleScreenShare={handleToggleScreenShare}
@@ -595,19 +718,22 @@ export default function MeetingRoom({ darkMode }: { darkMode: boolean }) {
         />
       </FeatureErrorBoundary>
 
-      <FeatureErrorBoundary feature="TranscriptionPanel" darkMode={darkMode}>
-        <TranscriptionPanel
-          isOpen={isTranscriptionOpen}
-          onClose={() => setIsTranscriptionOpen(false)}
-          transcriptions={transcriptions}
-          isTranscriptionEnabled={isTranscriptionEnabled}
-          isRecording={isRecording}
-          onToggleTranscription={toggleTranscription}
-          speakingUsers={new Set(activeSpeakers)}
-          darkMode={darkMode}
-          isSpeechRecognitionSupported={isSpeechRecognitionSupported}
-        />
-      </FeatureErrorBoundary>
+      {/* TranscriptionPanel - apenas para usuários autenticados (criador da sala) */}
+      {isAuthenticated && (
+        <FeatureErrorBoundary feature="TranscriptionPanel" darkMode={darkMode}>
+          <TranscriptionPanel
+            isOpen={isTranscriptionOpen}
+            onClose={() => setIsTranscriptionOpen(false)}
+            transcriptions={transcriptions}
+            isTranscriptionEnabled={isTranscriptionEnabled}
+            isRecording={isRecording}
+            onToggleTranscription={toggleTranscription}
+            speakingUsers={new Set(activeSpeakers)}
+            darkMode={darkMode}
+            isSpeechRecognitionSupported={isSpeechRecognitionSupported}
+          />
+        </FeatureErrorBoundary>
+      )}
 
 
       {/* Meeting Setup Modal */}
@@ -632,6 +758,7 @@ export default function MeetingRoom({ darkMode }: { darkMode: boolean }) {
             onDismiss={dismissSuggestion}
             darkMode={darkMode}
             meetingTopic={meetingTopic}
+            recentlyMarkedIds={recentlyMarkedIds}
           />
         </FeatureErrorBoundary>
       )}

@@ -1,5 +1,5 @@
 import { useState, useRef, useEffect } from 'react';
-import { Mic, MicOff, Video, VideoOff, Monitor, PhoneOff, MessageCircle, FileText, FileTextIcon, Circle, Volume2, VolumeX, Image, Settings, X } from 'lucide-react';
+import { Mic, MicOff, Video, VideoOff, Monitor, PhoneOff, MessageCircle, FileText, FileTextIcon, Circle, Volume2, VolumeX, Image, Settings, X, Headphones, ChevronRight } from 'lucide-react';
 import { useMobile } from '../hooks/useMobile';
 
 interface ControlBarProps {
@@ -12,6 +12,17 @@ interface ControlBarProps {
   isAdmin?: boolean;
   isSpeakerMode?: boolean;
   hasBackgroundEffect?: boolean;
+  // Dispositivos
+  audioInputDevices?: MediaDeviceInfo[];
+  audioOutputDevices?: MediaDeviceInfo[];
+  videoInputDevices?: MediaDeviceInfo[];
+  selectedAudioInput?: string;
+  selectedAudioOutput?: string;
+  selectedVideoInput?: string;
+  onChangeAudioInput?: (deviceId: string) => void;
+  onChangeAudioOutput?: (deviceId: string) => void;
+  onChangeVideoInput?: (deviceId: string) => void;
+  // Ações
   onToggleMute: () => void;
   onToggleVideo: () => void;
   onToggleScreenShare: () => void;
@@ -40,6 +51,17 @@ export default function ControlBar({
   isAdmin = false,
   isSpeakerMode = true,
   hasBackgroundEffect = false,
+  // Dispositivos
+  audioInputDevices = [],
+  audioOutputDevices = [],
+  videoInputDevices = [],
+  selectedAudioInput = '',
+  selectedAudioOutput = '',
+  selectedVideoInput = '',
+  onChangeAudioInput,
+  onChangeAudioOutput,
+  onChangeVideoInput,
+  // Ações
   onToggleMute,
   onToggleVideo,
   onToggleScreenShare,
@@ -59,6 +81,7 @@ export default function ControlBar({
 }: ControlBarProps) {
   const { isMobile, isTouch } = useMobile();
   const [showSettingsMenu, setShowSettingsMenu] = useState(false);
+  const [showDevicesSubmenu, setShowDevicesSubmenu] = useState(false);
   const settingsMenuRef = useRef<HTMLDivElement>(null);
   
   // No mobile/touch, controles sempre visíveis
@@ -288,6 +311,114 @@ export default function ControlBar({
                       </div>
                       <div className={`w-1.5 h-1.5 rounded-full ${isTranscriptionActive ? 'bg-green-500' : darkMode ? 'bg-white/30' : 'bg-gray-400'}`} />
                     </button>
+                  )}
+
+                  {/* Dispositivos - submenu */}
+                  {(audioInputDevices.length > 0 || audioOutputDevices.length > 0 || videoInputDevices.length > 0) && (
+                    <div className="relative">
+                      <button
+                        onClick={() => setShowDevicesSubmenu(!showDevicesSubmenu)}
+                        className={`w-full px-2.5 py-2 flex items-center gap-2.5 transition-colors ${
+                          darkMode 
+                            ? 'hover:bg-white/10 text-white' 
+                            : 'hover:bg-black/5 text-gray-700'
+                        }`}
+                      >
+                        <div className={`w-6 h-6 rounded-md flex items-center justify-center ${
+                          darkMode ? 'bg-white/10' : 'bg-black/10'
+                        }`}>
+                          <Headphones size={13} />
+                        </div>
+                        <div className="flex-1 text-left">
+                          <div className={`text-xs font-medium ${darkMode ? 'text-white' : 'text-gray-900'}`}>
+                            Dispositivos
+                          </div>
+                          <div className={`text-[10px] ${darkMode ? 'text-white/50' : 'text-gray-500'}`}>
+                            Câmera, Mic, Áudio
+                          </div>
+                        </div>
+                        <ChevronRight size={14} className={`transition-transform ${showDevicesSubmenu ? 'rotate-90' : ''}`} />
+                      </button>
+
+                      {/* Submenu de dispositivos */}
+                      {showDevicesSubmenu && (
+                        <div className={`mt-1 mx-2 p-2 rounded-lg ${
+                          darkMode ? 'bg-white/5' : 'bg-black/5'
+                        }`}>
+                          {/* Câmera */}
+                          {videoInputDevices.length > 0 && onChangeVideoInput && (
+                            <div className="mb-2">
+                              <label className={`block text-[10px] font-medium mb-1 ${darkMode ? 'text-white/60' : 'text-gray-500'}`}>
+                                Câmera
+                              </label>
+                              <select
+                                value={selectedVideoInput}
+                                onChange={(e) => onChangeVideoInput(e.target.value)}
+                                className={`w-full px-2 py-1.5 rounded text-xs ${
+                                  darkMode 
+                                    ? 'bg-gray-800 border-gray-700 text-white' 
+                                    : 'bg-white border-gray-200 text-gray-900'
+                                } border`}
+                              >
+                                {videoInputDevices.map(device => (
+                                  <option key={device.deviceId} value={device.deviceId}>
+                                    {device.label || `Câmera ${device.deviceId.slice(0, 8)}`}
+                                  </option>
+                                ))}
+                              </select>
+                            </div>
+                          )}
+
+                          {/* Microfone */}
+                          {audioInputDevices.length > 0 && onChangeAudioInput && (
+                            <div className="mb-2">
+                              <label className={`block text-[10px] font-medium mb-1 ${darkMode ? 'text-white/60' : 'text-gray-500'}`}>
+                                Microfone
+                              </label>
+                              <select
+                                value={selectedAudioInput}
+                                onChange={(e) => onChangeAudioInput(e.target.value)}
+                                className={`w-full px-2 py-1.5 rounded text-xs ${
+                                  darkMode 
+                                    ? 'bg-gray-800 border-gray-700 text-white' 
+                                    : 'bg-white border-gray-200 text-gray-900'
+                                } border`}
+                              >
+                                {audioInputDevices.map(device => (
+                                  <option key={device.deviceId} value={device.deviceId}>
+                                    {device.label || `Microfone ${device.deviceId.slice(0, 8)}`}
+                                  </option>
+                                ))}
+                              </select>
+                            </div>
+                          )}
+
+                          {/* Saída de Áudio */}
+                          {audioOutputDevices.length > 0 && onChangeAudioOutput && (
+                            <div>
+                              <label className={`block text-[10px] font-medium mb-1 ${darkMode ? 'text-white/60' : 'text-gray-500'}`}>
+                                Saída de Áudio
+                              </label>
+                              <select
+                                value={selectedAudioOutput}
+                                onChange={(e) => onChangeAudioOutput(e.target.value)}
+                                className={`w-full px-2 py-1.5 rounded text-xs ${
+                                  darkMode 
+                                    ? 'bg-gray-800 border-gray-700 text-white' 
+                                    : 'bg-white border-gray-200 text-gray-900'
+                                } border`}
+                              >
+                                {audioOutputDevices.map(device => (
+                                  <option key={device.deviceId} value={device.deviceId}>
+                                    {device.label || `Saída ${device.deviceId.slice(0, 8)}`}
+                                  </option>
+                                ))}
+                              </select>
+                            </div>
+                          )}
+                        </div>
+                      )}
+                    </div>
                   )}
                 </div>
               </div>

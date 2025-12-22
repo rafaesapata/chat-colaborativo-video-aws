@@ -9,6 +9,7 @@ interface InterviewSuggestionsProps {
   onDismiss: (id: string) => void;
   darkMode: boolean;
   meetingTopic: string;
+  recentlyMarkedIds?: Set<string>; // IDs das sugestões recém-marcadas automaticamente
 }
 
 export default function InterviewSuggestions({
@@ -18,6 +19,7 @@ export default function InterviewSuggestions({
   onDismiss,
   darkMode,
   meetingTopic,
+  recentlyMarkedIds = new Set(),
 }: InterviewSuggestionsProps) {
   const [isMinimized, setIsMinimized] = useState(false);
   const [expandedId, setExpandedId] = useState<string | null>(null);
@@ -92,8 +94,13 @@ export default function InterviewSuggestions({
   }, [isDragging]);
 
   const unreadSuggestions = suggestions.filter(s => !s.isRead);
+  
+  // Incluir também as sugestões recém-marcadas (para mostrar animação de "FEITO")
+  const recentlyMarkedSuggestions = suggestions.filter(s => 
+    s.isRead && (s.justMarkedAsRead || recentlyMarkedIds.has(s.id))
+  );
 
-  if (unreadSuggestions.length === 0 && !isGenerating) {
+  if (unreadSuggestions.length === 0 && recentlyMarkedSuggestions.length === 0 && !isGenerating) {
     return null;
   }
 
@@ -278,7 +285,56 @@ export default function InterviewSuggestions({
               </div>
             ))}
 
-            {unreadSuggestions.length === 0 && !isGenerating && (
+            {/* Sugestões recém-marcadas automaticamente (com animação de FEITO piscando) */}
+            {recentlyMarkedSuggestions.map((suggestion) => (
+              <div
+                key={`marked-${suggestion.id}`}
+                className={`p-3 border-b last:border-b-0 transition-all animate-feitoBlink ${
+                  darkMode 
+                    ? 'border-gray-700 bg-green-900/30' 
+                    : 'border-gray-100 bg-green-50'
+                }`}
+              >
+                <div className="flex items-start gap-2">
+                  <span className="w-2 h-2 rounded-full bg-green-500 animate-pulse" />
+                  <div className="flex-1 min-w-0">
+                    <div className="flex items-center gap-2 mb-1">
+                      <span className={`text-[10px] px-1.5 py-0.5 rounded border ${getCategoryColor(suggestion.category)}`}>
+                        {getCategoryLabel(suggestion.category)}
+                      </span>
+                      <span className={`text-[10px] px-2 py-0.5 rounded-full font-bold animate-feitoBadge ${
+                        darkMode 
+                          ? 'bg-green-500 text-white' 
+                          : 'bg-green-500 text-white'
+                      }`}>
+                        ✓ FEITO
+                      </span>
+                      {suggestion.autoDetected && (
+                        <span className={`text-[9px] px-1.5 py-0.5 rounded ${
+                          darkMode ? 'bg-blue-900/50 text-blue-300' : 'bg-blue-100 text-blue-600'
+                        }`}>
+                          Auto-detectado
+                        </span>
+                      )}
+                    </div>
+                    <p className={`text-sm leading-relaxed line-through opacity-70 ${
+                      darkMode ? 'text-gray-400' : 'text-gray-500'
+                    }`}>
+                      {suggestion.question.length > 60 
+                        ? suggestion.question.substring(0, 60) + '...' 
+                        : suggestion.question}
+                    </p>
+                    <p className={`text-xs mt-1 ${
+                      darkMode ? 'text-green-400' : 'text-green-600'
+                    }`}>
+                      Gerando follow-up...
+                    </p>
+                  </div>
+                </div>
+              </div>
+            ))}
+
+            {unreadSuggestions.length === 0 && recentlyMarkedSuggestions.length === 0 && !isGenerating && (
               <div className={`p-6 text-center ${darkMode ? 'text-gray-500' : 'text-gray-400'}`}>
                 <Sparkles size={24} className="mx-auto mb-2 opacity-50" />
                 <p className="text-sm">Aguardando conversa para gerar sugestões...</p>
@@ -307,6 +363,20 @@ export default function InterviewSuggestions({
           -webkit-line-clamp: 2;
           -webkit-box-orient: vertical;
           overflow: hidden;
+        }
+        @keyframes feitoBlink {
+          0%, 100% { opacity: 1; }
+          50% { opacity: 0.5; }
+        }
+        @keyframes feitoBadgePulse {
+          0%, 100% { transform: scale(1); }
+          50% { transform: scale(1.1); }
+        }
+        .animate-feitoBlink {
+          animation: feitoBlink 0.8s ease-in-out 3;
+        }
+        .animate-feitoBadge {
+          animation: feitoBadgePulse 0.5s ease-in-out 4;
         }
       `}</style>
     </div>

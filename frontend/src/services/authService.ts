@@ -85,6 +85,14 @@ export const authService = {
     return 'user';
   },
 
+  updateStoredRole(login: string, role: 'user' | 'admin' | 'superadmin'): void {
+    const stored = this.getStoredAuth();
+    if (stored && stored.login === login) {
+      stored.role = role;
+      secureStorage.setItem(AUTH_STORAGE_KEY, JSON.stringify(stored));
+    }
+  },
+
   logout(): void {
     // ✅ Usar secureStorage
     secureStorage.removeItem(AUTH_STORAGE_KEY);

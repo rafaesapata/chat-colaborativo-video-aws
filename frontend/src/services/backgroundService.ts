@@ -8,6 +8,7 @@ export interface CustomBackground {
   name: string;
   url: string;
   preview: string;
+  s3Key?: string;
   createdBy: string;
   createdAt: number;
   isActive: boolean;
@@ -52,7 +53,107 @@ export const backgroundService = {
     return [];
   },
 
-  // Adicionar novo background (apenas admin)
+  // Obter URL pré-assinada para upload
+  async getUploadUrl(
+    userLogin: string,
+    filename: string,
+    contentType: string
+  ): Promise<{ success: boolean; uploadUrl?: string; s3Key?: string; publicUrl?: string; error?: string }> {
+    try {
+      const response = await fetch(`${CHIME_API_URL}/admin/backgrounds/upload-url`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ userLogin, filename, contentType }),
+      });
+
+      const data = await response.json();
+      
+      if (response.ok) {
+        return { 
+          success: true, 
+          uploadUrl: data.uploadUrl, 
+          s3Key: data.s3Key,
+          publicUrl: data.publicUrl 
+        };
+      }
+      
+      return { success: false, error: data.error || 'Erro ao obter URL de upload' };
+    } catch (error) {
+      return { success: false, error: 'Erro de conexão com o servidor' };
+    }
+  },
+
+  // Upload de arquivo para S3
+  async uploadFile(
+    uploadUrl: string,
+    file: File
+  ): Promise<{ success: boolean; error?: string }> {
+    try {
+      const response = await fetch(uploadUrl, {
+        method: 'PUT',
+        body: file,
+        headers: {
+          'Content-Type': file.type,
+        },
+      });
+
+      if (response.ok) {
+        return { success: true };
+      }
+      
+      return { success: false, error: 'Erro ao fazer upload do arquivo' };
+    } catch (error) {
+      return { success: false, error: 'Erro de conexão durante upload' };
+    }
+  },
+
+  // Adicionar novo background (apenas admin) - com upload de arquivo
+  async addBackgroundWithFile(
+    userLogin: string,
+    name: string,
+    file: File
+  ): Promise<{ success: boolean; background?: CustomBackground; error?: string }> {
+    try {
+      // 1. Obter URL de upload
+      const uploadUrlResult = await this.getUploadUrl(userLogin, file.name, file.type);
+      if (!uploadUrlResult.success || !uploadUrlResult.uploadUrl) {
+        return { success: false, error: uploadUrlResult.error || 'Erro ao obter URL de upload' };
+      }
+
+      // 2. Fazer upload do arquivo
+      const uploadResult = await this.uploadFile(uploadUrlResult.uploadUrl, file);
+      if (!uploadResult.success) {
+        return { success: false, error: uploadResult.error || 'Erro no upload' };
+      }
+
+      // 3. Registrar background no banco
+      const response = await fetch(`${CHIME_API_URL}/admin/backgrounds/add`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ 
+          userLogin, 
+          name, 
+          s3Key: uploadUrlResult.s3Key 
+        }),
+      });
+
+      const data = await response.json();
+      
+      if (response.ok) {
+        // Atualizar cache local
+        const backgrounds = this.getLocalBackgrounds();
+        backgrounds.push(data.background);
+        localStorage.setItem(STORAGE_KEY, JSON.stringify(backgrounds));
+        return { success: true, background: data.background };
+      }
+      
+      return { success: false, error: data.error || 'Erro ao registrar background' };
+    } catch (error) {
+      return { success: false, error: 'Erro de conexão com o servidor' };
+    }
+  },
+
+  // Adicionar novo background via URL (apenas admin)
   async addBackground(
     userLogin: string,
     name: string,

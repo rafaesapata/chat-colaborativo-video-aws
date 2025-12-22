@@ -5,10 +5,11 @@ import {
   Clock, Server, Activity, ArrowLeft, AlertTriangle,
   ChevronDown, ChevronUp, UserPlus, Crown, Calendar,
   Key, Copy, Eye, EyeOff, Plus, ExternalLink, FileText,
-  Image, ToggleLeft, ToggleRight, Link, Check, X as XIcon
+  Image, ToggleLeft, ToggleRight, Check, X as XIcon, Brain
 } from 'lucide-react';
 import { useAuth } from '../contexts/AuthContext';
 import { backgroundService, CustomBackground } from '../services/backgroundService';
+import InterviewAIConfigPanel from './InterviewAIConfigPanel';
 
 const CHIME_API_URL = import.meta.env.VITE_CHIME_API_URL || '';
 
@@ -88,7 +89,7 @@ export default function AdminPanel({ darkMode }: AdminPanelProps) {
   const [expandedRoom, setExpandedRoom] = useState<string | null>(null);
   const [actionLoading, setActionLoading] = useState<string | null>(null);
   const [newAdminInput, setNewAdminInput] = useState('');
-  const [activeTab, setActiveTab] = useState<'rooms' | 'admins' | 'schedule' | 'apikeys' | 'backgrounds'>('rooms');
+  const [activeTab, setActiveTab] = useState<'rooms' | 'admins' | 'schedule' | 'apikeys' | 'backgrounds' | 'interviewai'>('rooms');
   const [cleanupResult, setCleanupResult] = useState<string | null>(null);
   
   // Schedule state
@@ -113,8 +114,11 @@ export default function AdminPanel({ darkMode }: AdminPanelProps) {
   const [customBackgrounds, setCustomBackgrounds] = useState<CustomBackground[]>([]);
   const [showBackgroundForm, setShowBackgroundForm] = useState(false);
   const [backgroundForm, setBackgroundForm] = useState({ name: '', url: '' });
+  const [backgroundFile, setBackgroundFile] = useState<File | null>(null);
+  const [backgroundFilePreview, setBackgroundFilePreview] = useState<string | null>(null);
   const [backgroundValidating, setBackgroundValidating] = useState(false);
   const [backgroundPreviewValid, setBackgroundPreviewValid] = useState<boolean | null>(null);
+  const [uploadMode, setUploadMode] = useState<'file' | 'url'>('file');
 
   const fetchData = useCallback(async () => {
     if (!user?.login) return;
@@ -445,27 +449,73 @@ export default function AdminPanel({ darkMode }: AdminPanelProps) {
     setBackgroundValidating(false);
   };
 
+  const handleFileSelect = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+
+    // Validar tipo
+    const allowedTypes = ['image/jpeg', 'image/png', 'image/webp', 'image/gif'];
+    if (!allowedTypes.includes(file.type)) {
+      alert('Tipo de arquivo não permitido. Use: JPEG, PNG, WebP ou GIF');
+      return;
+    }
+
+    // Validar tamanho (max 5MB)
+    if (file.size > 5 * 1024 * 1024) {
+      alert('Arquivo muito grande. Máximo: 5MB');
+      return;
+    }
+
+    setBackgroundFile(file);
+    
+    // Criar preview
+    const reader = new FileReader();
+    reader.onload = (e) => {
+      setBackgroundFilePreview(e.target?.result as string);
+    };
+    reader.readAsDataURL(file);
+  };
+
   const handleAddBackground = async () => {
-    if (!backgroundForm.name.trim() || !backgroundForm.url.trim()) {
-      alert('Preencha nome e URL da imagem');
+    if (!backgroundForm.name.trim()) {
+      alert('Preencha o nome do background');
       return;
     }
-    
-    if (backgroundPreviewValid === false) {
-      alert('URL da imagem inválida');
-      return;
-    }
-    
+
     setActionLoading('add-background');
-    const result = await backgroundService.addBackground(
-      user?.login || '',
-      backgroundForm.name.trim(),
-      backgroundForm.url.trim()
-    );
+
+    let result;
+    
+    if (uploadMode === 'file' && backgroundFile) {
+      // Upload de arquivo
+      result = await backgroundService.addBackgroundWithFile(
+        user?.login || '',
+        backgroundForm.name.trim(),
+        backgroundFile
+      );
+    } else if (uploadMode === 'url' && backgroundForm.url.trim()) {
+      // URL externa
+      if (backgroundPreviewValid === false) {
+        alert('URL da imagem inválida');
+        setActionLoading(null);
+        return;
+      }
+      result = await backgroundService.addBackground(
+        user?.login || '',
+        backgroundForm.name.trim(),
+        backgroundForm.url.trim()
+      );
+    } else {
+      alert(uploadMode === 'file' ? 'Selecione uma imagem' : 'Preencha a URL da imagem');
+      setActionLoading(null);
+      return;
+    }
     
     if (result.success && result.background) {
       setCustomBackgrounds(prev => [...prev, result.background!]);
       setBackgroundForm({ name: '', url: '' });
+      setBackgroundFile(null);
+      setBackgroundFilePreview(null);
       setBackgroundPreviewValid(null);
       setShowBackgroundForm(false);
     } else {
@@ -719,6 +769,17 @@ export default function AdminPanel({ darkMode }: AdminPanelProps) {
           >
             <Image size={18} />
             Backgrounds
+          </button>
+          <button
+            onClick={() => setActiveTab('interviewai')}
+            className={`flex-1 py-2 px-4 rounded-lg font-medium transition flex items-center justify-center gap-2 ${
+              activeTab === 'interviewai'
+                ? darkMode ? 'bg-gray-700 text-white' : 'bg-white text-gray-900 shadow'
+                : darkMode ? 'text-gray-400 hover:text-white' : 'text-gray-600 hover:text-gray-900'
+            }`}
+          >
+            <Brain size={18} />
+            IA Entrevista
           </button>
         </div>
 
@@ -1363,6 +1424,30 @@ export default function AdminPanel({ darkMode }: AdminPanelProps) {
             {/* Add Background Form */}
             {showBackgroundForm && (
               <div className={`px-6 py-4 border-b ${darkMode ? 'border-gray-700 bg-gray-700/30' : 'border-gray-200 bg-gray-50'}`}>
+                {/* Mode Toggle */}
+                <div className="flex gap-2 mb-4">
+                  <button
+                    onClick={() => setUploadMode('file')}
+                    className={`px-4 py-2 rounded-lg text-sm font-medium transition ${
+                      uploadMode === 'file'
+                        ? darkMode ? 'bg-blue-600 text-white' : 'bg-blue-500 text-white'
+                        : darkMode ? 'bg-gray-600 text-gray-300' : 'bg-gray-200 text-gray-700'
+                    }`}
+                  >
+                    📁 Upload de Arquivo
+                  </button>
+                  <button
+                    onClick={() => setUploadMode('url')}
+                    className={`px-4 py-2 rounded-lg text-sm font-medium transition ${
+                      uploadMode === 'url'
+                        ? darkMode ? 'bg-blue-600 text-white' : 'bg-blue-500 text-white'
+                        : darkMode ? 'bg-gray-600 text-gray-300' : 'bg-gray-200 text-gray-700'
+                    }`}
+                  >
+                    🔗 URL Externa
+                  </button>
+                </div>
+
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                   <div>
                     <label className={`block text-sm font-medium mb-1 ${darkMode ? 'text-gray-300' : 'text-gray-700'}`}>
@@ -1380,57 +1465,81 @@ export default function AdminPanel({ darkMode }: AdminPanelProps) {
                       }`}
                     />
                   </div>
-                  <div>
-                    <label className={`block text-sm font-medium mb-1 ${darkMode ? 'text-gray-300' : 'text-gray-700'}`}>
-                      URL da Imagem *
-                    </label>
-                    <div className="flex gap-2">
+
+                  {uploadMode === 'file' ? (
+                    <div>
+                      <label className={`block text-sm font-medium mb-1 ${darkMode ? 'text-gray-300' : 'text-gray-700'}`}>
+                        Imagem * (JPEG, PNG, WebP, GIF - máx 5MB)
+                      </label>
                       <input
-                        type="url"
-                        value={backgroundForm.url}
-                        onChange={(e) => {
-                          setBackgroundForm(prev => ({ ...prev, url: e.target.value }));
-                          setBackgroundPreviewValid(null);
-                        }}
-                        onBlur={(e) => handleValidateBackgroundUrl(e.target.value)}
-                        placeholder="https://exemplo.com/imagem.jpg"
-                        className={`flex-1 px-4 py-2 rounded-lg border ${
+                        type="file"
+                        accept="image/jpeg,image/png,image/webp,image/gif"
+                        onChange={handleFileSelect}
+                        className={`w-full px-4 py-2 rounded-lg border ${
                           darkMode 
-                            ? 'bg-gray-700 border-gray-600 text-white placeholder-gray-400' 
-                            : 'bg-white border-gray-300 text-gray-900'
-                        } ${backgroundPreviewValid === false ? 'border-red-500' : backgroundPreviewValid === true ? 'border-green-500' : ''}`}
+                            ? 'bg-gray-700 border-gray-600 text-white file:bg-gray-600 file:text-white file:border-0 file:rounded file:px-3 file:py-1 file:mr-3' 
+                            : 'bg-white border-gray-300 text-gray-900 file:bg-gray-100 file:text-gray-700 file:border-0 file:rounded file:px-3 file:py-1 file:mr-3'
+                        }`}
                       />
-                      {backgroundValidating && (
-                        <div className="flex items-center px-2">
-                          <RefreshCw size={18} className="animate-spin text-blue-500" />
-                        </div>
-                      )}
-                      {!backgroundValidating && backgroundPreviewValid === true && (
-                        <div className="flex items-center px-2">
-                          <Check size={18} className="text-green-500" />
-                        </div>
-                      )}
-                      {!backgroundValidating && backgroundPreviewValid === false && (
-                        <div className="flex items-center px-2">
-                          <XIcon size={18} className="text-red-500" />
-                        </div>
+                      {backgroundFile && (
+                        <p className={`text-xs mt-1 ${darkMode ? 'text-gray-400' : 'text-gray-500'}`}>
+                          {backgroundFile.name} ({(backgroundFile.size / 1024).toFixed(1)} KB)
+                        </p>
                       )}
                     </div>
-                    {backgroundPreviewValid === false && (
-                      <p className="text-xs text-red-500 mt-1">URL inválida ou imagem não acessível</p>
-                    )}
-                  </div>
+                  ) : (
+                    <div>
+                      <label className={`block text-sm font-medium mb-1 ${darkMode ? 'text-gray-300' : 'text-gray-700'}`}>
+                        URL da Imagem *
+                      </label>
+                      <div className="flex gap-2">
+                        <input
+                          type="url"
+                          value={backgroundForm.url}
+                          onChange={(e) => {
+                            setBackgroundForm(prev => ({ ...prev, url: e.target.value }));
+                            setBackgroundPreviewValid(null);
+                          }}
+                          onBlur={(e) => handleValidateBackgroundUrl(e.target.value)}
+                          placeholder="https://exemplo.com/imagem.jpg"
+                          className={`flex-1 px-4 py-2 rounded-lg border ${
+                            darkMode 
+                              ? 'bg-gray-700 border-gray-600 text-white placeholder-gray-400' 
+                              : 'bg-white border-gray-300 text-gray-900'
+                          } ${backgroundPreviewValid === false ? 'border-red-500' : backgroundPreviewValid === true ? 'border-green-500' : ''}`}
+                        />
+                        {backgroundValidating && (
+                          <div className="flex items-center px-2">
+                            <RefreshCw size={18} className="animate-spin text-blue-500" />
+                          </div>
+                        )}
+                        {!backgroundValidating && backgroundPreviewValid === true && (
+                          <div className="flex items-center px-2">
+                            <Check size={18} className="text-green-500" />
+                          </div>
+                        )}
+                        {!backgroundValidating && backgroundPreviewValid === false && (
+                          <div className="flex items-center px-2">
+                            <XIcon size={18} className="text-red-500" />
+                          </div>
+                        )}
+                      </div>
+                      {backgroundPreviewValid === false && (
+                        <p className="text-xs text-red-500 mt-1">URL inválida ou imagem não acessível</p>
+                      )}
+                    </div>
+                  )}
                 </div>
 
                 {/* Preview */}
-                {backgroundForm.url && backgroundPreviewValid === true && (
+                {((uploadMode === 'file' && backgroundFilePreview) || (uploadMode === 'url' && backgroundForm.url && backgroundPreviewValid === true)) && (
                   <div className="mt-4">
                     <label className={`block text-sm font-medium mb-2 ${darkMode ? 'text-gray-300' : 'text-gray-700'}`}>
                       Preview
                     </label>
                     <div className="w-48 h-28 rounded-lg overflow-hidden border border-gray-600">
                       <img 
-                        src={backgroundForm.url} 
+                        src={uploadMode === 'file' ? backgroundFilePreview! : backgroundForm.url} 
                         alt="Preview" 
                         className="w-full h-full object-cover"
                       />
@@ -1443,6 +1552,8 @@ export default function AdminPanel({ darkMode }: AdminPanelProps) {
                     onClick={() => {
                       setShowBackgroundForm(false);
                       setBackgroundForm({ name: '', url: '' });
+                      setBackgroundFile(null);
+                      setBackgroundFilePreview(null);
                       setBackgroundPreviewValid(null);
                     }}
                     className={`px-4 py-2 rounded-lg ${
@@ -1453,21 +1564,33 @@ export default function AdminPanel({ darkMode }: AdminPanelProps) {
                   </button>
                   <button
                     onClick={handleAddBackground}
-                    disabled={actionLoading === 'add-background' || !backgroundForm.name.trim() || !backgroundForm.url.trim() || backgroundPreviewValid === false}
+                    disabled={
+                      actionLoading === 'add-background' || 
+                      !backgroundForm.name.trim() || 
+                      (uploadMode === 'file' ? !backgroundFile : (!backgroundForm.url.trim() || backgroundPreviewValid === false))
+                    }
                     className={`px-4 py-2 rounded-lg flex items-center gap-2 ${
                       darkMode ? 'bg-green-600 hover:bg-green-700' : 'bg-green-500 hover:bg-green-600'
-                    } text-white ${(actionLoading === 'add-background' || !backgroundForm.name.trim() || !backgroundForm.url.trim()) ? 'opacity-50' : ''}`}
+                    } text-white ${(actionLoading === 'add-background' || !backgroundForm.name.trim() || (uploadMode === 'file' ? !backgroundFile : !backgroundForm.url.trim())) ? 'opacity-50' : ''}`}
                   >
-                    <Image size={18} />
-                    Adicionar
+                    {actionLoading === 'add-background' ? (
+                      <>
+                        <RefreshCw size={18} className="animate-spin" />
+                        {uploadMode === 'file' ? 'Enviando...' : 'Adicionando...'}
+                      </>
+                    ) : (
+                      <>
+                        <Image size={18} />
+                        {uploadMode === 'file' ? 'Enviar e Adicionar' : 'Adicionar'}
+                      </>
+                    )}
                   </button>
                 </div>
 
                 {/* Dicas */}
                 <div className={`mt-4 p-3 rounded-lg ${darkMode ? 'bg-blue-900/20' : 'bg-blue-50'}`}>
                   <p className={`text-xs ${darkMode ? 'text-blue-300' : 'text-blue-700'}`}>
-                    💡 Dicas: Use imagens de alta qualidade (1280x720 ou maior). URLs do Unsplash funcionam bem.
-                    Exemplo: https://images.unsplash.com/photo-1497366216548-37526070297c?w=1280&h=720&fit=crop
+                    💡 Dicas: Use imagens de alta qualidade (1280x720 ou maior). Formatos aceitos: JPEG, PNG, WebP, GIF. Tamanho máximo: 5MB.
                   </p>
                 </div>
               </div>
@@ -1559,6 +1682,11 @@ export default function AdminPanel({ darkMode }: AdminPanelProps) {
               </p>
             </div>
           </div>
+        )}
+
+        {/* Interview AI Config Tab */}
+        {activeTab === 'interviewai' && (
+          <InterviewAIConfigPanel darkMode={darkMode} userLogin={user?.login || ''} />
         )}
 
         {/* Server Info */}

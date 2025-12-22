@@ -21,19 +21,28 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const [isGuest, setIsGuest] = useState(false);
 
   useEffect(() => {
-    // Verificar se há usuário autenticado no localStorage
-    const storedAuth = authService.getStoredAuth();
-    if (storedAuth) {
-      setUser(storedAuth);
-    }
+    const initAuth = async () => {
+      // Verificar se há usuário autenticado no localStorage
+      const storedAuth = authService.getStoredAuth();
+      if (storedAuth && storedAuth.isAuthenticated) {
+        // Re-verificar role do usuário (pode ter mudado)
+        const role = await authService.checkUserRole(storedAuth.login);
+        const updatedUser = { ...storedAuth, role };
+        setUser(updatedUser);
+        // Atualizar storage com role atualizado
+        authService.updateStoredRole(storedAuth.login, role);
+      }
+      
+      // Verificar se entrou como convidado
+      const guestMode = sessionStorage.getItem('videochat_guest');
+      if (guestMode === 'true') {
+        setIsGuest(true);
+      }
+      
+      setIsLoading(false);
+    };
     
-    // Verificar se entrou como convidado
-    const guestMode = sessionStorage.getItem('videochat_guest');
-    if (guestMode === 'true') {
-      setIsGuest(true);
-    }
-    
-    setIsLoading(false);
+    initAuth();
   }, []);
 
   const login = async (credentials: LoginCredentials) => {

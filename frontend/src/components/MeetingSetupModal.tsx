@@ -1,10 +1,10 @@
 import { useState } from 'react';
-import { X, Briefcase, Users, BookOpen, MessageSquare } from 'lucide-react';
+import { X, Briefcase, Users, BookOpen, MessageSquare, Mic, Video } from 'lucide-react';
 
 interface MeetingSetupModalProps {
   isOpen: boolean;
   onClose: () => void;
-  onConfirm: (type: string, topic: string) => void;
+  onConfirm: (type: string, topic: string, options?: { autoStartTranscription?: boolean; autoStartRecording?: boolean; jobDescription?: string }) => void;
   darkMode: boolean;
 }
 
@@ -23,16 +23,20 @@ export default function MeetingSetupModal({
 }: MeetingSetupModalProps) {
   const [selectedType, setSelectedType] = useState('REUNIAO');
   const [topic, setTopic] = useState('');
+  const [jobDescription, setJobDescription] = useState('');
+  const [autoStartTranscription, setAutoStartTranscription] = useState(true); // Ativo por padrão
+  const [autoStartRecording, setAutoStartRecording] = useState(true); // Ativo por padrão
 
   if (!isOpen) return null;
 
   const handleConfirm = () => {
-    onConfirm(selectedType, topic);
+    onConfirm(selectedType, topic, { autoStartTranscription, autoStartRecording, jobDescription: selectedType === 'ENTREVISTA' ? jobDescription : '' });
     onClose();
   };
 
   const handleSkip = () => {
-    onConfirm('REUNIAO', '');
+    // Mesmo pulando, mantém transcrição e gravação ativas por padrão
+    onConfirm('REUNIAO', '', { autoStartTranscription: true, autoStartRecording: true, jobDescription: '' });
     onClose();
   };
 
@@ -134,6 +138,29 @@ export default function MeetingSetupModal({
             )}
           </div>
 
+          {/* Job Description - Apenas para entrevistas */}
+          {isInterview && (
+            <div>
+              <label className={`block text-sm font-medium mb-2 ${darkMode ? 'text-gray-300' : 'text-gray-700'}`}>
+                Descrição da Vaga (contexto para IA)
+              </label>
+              <textarea
+                value={jobDescription}
+                onChange={(e) => setJobDescription(e.target.value)}
+                placeholder="Cole aqui a descrição completa da vaga, requisitos técnicos, nível de senioridade, tecnologias esperadas, etc. Quanto mais detalhes, melhores serão as perguntas sugeridas pela IA."
+                rows={4}
+                className={`w-full px-4 py-3 rounded-xl focus:ring-2 focus:border-transparent transition-all resize-none ${
+                  darkMode 
+                    ? 'border border-gray-600 bg-gray-700 text-white placeholder-gray-400 focus:ring-purple-500' 
+                    : 'border border-gray-200 bg-gray-50 focus:ring-indigo-500'
+                }`}
+              />
+              <p className={`text-xs mt-1 ${darkMode ? 'text-gray-500' : 'text-gray-400'}`}>
+                A IA usará estas informações para gerar perguntas técnicas relevantes ao nível do candidato
+              </p>
+            </div>
+          )}
+
           {/* Interview AI Info */}
           {isInterview && (
             <div className={`p-3 rounded-xl ${
@@ -153,6 +180,69 @@ export default function MeetingSetupModal({
               </ul>
             </div>
           )}
+
+          {/* Auto-start Options */}
+          <div className={`space-y-3 p-3 rounded-xl ${
+            darkMode ? 'bg-gray-700/50' : 'bg-gray-50'
+          }`}>
+            <h4 className={`text-sm font-medium ${darkMode ? 'text-gray-300' : 'text-gray-700'}`}>
+              Opções Automáticas
+            </h4>
+            
+            {/* Auto Transcription */}
+            <label className="flex items-center justify-between cursor-pointer">
+              <div className="flex items-center gap-2">
+                <Mic size={16} className={darkMode ? 'text-gray-400' : 'text-gray-500'} />
+                <span className={`text-sm ${darkMode ? 'text-gray-300' : 'text-gray-600'}`}>
+                  Iniciar transcrição automaticamente
+                </span>
+              </div>
+              <div className="relative">
+                <input
+                  type="checkbox"
+                  checked={autoStartTranscription}
+                  onChange={(e) => setAutoStartTranscription(e.target.checked)}
+                  className="sr-only"
+                />
+                <div className={`w-10 h-6 rounded-full transition-colors ${
+                  autoStartTranscription
+                    ? darkMode ? 'bg-purple-600' : 'bg-indigo-600'
+                    : darkMode ? 'bg-gray-600' : 'bg-gray-300'
+                }`}>
+                  <div className={`w-4 h-4 rounded-full bg-white shadow transform transition-transform mt-1 ${
+                    autoStartTranscription ? 'translate-x-5' : 'translate-x-1'
+                  }`} />
+                </div>
+              </div>
+            </label>
+
+            {/* Auto Recording */}
+            <label className="flex items-center justify-between cursor-pointer">
+              <div className="flex items-center gap-2">
+                <Video size={16} className={darkMode ? 'text-gray-400' : 'text-gray-500'} />
+                <span className={`text-sm ${darkMode ? 'text-gray-300' : 'text-gray-600'}`}>
+                  Iniciar gravação automaticamente
+                </span>
+              </div>
+              <div className="relative">
+                <input
+                  type="checkbox"
+                  checked={autoStartRecording}
+                  onChange={(e) => setAutoStartRecording(e.target.checked)}
+                  className="sr-only"
+                />
+                <div className={`w-10 h-6 rounded-full transition-colors ${
+                  autoStartRecording
+                    ? darkMode ? 'bg-purple-600' : 'bg-indigo-600'
+                    : darkMode ? 'bg-gray-600' : 'bg-gray-300'
+                }`}>
+                  <div className={`w-4 h-4 rounded-full bg-white shadow transform transition-transform mt-1 ${
+                    autoStartRecording ? 'translate-x-5' : 'translate-x-1'
+                  }`} />
+                </div>
+              </div>
+            </label>
+          </div>
         </div>
 
         {/* Footer */}

@@ -1,135 +1,527 @@
 import { useState, useEffect, useCallback, useRef } from 'react';
-import { interviewAIService, InterviewSuggestion, InterviewContext } from '../services/interviewAIService';
+import {
+  interviewAIService,
+  InterviewSuggestion,
+  InterviewContext,
+  QuestionAnswer,
+  detectAskedQuestion,
+} from '../services/interviewAIService';
+import {
+  saveInterviewData,
+  getInterviewData,
+} from '../services/interviewDataService';
+import {
+  InterviewAIConfig,
+  DEFAULT_CONFIG,
+  subscribeToConfigChanges,
+  getInterviewConfig,
+  startConfigPolling,
+  stopConfigPolling,
+} from '../services/interviewConfigService';
 
 interface UseInterviewAssistantProps {
   isEnabled: boolean;
   meetingType: string;
   topic: string;
-  transcriptions: Array<{ transcribedText: string; isPartial?: boolean }>;
+  jobDescription?: string;
+  transcriptions: Array<{
+    transcribedText: string;
+    speakerLabel?: string;
+    isPartial?: boolean;
+    timestamp?: number;
+  }>;
+  roomId?: string;
+  userLogin?: string;
+  userName?: string; // Nome do usuário autenticado (entrevistador) para filtrar transcrições
 }
 
 export function useInterviewAssistant({
   isEnabled,
   meetingType,
   topic,
+  jobDescription,
   transcriptions,
+  roomId,
+  userLogin,
+  userName,
 }: UseInterviewAssistantProps) {
   const [suggestions, setSuggestions] = useState<InterviewSuggestion[]>([]);
+  const [questionsAsked, setQuestionsAsked] = useState<QuestionAnswer[]>([]);
   const [isGenerating, setIsGenerating] = useState(false);
+  const [isLoading, setIsLoading] = useState(true);
+  const [recentlyMarkedIds, setRecentlyMarkedIds] = useState<Set<string>>(new Set());
+  
+  // Configuração dinâmica - atualizada em tempo real
+  const [config, setConfig] = useState<InterviewAIConfig>(DEFAULT_CONFIG);
+
   const lastTranscriptionCountRef = useRef(0);
   const processedTranscriptionsRef = useRef(new Set<string>());
+  const lastProcessedAnswerRef = useRef<string>('');
+  const lastSuggestionTimeRef = useRef<number>(0);
+  const totalAnswerLengthRef = useRef<number>(0);
+  const isInitializedRef = useRef(false);
+  const saveTimeoutRef = useRef<NodeJS.Timeout | null>(null);
+  const dataLoadedRef = useRef(false);
+  const configRef = useRef<InterviewAIConfig>(DEFAULT_CONFIG);
 
-  // Gerar sugestões iniciais quando a entrevista começar
+  // Manter ref atualizada com config
   useEffect(() => {
-    if (!isEnabled || meetingType !== 'ENTREVISTA' || !topic) {
+    configRef.current = config;
+  }, [config]);
+
+
+  // Carregar e escutar mudanças de configuração em tempo real
+  useEffect(() => {
+    if (!isEnabled) return;
+
+    // Carregar configuração inicial
+    getInterviewConfig().then(setConfig);
+
+    // Iniciar polling para mudanças
+    startConfigPolling(5000);
+
+    // Escutar mudanças de configuração
+    const unsubscribe = subscribeToConfigChanges((newConfig) => {
+      console.log('[InterviewAssistant] Configuração atualizada em tempo real:', newConfig);
+      setConfig(newConfig);
+    });
+
+    return () => {
+      unsubscribe();
+      stopConfigPolling();
+    };
+  }, [isEnabled]);
+
+  // Função para salvar dados no DynamoDB com debounce
+  const saveDataToDynamoDB = useCallback(
+    (newSuggestions: InterviewSuggestion[], newQuestionsAsked: QuestionAnswer[]) => {
+      if (!roomId) return;
+
+      if (saveTimeoutRef.current) {
+        clearTimeout(saveTimeoutRef.current);
+      }
+
+      saveTimeoutRef.current = setTimeout(async () => {
+        try {
+          await saveInterviewData(
+            roomId,
+            { suggestions: newSuggestions, questionsAsked: newQuestionsAsked },
+            userLogin
+          );
+          console.log('[InterviewAssistant] Dados salvos no DynamoDB');
+        } catch (error) {
+          console.error('[InterviewAssistant] Erro ao salvar dados:', error);
+        }
+      }, configRef.current.saveDebounceMs);
+    },
+    [roomId, userLogin]
+  );
+
+  // Carregar dados do DynamoDB ao iniciar
+  useEffect(() => {
+    if (!isEnabled || !roomId || dataLoadedRef.current) {
+      setIsLoading(false);
       return;
     }
 
-    // Gerar sugestões iniciais
+    const loadData = async () => {
+      try {
+        const result = await getInterviewData(roomId);
+        if (result.exists && result.data) {
+          console.log('[InterviewAssistant] Dados carregados do DynamoDB');
+          setSuggestions(result.data.suggestions || []);
+          setQuestionsAsked(result.data.questionsAsked || []);
+
+          result.data.questionsAsked?.forEach((qa) => {
+            processedTranscriptionsRef.current.add(qa.answer);
+          });
+
+          if (result.data.suggestions?.length > 0 || result.data.questionsAsked?.length > 0) {
+            isInitializedRef.current = true;
+          }
+        }
+        dataLoadedRef.current = true;
+      } catch (error) {
+        console.error('[InterviewAssistant] Erro ao carregar dados:', error);
+      } finally {
+        setIsLoading(false);
+      }
+    };
+
+    loadData();
+  }, [isEnabled, roomId]);
+
+  // Gerar sugestões iniciais
+  useEffect(() => {
+    if (!isEnabled || meetingType !== 'ENTREVISTA' || !topic || isInitializedRef.current || isLoading) {
+      return;
+    }
+
+    isInitializedRef.current = true;
+
     const context: InterviewContext = {
       meetingType: meetingType as InterviewContext['meetingType'],
       topic,
+      jobDescription,
       transcriptionHistory: [],
+      questionsAsked: [],
     };
 
-    const initialSuggestions = interviewAIService.generateSuggestions(context, 2);
+    const initialSuggestions = interviewAIService.generateSuggestions(
+      context,
+      configRef.current.initialSuggestionsCount
+    );
     setSuggestions(initialSuggestions);
-  }, [isEnabled, meetingType, topic]);
+    lastSuggestionTimeRef.current = Date.now();
+    saveDataToDynamoDB(initialSuggestions, []);
+  }, [isEnabled, meetingType, topic, jobDescription, isLoading, saveDataToDynamoDB]);
 
-  // Monitorar transcrições e gerar novas sugestões
+  // Detectar automaticamente quando o entrevistador faz uma pergunta sugerida
+  // IMPORTANTE: Só considera transcrições do usuário autenticado (entrevistador)
   useEffect(() => {
-    if (!isEnabled || meetingType !== 'ENTREVISTA' || !topic) {
+    if (!isEnabled || meetingType !== 'ENTREVISTA' || isLoading || !userName) {
       return;
     }
 
-    // Filtrar apenas transcrições finais (não parciais)
-    const finalTranscriptions = transcriptions.filter(t => !t.isPartial);
+    const finalTranscriptions = transcriptions.filter((t) => !t.isPartial);
+    if (finalTranscriptions.length === 0) return;
+
+    // FILTRAR: Apenas transcrições do entrevistador (usuário autenticado)
+    // Comparar speakerLabel com userName (case-insensitive, parcial)
+    const interviewerTranscriptions = finalTranscriptions.filter((t) => {
+      if (!t.speakerLabel) return false;
+      const speaker = t.speakerLabel.toLowerCase().trim();
+      const interviewer = userName.toLowerCase().trim();
+      // Verificar se o speaker contém o nome do entrevistador ou vice-versa
+      return speaker.includes(interviewer) || 
+             interviewer.includes(speaker.split(' ')[0]) ||
+             speaker.split(' ')[0] === interviewer.split(' ')[0];
+    });
+
+    if (interviewerTranscriptions.length === 0) return;
+
+    // Pegar as últimas 3 transcrições DO ENTREVISTADOR para verificar
+    const recentTranscriptions = interviewerTranscriptions.slice(-3);
     
-    // Verificar se há novas transcrições
+    for (const trans of recentTranscriptions) {
+      // Verificar se essa transcrição já foi processada para detecção
+      const transKey = `detected_${trans.transcribedText.substring(0, 50)}`;
+      if (processedTranscriptionsRef.current.has(transKey)) continue;
+      
+      // Detectar se alguma sugestão foi feita
+      const detectedSuggestion = detectAskedQuestion(trans.transcribedText, suggestions);
+      
+      if (detectedSuggestion && !detectedSuggestion.isRead) {
+        console.log('[InterviewAssistant] 🎯 Pergunta detectada automaticamente (entrevistador):', detectedSuggestion.question.substring(0, 50));
+        console.log('[InterviewAssistant] Speaker:', trans.speakerLabel, '| Entrevistador:', userName);
+        
+        // Marcar como processada
+        processedTranscriptionsRef.current.add(transKey);
+        
+        // Marcar a sugestão como lida com flag de animação
+        setSuggestions((prev) => {
+          const updated = prev.map((s) =>
+            s.id === detectedSuggestion.id
+              ? { ...s, isRead: true, justMarkedAsRead: true, autoDetected: true }
+              : s
+          );
+          
+          // Adicionar ao QA
+          const newQA: QuestionAnswer = {
+            questionId: detectedSuggestion.id,
+            question: detectedSuggestion.question,
+            answer: '',
+            timestamp: Date.now(),
+            category: detectedSuggestion.category,
+            answerQuality: 'incomplete',
+            keyTopics: [],
+          };
+          
+          setQuestionsAsked((qa) => {
+            // Evitar duplicatas
+            if (qa.some(q => q.questionId === detectedSuggestion.id)) return qa;
+            const updatedQA = [...qa, newQA];
+            saveDataToDynamoDB(updated, updatedQA);
+            return updatedQA;
+          });
+          
+          // Adicionar ao set de recém-marcados para animação
+          setRecentlyMarkedIds((prev) => new Set([...prev, detectedSuggestion.id]));
+          
+          // Remover da animação após 3 segundos
+          setTimeout(() => {
+            setRecentlyMarkedIds((prev) => {
+              const newSet = new Set(prev);
+              newSet.delete(detectedSuggestion.id);
+              return newSet;
+            });
+            // Remover flag justMarkedAsRead
+            setSuggestions((prev) =>
+              prev.map((s) =>
+                s.id === detectedSuggestion.id ? { ...s, justMarkedAsRead: false } : s
+              )
+            );
+          }, 3000);
+          
+          return updated;
+        });
+        
+        // Gerar follow-up automaticamente após detectar a pergunta
+        setTimeout(() => {
+          const context: InterviewContext = {
+            meetingType: meetingType as InterviewContext['meetingType'],
+            topic,
+            jobDescription,
+            transcriptionHistory: finalTranscriptions.map((t) => t.transcribedText),
+            questionsAsked: questionsAsked,
+          };
+          
+          if (configRef.current.enableAutoFollowUp) {
+            const followUp = interviewAIService.generateFollowUp(trans.transcribedText, context);
+            
+            if (followUp) {
+              setSuggestions((prev) => {
+                const isDuplicate = prev.some(
+                  (s) => s.question.toLowerCase() === followUp.question.toLowerCase()
+                );
+                if (isDuplicate) return prev;
+                
+                console.log('[InterviewAssistant] 🔄 Follow-up automático gerado:', followUp.question.substring(0, 50));
+                lastSuggestionTimeRef.current = Date.now();
+                const newSuggestions = [followUp, ...prev].slice(0, 10);
+                saveDataToDynamoDB(newSuggestions, questionsAsked);
+                return newSuggestions;
+              });
+            }
+          }
+        }, 1500); // Delay para dar tempo de processar a resposta
+        
+        break; // Processar apenas uma detecção por vez
+      }
+    }
+  }, [transcriptions, isEnabled, meetingType, isLoading, suggestions, questionsAsked, topic, jobDescription, saveDataToDynamoDB, userName]);
+
+  // Monitorar transcrições - usa config dinâmica
+  useEffect(() => {
+    if (!isEnabled || meetingType !== 'ENTREVISTA' || !topic || isLoading) {
+      return;
+    }
+
+    const currentConfig = configRef.current;
+    const finalTranscriptions = transcriptions.filter((t) => !t.isPartial);
+
     if (finalTranscriptions.length <= lastTranscriptionCountRef.current) {
       return;
     }
 
-    // Processar novas transcrições
-    const newTranscriptions = finalTranscriptions.slice(lastTranscriptionCountRef.current);
-    lastTranscriptionCountRef.current = finalTranscriptions.length;
-
-    // Verificar se já processamos essas transcrições
-    const unprocessed = newTranscriptions.filter(t => !processedTranscriptionsRef.current.has(t.transcribedText));
-    if (unprocessed.length === 0) {
+    // Verificar cooldown usando config dinâmica
+    const timeSinceLastSuggestion = Date.now() - lastSuggestionTimeRef.current;
+    if (timeSinceLastSuggestion < currentConfig.minTimeBetweenSuggestionsMs) {
+      lastTranscriptionCountRef.current = finalTranscriptions.length;
       return;
     }
 
-    // Marcar como processadas
-    unprocessed.forEach(t => processedTranscriptionsRef.current.add(t.transcribedText));
+    // Verificar limite de sugestões não lidas
+    const unreadCount = suggestions.filter((s) => !s.isRead).length;
+    if (unreadCount >= currentConfig.maxUnreadSuggestions) {
+      lastTranscriptionCountRef.current = finalTranscriptions.length;
+      return;
+    }
 
+    const newTranscriptions = finalTranscriptions.slice(lastTranscriptionCountRef.current);
+    lastTranscriptionCountRef.current = finalTranscriptions.length;
+
+    const unprocessed = newTranscriptions.filter(
+      (t) => !processedTranscriptionsRef.current.has(t.transcribedText)
+    );
+    if (unprocessed.length === 0) return;
+
+    unprocessed.forEach((t) => processedTranscriptionsRef.current.add(t.transcribedText));
+
+    const newAnswerLength = unprocessed.reduce((sum, t) => sum + t.transcribedText.length, 0);
+    totalAnswerLengthRef.current += newAnswerLength;
+
+    if (finalTranscriptions.length < currentConfig.minTranscriptionsForFollowup) {
+      return;
+    }
+
+    // Usar minAnswerLength da config
+    const lastResponse = unprocessed
+      .filter((t) => t.transcribedText.length >= currentConfig.minAnswerLength)
+      .pop()?.transcribedText || '';
+
+    if (!lastResponse || lastResponse === lastProcessedAnswerRef.current) {
+      return;
+    }
+
+    lastProcessedAnswerRef.current = lastResponse;
     setIsGenerating(true);
 
-    // Simular delay de "pensamento" da IA
+    // Usar processDelayMs da config
     setTimeout(() => {
+      const cfg = configRef.current; // Pegar config mais recente
+      
+      const transcriptionsForProcessing = finalTranscriptions.map((t) => ({
+        text: t.transcribedText,
+        speaker: t.speakerLabel || 'Participante',
+        timestamp: t.timestamp || Date.now(),
+      }));
+
+      const updatedQA = interviewAIService.processTranscription(
+        transcriptionsForProcessing,
+        questionsAsked
+      );
+      setQuestionsAsked(updatedQA);
+
       const context: InterviewContext = {
         meetingType: meetingType as InterviewContext['meetingType'],
         topic,
-        transcriptionHistory: finalTranscriptions.map(t => t.transcribedText),
+        jobDescription,
+        transcriptionHistory: finalTranscriptions.map((t) => t.transcribedText),
+        questionsAsked: updatedQA,
       };
 
-      // Tentar gerar follow-up baseado na última resposta
-      const lastResponse = unprocessed[unprocessed.length - 1]?.transcribedText;
-      const followUp = interviewAIService.generateFollowUp(lastResponse, context);
+      let newSuggestions = [...suggestions];
+      let suggestionAdded = false;
 
-      if (followUp) {
-        setSuggestions(prev => {
-          // Limitar a 5 sugestões não lidas
-          const unreadCount = prev.filter(s => !s.isRead).length;
-          if (unreadCount >= 5) {
-            return prev;
+      // Gerar follow-up se habilitado na config
+      if (cfg.enableAutoFollowUp) {
+        const followUp = interviewAIService.generateFollowUp(lastResponse, context);
+
+        if (followUp) {
+          const isDuplicate = suggestions.some(
+            (s) => s.question.toLowerCase() === followUp.question.toLowerCase()
+          );
+
+          if (!isDuplicate) {
+            const currentUnread = suggestions.filter((s) => !s.isRead);
+            if (currentUnread.length < cfg.maxUnreadSuggestions) {
+              lastSuggestionTimeRef.current = Date.now();
+              newSuggestions = [followUp, ...suggestions].slice(0, 10);
+              suggestionAdded = true;
+              console.log('[InterviewAssistant] Follow-up gerado:', followUp.question);
+            }
           }
-          return [followUp, ...prev];
-        });
+        }
       }
 
-      // A cada 5 transcrições, gerar novas sugestões gerais
-      if (finalTranscriptions.length % 5 === 0) {
-        const newSuggestions = interviewAIService.generateSuggestions(context, 2);
-        setSuggestions(prev => {
-          const existingQuestions = new Set(prev.map(s => s.question));
-          const uniqueNew = newSuggestions.filter(s => !existingQuestions.has(s.question));
-          return [...uniqueNew, ...prev].slice(0, 10); // Manter máximo de 10
-        });
+      // Gerar novas perguntas a cada N respostas (configurável)
+      if (!suggestionAdded && updatedQA.length > 0 && updatedQA.length % cfg.generateNewQuestionsEveryN === 0) {
+        const newSuggestionsFromAI = interviewAIService.generateSuggestions(context, 2);
+        const existingQuestions = new Set(newSuggestions.map((s) => s.question.toLowerCase()));
+        const uniqueNew = newSuggestionsFromAI.filter(
+          (s) => !existingQuestions.has(s.question.toLowerCase())
+        );
+
+        if (uniqueNew.length > 0) {
+          lastSuggestionTimeRef.current = Date.now();
+          newSuggestions = [...uniqueNew, ...newSuggestions].slice(0, 10);
+          console.log('[InterviewAssistant] Novas perguntas geradas:', uniqueNew.length);
+        }
       }
 
+      setSuggestions(newSuggestions);
+      saveDataToDynamoDB(newSuggestions, updatedQA);
       setIsGenerating(false);
-    }, 1500);
-  }, [transcriptions, isEnabled, meetingType, topic]);
+    }, currentConfig.processDelayMs);
+  }, [
+    transcriptions,
+    isEnabled,
+    meetingType,
+    topic,
+    jobDescription,
+    questionsAsked,
+    suggestions,
+    isLoading,
+    saveDataToDynamoDB,
+  ]);
+
 
   // Marcar sugestão como lida
-  const markAsRead = useCallback((suggestionId: string) => {
-    setSuggestions(prev =>
-      prev.map(s =>
-        s.id === suggestionId ? { ...s, isRead: true } : s
-      )
-    );
-  }, []);
+  const markAsRead = useCallback(
+    (suggestionId: string) => {
+      setSuggestions((prev) => {
+        const suggestion = prev.find((s) => s.id === suggestionId);
+        if (suggestion && !suggestion.isRead) {
+          const newQA: QuestionAnswer = {
+            questionId: suggestionId,
+            question: suggestion.question,
+            answer: '',
+            timestamp: Date.now(),
+            category: suggestion.category,
+            answerQuality: 'incomplete',
+            keyTopics: [],
+          };
+          setQuestionsAsked((qa) => {
+            const updatedQA = [...qa, newQA];
+            const updatedSuggestions = prev.map((s) =>
+              s.id === suggestionId ? { ...s, isRead: true } : s
+            );
+            saveDataToDynamoDB(updatedSuggestions, updatedQA);
+            return updatedQA;
+          });
+        }
+        return prev.map((s) => (s.id === suggestionId ? { ...s, isRead: true } : s));
+      });
+    },
+    [saveDataToDynamoDB]
+  );
 
   // Remover sugestão
-  const dismissSuggestion = useCallback((suggestionId: string) => {
-    setSuggestions(prev => prev.filter(s => s.id !== suggestionId));
-  }, []);
+  const dismissSuggestion = useCallback(
+    (suggestionId: string) => {
+      setSuggestions((prev) => {
+        const newSuggestions = prev.filter((s) => s.id !== suggestionId);
+        saveDataToDynamoDB(newSuggestions, questionsAsked);
+        return newSuggestions;
+      });
+    },
+    [questionsAsked, saveDataToDynamoDB]
+  );
 
-  // Limpar todas as sugestões lidas
+  // Limpar sugestões lidas
   const clearReadSuggestions = useCallback(() => {
-    setSuggestions(prev => prev.filter(s => !s.isRead));
+    setSuggestions((prev) => {
+      const newSuggestions = prev.filter((s) => !s.isRead);
+      saveDataToDynamoDB(newSuggestions, questionsAsked);
+      return newSuggestions;
+    });
+  }, [questionsAsked, saveDataToDynamoDB]);
+
+  // Cleanup
+  useEffect(() => {
+    return () => {
+      if (saveTimeoutRef.current) {
+        clearTimeout(saveTimeoutRef.current);
+      }
+    };
   }, []);
 
-  // Obter apenas sugestões não lidas
-  const unreadSuggestions = suggestions.filter(s => !s.isRead);
+  // Obter progresso
+  const getProgress = useCallback(() => {
+    const context: InterviewContext = {
+      meetingType: meetingType as InterviewContext['meetingType'],
+      topic,
+      jobDescription,
+      transcriptionHistory: transcriptions.filter((t) => !t.isPartial).map((t) => t.transcribedText),
+      questionsAsked,
+    };
+    return interviewAIService.getInterviewProgress(context);
+  }, [meetingType, topic, jobDescription, transcriptions, questionsAsked]);
+
+  const unreadSuggestions = suggestions.filter((s) => !s.isRead);
 
   return {
     suggestions,
     unreadSuggestions,
+    questionsAsked,
     isGenerating,
+    isLoading,
+    config, // Expor config atual para debug/UI
+    recentlyMarkedIds, // IDs das sugestões recém-marcadas (para animação)
     markAsRead,
     dismissSuggestion,
     clearReadSuggestions,
+    getProgress,
   };
 }

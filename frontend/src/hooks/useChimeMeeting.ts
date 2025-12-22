@@ -98,6 +98,11 @@ export function useChimeMeeting({ roomId, odUserId, userName = 'Usuário', isAut
   const [connectionQuality, setConnectionQuality] = useState<'excellent' | 'good' | 'fair' | 'poor' | 'unknown'>('unknown');
   const [isSpeakerMode, setIsSpeakerMode] = useState(true); // Alto-falante por padrão no mobile
   const [audioOutputDevices, setAudioOutputDevices] = useState<MediaDeviceInfo[]>([]);
+  const [audioInputDevices, setAudioInputDevices] = useState<MediaDeviceInfo[]>([]);
+  const [videoInputDevices, setVideoInputDevices] = useState<MediaDeviceInfo[]>([]);
+  const [selectedAudioInput, setSelectedAudioInput] = useState<string>('');
+  const [selectedAudioOutput, setSelectedAudioOutput] = useState<string>('');
+  const [selectedVideoInput, setSelectedVideoInput] = useState<string>('');
 
   const meetingSessionRef = useRef<DefaultMeetingSession | null>(null);
   const audioVideoRef = useRef<AudioVideoFacade | null>(null);
@@ -352,6 +357,12 @@ export function useChimeMeeting({ roomId, odUserId, userName = 'Usuário', isAut
 
       console.log('[Chime] Dispositivos de áudio:', audioInputDevices.length);
       console.log('[Chime] Dispositivos de vídeo:', videoInputDevices.length);
+      console.log('[Chime] Dispositivos de saída:', audioOutputDevices.length);
+
+      // Salvar listas de dispositivos
+      setAudioInputDevices(audioInputDevices);
+      setVideoInputDevices(videoInputDevices);
+      setAudioOutputDevices(audioOutputDevices);
 
       // Selecionar microfone
       if (audioInputDevices.length > 0) {
@@ -359,6 +370,7 @@ export function useChimeMeeting({ roomId, odUserId, userName = 'Usuário', isAut
           ? audioInputDevices.find(d => d.deviceId === savedAudioDevice) || audioInputDevices[0]
           : audioInputDevices[0];
         await audioVideo.startAudioInput(audioDevice.deviceId);
+        setSelectedAudioInput(audioDevice.deviceId);
         
         // Criar stream de áudio local para transcrição
         try {
@@ -379,12 +391,17 @@ export function useChimeMeeting({ roomId, odUserId, userName = 'Usuário', isAut
           ? videoInputDevices.find(d => d.deviceId === savedVideoDevice) || videoInputDevices[0]
           : videoInputDevices[0];
         await audioVideo.startVideoInput(videoDevice.deviceId);
+        setSelectedVideoInput(videoDevice.deviceId);
       }
 
       // Selecionar saída de áudio
       if (audioOutputDevices.length > 0) {
-        setAudioOutputDevices(audioOutputDevices);
-        await audioVideo.chooseAudioOutput(audioOutputDevices[0].deviceId);
+        const savedAudioOutput = sessionStorage.getItem('videochat_audio_output');
+        const outputDevice = savedAudioOutput
+          ? audioOutputDevices.find(d => d.deviceId === savedAudioOutput) || audioOutputDevices[0]
+          : audioOutputDevices[0];
+        await audioVideo.chooseAudioOutput(outputDevice.deviceId);
+        setSelectedAudioOutput(outputDevice.deviceId);
       }
 
       // Aplicar configurações salvas
@@ -520,6 +537,7 @@ export function useChimeMeeting({ roomId, odUserId, userName = 'Usuário', isAut
       
       if (audioOutputDevices[deviceIndex]) {
         await audioVideoRef.current.chooseAudioOutput(audioOutputDevices[deviceIndex].deviceId);
+        setSelectedAudioOutput(audioOutputDevices[deviceIndex].deviceId);
       }
       
       setIsSpeakerMode(newMode);
@@ -530,6 +548,54 @@ export function useChimeMeeting({ roomId, odUserId, userName = 'Usuário', isAut
       setIsSpeakerMode(prev => !prev);
     }
   }, [isSpeakerMode, audioOutputDevices]);
+
+  // Trocar dispositivo de entrada de áudio (microfone)
+  const changeAudioInput = useCallback(async (deviceId: string) => {
+    if (!audioVideoRef.current) return false;
+    
+    try {
+      await audioVideoRef.current.startAudioInput(deviceId);
+      setSelectedAudioInput(deviceId);
+      sessionStorage.setItem('videochat_audio_device', deviceId);
+      console.log('[Chime] Microfone alterado:', deviceId);
+      return true;
+    } catch (err) {
+      console.error('[Chime] Erro ao trocar microfone:', err);
+      return false;
+    }
+  }, []);
+
+  // Trocar dispositivo de saída de áudio (fone/speaker)
+  const changeAudioOutput = useCallback(async (deviceId: string) => {
+    if (!audioVideoRef.current) return false;
+    
+    try {
+      await audioVideoRef.current.chooseAudioOutput(deviceId);
+      setSelectedAudioOutput(deviceId);
+      sessionStorage.setItem('videochat_audio_output', deviceId);
+      console.log('[Chime] Saída de áudio alterada:', deviceId);
+      return true;
+    } catch (err) {
+      console.error('[Chime] Erro ao trocar saída de áudio:', err);
+      return false;
+    }
+  }, []);
+
+  // Trocar dispositivo de vídeo (câmera)
+  const changeVideoInput = useCallback(async (deviceId: string) => {
+    if (!audioVideoRef.current) return false;
+    
+    try {
+      await audioVideoRef.current.startVideoInput(deviceId);
+      setSelectedVideoInput(deviceId);
+      sessionStorage.setItem('videochat_video_device', deviceId);
+      console.log('[Chime] Câmera alterada:', deviceId);
+      return true;
+    } catch (err) {
+      console.error('[Chime] Erro ao trocar câmera:', err);
+      return false;
+    }
+  }, []);
 
   // Bind video element para um tile
   const bindVideoElement = useCallback((tileId: number, element: HTMLVideoElement | null) => {
@@ -652,6 +718,15 @@ export function useChimeMeeting({ roomId, odUserId, userName = 'Usuário', isAut
     connectionQuality,
     localAudioStream, // Stream para transcrição
     isSpeakerMode, // Modo alto-falante (mobile)
+    meetingId: meetingIdRef.current, // ID da reunião para transcrição
+    
+    // Dispositivos disponíveis
+    audioInputDevices,
+    audioOutputDevices,
+    videoInputDevices,
+    selectedAudioInput,
+    selectedAudioOutput,
+    selectedVideoInput,
     
     // Ações
     joinMeeting,
@@ -660,6 +735,9 @@ export function useChimeMeeting({ roomId, odUserId, userName = 'Usuário', isAut
     toggleAudio,
     toggleScreenShare,
     toggleSpeakerMode, // Toggle alto-falante (mobile)
+    changeAudioInput, // Trocar microfone
+    changeAudioOutput, // Trocar fone/speaker
+    changeVideoInput, // Trocar câmera
     bindVideoElement,
     bindAudioElement,
     

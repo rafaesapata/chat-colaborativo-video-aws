@@ -23,7 +23,9 @@ const {
   DeleteMeetingCommand,
   DeleteAttendeeCommand,
   GetMeetingCommand,
-  ListAttendeesCommand
+  ListAttendeesCommand,
+  StartMeetingTranscriptionCommand,
+  StopMeetingTranscriptionCommand
 } = require('@aws-sdk/client-chime-sdk-meetings');
 
 const { 
@@ -34,6 +36,15 @@ const {
   UpdateItemCommand,
   ScanCommand
 } = require('@aws-sdk/client-dynamodb');
+
+const { 
+  S3Client, 
+  PutObjectCommand,
+  DeleteObjectCommand,
+  GetObjectCommand 
+} = require('@aws-sdk/client-s3');
+
+const { getSignedUrl } = require('@aws-sdk/s3-request-presigner');
 
 const crypto = require('crypto');
 const { AsyncLocalStorage } = require('async_hooks');
@@ -78,6 +89,15 @@ const dynamoClient = new DynamoDBClient({
   region: CONFIG.REGION,
   maxAttempts: 3,
 });
+
+const s3Client = new S3Client({ 
+  region: CONFIG.REGION,
+  maxAttempts: 3,
+});
+
+// Bucket para backgrounds (usa o mesmo bucket de áudio)
+const BACKGROUNDS_BUCKET = process.env.AUDIO_BUCKET || 'chat-colaborativo-serverless-audio-383234048592';
+const BACKGROUNDS_PREFIX = 'backgrounds/';
 
 // Headers de resposta (imutável)
 const RESPONSE_HEADERS = Object.freeze({
@@ -495,6 +515,9 @@ const routes = Object.freeze({
   'POST:/meeting/end': handleEndMeeting,
   'GET:/meeting/info': handleGetMeetingInfo,
   'POST:/meeting/info': handleGetMeetingInfo,
+  // Transcrição via Amazon Transcribe
+  'POST:/meeting/transcription/start': handleStartTranscription,
+  'POST:/meeting/transcription/stop': handleStopTranscription,
   // Health check
   'GET:/health': handleHealthCheck,
   // Rotas administrativas
@@ -524,8 +547,19 @@ const routes = Object.freeze({
   // Custom Backgrounds management
   'GET:/admin/backgrounds': handleGetBackgrounds,
   'POST:/admin/backgrounds/add': handleAdminAddBackground,
+  'POST:/admin/backgrounds/upload-url': handleBackgroundUploadUrl,
   'POST:/admin/backgrounds/remove': handleAdminRemoveBackground,
   'POST:/admin/backgrounds/toggle': handleAdminToggleBackground,
+  // Room Configuration (persistência no DynamoDB)
+  'POST:/room/config/save': handleSaveRoomConfig,
+  'POST:/room/config/get': handleGetRoomConfig,
+  // Interview Data (persistência de sugestões e perguntas da IA)
+  'POST:/interview/data/save': handleSaveInterviewData,
+  'POST:/interview/data/get': handleGetInterviewData,
+  'POST:/interview/data/clear': handleClearInterviewData,
+  // Interview AI Config (configurações gerenciadas pelo admin)
+  'POST:/interview/config/get': handleGetInterviewConfig,
+  'POST:/interview/config/save': handleSaveInterviewConfig,
   // Documentação
   'GET:/docs': handleDocsPage,
   'GET:/docs/swagger.json': handleSwaggerJson,
@@ -957,6 +991,172 @@ async function handleGetMeetingInfo(body) {
     }
     log(LOG_LEVELS.ERROR, 'Erro ao obter info da reunião', { error: error.message });
     return errorResponse(500, 'Erro ao obter informações');
+  }
+}
+
+// ============ HANDLER: START TRANSCRIPTION (Amazon Transcribe) ============
+/**
+ * Inicia transcrição via Amazon Transcribe
+ * 
+ * SEGURANÇA:
+ * - Validação de meetingId/roomId
+ * - Validação de languageCode (whitelist)
+ * - Log de auditoria
+ * 
+ * CUSTO: ~$0.024/minuto de áudio transcrito
+ */
+const SUPPORTED_LANGUAGES = Object.freeze([
+  'pt-BR', 'en-US', 'en-GB', 'es-ES', 'es-US', 'fr-FR', 'de-DE', 'it-IT', 'ja-JP', 'ko-KR', 'zh-CN'
+]);
+
+async function handleStartTranscription(body) {
+  const { meetingId, roomId, userLogin, languageCode = 'pt-BR' } = body;
+
+  // Validação de entrada
+  if (!meetingId && !roomId) {
+    return errorResponse(400, 'meetingId ou roomId é obrigatório');
+  }
+
+  // Validar languageCode (whitelist para segurança)
+  const validLanguage = SUPPORTED_LANGUAGES.includes(languageCode) ? languageCode : 'pt-BR';
+
+  try {
+    let actualMeetingId = meetingId;
+    
+    if (!actualMeetingId && roomId) {
+      const roomIdError = validateRoomId(roomId);
+      if (roomIdError) return errorResponse(400, roomIdError);
+      
+      const cached = await getMeetingFromCache(roomId);
+      actualMeetingId = cached?.meetingId;
+    }
+    
+    if (!actualMeetingId) {
+      return errorResponse(404, 'Reunião não encontrada');
+    }
+
+    // Iniciar transcrição via Amazon Transcribe
+    await chimeClient.send(new StartMeetingTranscriptionCommand({
+      MeetingId: actualMeetingId,
+      TranscriptionConfiguration: {
+        EngineTranscribeSettings: {
+          LanguageCode: validLanguage,
+          VocabularyFilterMethod: 'mask',           // Mascarar palavras ofensivas
+          EnablePartialResultsStabilization: true,  // Estabilizar resultados parciais
+          PartialResultsStability: 'medium',        // Balancear velocidade/precisão
+          ContentIdentificationType: 'PII',         // Identificar PII (dados pessoais)
+          IdentifyLanguage: false,                  // Usar idioma fixo para melhor precisão
+        }
+      }
+    }));
+
+    log(LOG_LEVELS.INFO, 'Transcrição iniciada', { 
+      meetingId: actualMeetingId, 
+      userLogin: userLogin || 'anonymous', 
+      languageCode: validLanguage 
+    });
+
+    return successResponse({ 
+      success: true, 
+      message: 'Transcrição iniciada com sucesso',
+      meetingId: actualMeetingId,
+      languageCode: validLanguage
+    });
+
+  } catch (error) {
+    // Se já está transcrevendo, retornar sucesso (idempotente)
+    if (error.name === 'ConflictException' || error.message?.includes('already')) {
+      log(LOG_LEVELS.INFO, 'Transcrição já estava ativa', { meetingId, roomId });
+      return successResponse({ 
+        success: true, 
+        message: 'Transcrição já está ativa',
+        alreadyActive: true
+      });
+    }
+    
+    // Erro de permissão
+    if (error.name === 'UnauthorizedException' || error.name === 'ForbiddenException') {
+      log(LOG_LEVELS.ERROR, 'Permissão negada para transcrição', { error: error.message });
+      return errorResponse(403, 'Permissão negada para iniciar transcrição');
+    }
+    
+    log(LOG_LEVELS.ERROR, 'Erro ao iniciar transcrição', { 
+      error: error.message, 
+      errorName: error.name,
+      meetingId, 
+      roomId 
+    });
+    return errorResponse(500, 'Erro ao iniciar transcrição');
+  }
+}
+
+// ============ HANDLER: STOP TRANSCRIPTION ============
+/**
+ * Para transcrição via Amazon Transcribe
+ * Operação idempotente - retorna sucesso mesmo se já estava parada
+ */
+async function handleStopTranscription(body) {
+  const { meetingId, roomId, userLogin } = body;
+
+  if (!meetingId && !roomId) {
+    return errorResponse(400, 'meetingId ou roomId é obrigatório');
+  }
+
+  try {
+    let actualMeetingId = meetingId;
+    
+    if (!actualMeetingId && roomId) {
+      const roomIdError = validateRoomId(roomId);
+      if (roomIdError) return errorResponse(400, roomIdError);
+      
+      const cached = await getMeetingFromCache(roomId);
+      actualMeetingId = cached?.meetingId;
+    }
+    
+    if (!actualMeetingId) {
+      // Se não encontrou a reunião, considerar como já parada (idempotente)
+      return successResponse({ 
+        success: true, 
+        message: 'Reunião não encontrada ou já encerrada',
+        alreadyStopped: true
+      });
+    }
+
+    await chimeClient.send(new StopMeetingTranscriptionCommand({
+      MeetingId: actualMeetingId
+    }));
+
+    log(LOG_LEVELS.INFO, 'Transcrição parada', { 
+      meetingId: actualMeetingId, 
+      userLogin: userLogin || 'anonymous' 
+    });
+
+    return successResponse({ 
+      success: true, 
+      message: 'Transcrição parada com sucesso',
+      meetingId: actualMeetingId
+    });
+
+  } catch (error) {
+    // Se não estava transcrevendo ou reunião não existe, retornar sucesso (idempotente)
+    if (error.name === 'NotFoundException' || 
+        error.name === 'BadRequestException' ||
+        error.message?.includes('not found') ||
+        error.message?.includes('does not exist')) {
+      return successResponse({ 
+        success: true, 
+        message: 'Transcrição já estava parada',
+        alreadyStopped: true
+      });
+    }
+    
+    log(LOG_LEVELS.ERROR, 'Erro ao parar transcrição', { 
+      error: error.message, 
+      errorName: error.name,
+      meetingId, 
+      roomId 
+    });
+    return errorResponse(500, 'Erro ao parar transcrição');
   }
 }
 
@@ -1505,10 +1705,10 @@ const API_KEYS_PREFIX = 'apikey_';
 
 // ============ SCHEDULE: CREATE ============
 async function handleScheduleCreate(body) {
-  const { userLogin, title, description, scheduledAt, duration, participants, notifyEmail } = body;
+  const { userLogin, title, description, scheduledAt, duration, participants, notifyEmail, meetingType, jobDescription } = body;
   
+  // Qualquer usuário autenticado pode agendar reuniões
   if (!userLogin) return errorResponse(400, 'userLogin é obrigatório');
-  if (!await isAdmin(userLogin)) return errorResponse(403, 'Acesso negado');
   if (!title) return errorResponse(400, 'title é obrigatório');
   if (!scheduledAt) return errorResponse(400, 'scheduledAt é obrigatório');
   
@@ -1525,6 +1725,8 @@ async function handleScheduleCreate(body) {
     scheduleId: { S: scheduleId },
     title: { S: title },
     description: { S: description || '' },
+    meetingType: { S: meetingType || 'REUNIAO' },
+    jobDescription: { S: jobDescription || '' }, // Descrição da vaga para entrevistas (contexto para IA)
     scheduledAt: { N: String(scheduledTime) },
     duration: { N: String(duration || 60) },
     createdBy: { S: userLogin },
@@ -1572,6 +1774,8 @@ async function handleScheduleList(body) {
     scheduleId: item.scheduleId?.S,
     title: item.title?.S,
     description: item.description?.S,
+    meetingType: item.meetingType?.S || 'REUNIAO',
+    jobDescription: item.jobDescription?.S || '',
     scheduledAt: item.scheduledAt?.N ? new Date(parseInt(item.scheduledAt.N)).toISOString() : null,
     duration: parseInt(item.duration?.N || '60'),
     createdBy: item.createdBy?.S,
@@ -2079,24 +2283,54 @@ async function saveCustomBackgrounds(backgrounds) {
 // GET /admin/backgrounds - Lista backgrounds (público para usuários autenticados)
 async function handleGetBackgrounds() {
   const backgrounds = await getCustomBackgrounds();
-  return successResponse({ backgrounds });
+  
+  // Gerar URLs pré-assinadas para backgrounds do S3
+  const backgroundsWithSignedUrls = await Promise.all(
+    backgrounds.map(async (bg) => {
+      // Se tem s3Key, gerar URL pré-assinada
+      if (bg.s3Key) {
+        try {
+          const command = new GetObjectCommand({
+            Bucket: BACKGROUNDS_BUCKET,
+            Key: bg.s3Key,
+          });
+          const signedUrl = await getSignedUrl(s3Client, command, { expiresIn: 3600 }); // 1 hora
+          return { ...bg, url: signedUrl, preview: signedUrl };
+        } catch (e) {
+          log(LOG_LEVELS.WARN, 'Erro ao gerar URL assinada', { s3Key: bg.s3Key, error: e.message });
+          return bg;
+        }
+      }
+      return bg;
+    })
+  );
+  
+  return successResponse({ backgrounds: backgroundsWithSignedUrls });
 }
 
 // POST /admin/backgrounds/add - Adiciona novo background (apenas admin)
 async function handleAdminAddBackground(body) {
-  const { userLogin, name, url } = body;
+  const { userLogin, name, url, s3Key } = body;
   
   if (!userLogin || !await isAdmin(userLogin)) {
     return errorResponse(403, 'Acesso negado');
   }
   
-  if (!name || !url) {
-    return errorResponse(400, 'Nome e URL são obrigatórios');
+  if (!name) {
+    return errorResponse(400, 'Nome é obrigatório');
+  }
+  
+  // Se tem s3Key, construir URL do S3
+  let finalUrl = url;
+  if (s3Key) {
+    finalUrl = `https://${BACKGROUNDS_BUCKET}.s3.${CONFIG.REGION}.amazonaws.com/${s3Key}`;
+  } else if (!url) {
+    return errorResponse(400, 'URL ou s3Key são obrigatórios');
   }
   
   // Validar URL
   try {
-    new URL(url);
+    new URL(finalUrl);
   } catch {
     return errorResponse(400, 'URL inválida');
   }
@@ -2106,8 +2340,9 @@ async function handleAdminAddBackground(body) {
   const newBackground = {
     id: crypto.randomUUID(),
     name: name.trim().substring(0, 50),
-    url: url.trim(),
-    preview: url.trim(), // Usar mesma URL como preview
+    url: finalUrl,
+    s3Key: s3Key || null, // Guardar s3Key para poder deletar depois
+    preview: finalUrl,
     createdBy: userLogin,
     createdAt: Date.now(),
     isActive: true
@@ -2125,6 +2360,69 @@ async function handleAdminAddBackground(body) {
   return successResponse({ background: newBackground });
 }
 
+// POST /admin/backgrounds/upload-url - Gera URL pré-assinada para upload (apenas admin)
+async function handleBackgroundUploadUrl(body) {
+  const { userLogin, filename, contentType } = body;
+  
+  if (!userLogin || !await isAdmin(userLogin)) {
+    return errorResponse(403, 'Acesso negado');
+  }
+  
+  if (!filename) {
+    return errorResponse(400, 'filename é obrigatório');
+  }
+  
+  // Validar tipo de arquivo
+  const allowedTypes = ['image/jpeg', 'image/png', 'image/webp', 'image/gif'];
+  const fileContentType = contentType || 'image/jpeg';
+  if (!allowedTypes.includes(fileContentType)) {
+    return errorResponse(400, 'Tipo de arquivo não permitido. Use: JPEG, PNG, WebP ou GIF');
+  }
+  
+  // Sanitizar filename
+  const sanitizedFilename = filename
+    .replace(/[^a-zA-Z0-9._-]/g, '_')
+    .substring(0, 100);
+  
+  // Gerar key única
+  const timestamp = Date.now();
+  const randomId = crypto.randomBytes(8).toString('hex');
+  const extension = sanitizedFilename.split('.').pop() || 'jpg';
+  const s3Key = `${BACKGROUNDS_PREFIX}${timestamp}_${randomId}.${extension}`;
+  
+  try {
+    // Criar comando de upload
+    const command = new PutObjectCommand({
+      Bucket: BACKGROUNDS_BUCKET,
+      Key: s3Key,
+      ContentType: fileContentType,
+      // Metadata para rastreamento
+      Metadata: {
+        'uploaded-by': userLogin,
+        'original-filename': sanitizedFilename
+      }
+    });
+    
+    // Gerar URL pré-assinada (válida por 5 minutos)
+    const uploadUrl = await getSignedUrl(s3Client, command, { expiresIn: 300 });
+    
+    // URL pública para acessar a imagem depois
+    const publicUrl = `https://${BACKGROUNDS_BUCKET}.s3.${CONFIG.REGION}.amazonaws.com/${s3Key}`;
+    
+    log(LOG_LEVELS.INFO, 'URL de upload gerada', { s3Key, userLogin });
+    
+    return successResponse({ 
+      uploadUrl, 
+      s3Key,
+      publicUrl,
+      expiresIn: 300
+    });
+  } catch (error) {
+    log(LOG_LEVELS.ERROR, 'Erro ao gerar URL de upload', { error: error.message });
+    return errorResponse(500, 'Erro ao gerar URL de upload');
+  }
+}
+
 // POST /admin/backgrounds/remove - Remove background (apenas admin)
 async function handleAdminRemoveBackground(body) {
   const { userLogin, backgroundId } = body;
@@ -2138,10 +2436,25 @@ async function handleAdminRemoveBackground(body) {
   }
   
   const backgrounds = await getCustomBackgrounds();
+  const backgroundToRemove = backgrounds.find(b => b.id === backgroundId);
   const filtered = backgrounds.filter(b => b.id !== backgroundId);
   
   if (filtered.length === backgrounds.length) {
     return errorResponse(404, 'Background não encontrado');
+  }
+  
+  // Se o background foi uploadado para S3, deletar o arquivo
+  if (backgroundToRemove?.s3Key) {
+    try {
+      await s3Client.send(new DeleteObjectCommand({
+        Bucket: BACKGROUNDS_BUCKET,
+        Key: backgroundToRemove.s3Key
+      }));
+      log(LOG_LEVELS.INFO, 'Arquivo S3 deletado', { s3Key: backgroundToRemove.s3Key });
+    } catch (error) {
+      log(LOG_LEVELS.WARN, 'Erro ao deletar arquivo S3', { error: error.message, s3Key: backgroundToRemove.s3Key });
+      // Continuar mesmo se falhar a deleção do S3
+    }
   }
   
   const saved = await saveCustomBackgrounds(filtered);
@@ -2183,4 +2496,494 @@ async function handleAdminToggleBackground(body) {
   log(LOG_LEVELS.INFO, 'Background atualizado', { backgroundId, isActive, updatedBy: userLogin });
   
   return successResponse({ success: true });
+}
+
+// ============ HANDLER: ROOM CONFIG ============
+/**
+ * Salva configurações da sala no DynamoDB
+ * Configurações incluem: tipo de reunião, tópico, opções de gravação/transcrição
+ */
+const ROOM_CONFIG_PREFIX = 'room_config_';
+const VALID_MEETING_TYPES = Object.freeze(['REUNIAO', 'ENTREVISTA', 'APRESENTACAO', 'TREINAMENTO', 'OUTRO']);
+
+async function handleSaveRoomConfig(body) {
+  const { roomId, userLogin, config } = body;
+  
+  // Validações
+  if (!roomId) {
+    return errorResponse(400, 'roomId é obrigatório');
+  }
+  
+  const roomIdError = validateRoomId(roomId);
+  if (roomIdError) {
+    return errorResponse(400, roomIdError);
+  }
+  
+  if (!config || typeof config !== 'object') {
+    return errorResponse(400, 'config é obrigatório e deve ser um objeto');
+  }
+  
+  // Validar tipo de reunião
+  const meetingType = VALID_MEETING_TYPES.includes(config.type) ? config.type : 'REUNIAO';
+  
+  // Sanitizar tópico (max 200 chars, sem HTML)
+  const topic = typeof config.topic === 'string' 
+    ? config.topic.replace(/<[^>]*>/g, '').substring(0, 200).trim()
+    : '';
+  
+  // Sanitizar descrição da vaga (max 5000 chars, sem HTML) - contexto para IA em entrevistas
+  const jobDescription = typeof config.jobDescription === 'string'
+    ? config.jobDescription.replace(/<[^>]*>/g, '').substring(0, 5000).trim()
+    : '';
+  
+  // Validar opções booleanas
+  const autoStartTranscription = config.autoStartTranscription === true;
+  const autoStartRecording = config.autoStartRecording === true;
+  const allowGuestAccess = config.allowGuestAccess !== false; // default true
+  const enableChat = config.enableChat !== false; // default true
+  
+  const now = Math.floor(Date.now() / 1000);
+  const configKey = `${ROOM_CONFIG_PREFIX}${roomId}`;
+  
+  try {
+    await dynamoClient.send(new PutItemCommand({
+      TableName: CONFIG.MEETINGS_TABLE,
+      Item: {
+        roomId: { S: configKey },
+        type: { S: meetingType },
+        topic: { S: topic },
+        jobDescription: { S: jobDescription },
+        autoStartTranscription: { BOOL: autoStartTranscription },
+        autoStartRecording: { BOOL: autoStartRecording },
+        allowGuestAccess: { BOOL: allowGuestAccess },
+        enableChat: { BOOL: enableChat },
+        createdBy: { S: userLogin || 'anonymous' },
+        createdAt: { N: String(now) },
+        updatedAt: { N: String(now) },
+        ttl: { N: String(now + 86400 * 30) } // 30 dias de TTL
+      }
+    }));
+    
+    log(LOG_LEVELS.INFO, 'Configuração da sala salva', { 
+      roomId, 
+      meetingType, 
+      userLogin: userLogin || 'anonymous' 
+    });
+    
+    return successResponse({
+      success: true,
+      message: 'Configuração salva com sucesso',
+      config: {
+        type: meetingType,
+        topic,
+        jobDescription,
+        autoStartTranscription,
+        autoStartRecording,
+        allowGuestAccess,
+        enableChat
+      }
+    });
+    
+  } catch (error) {
+    log(LOG_LEVELS.ERROR, 'Erro ao salvar configuração da sala', { 
+      roomId, 
+      error: error.message 
+    });
+    return errorResponse(500, 'Erro ao salvar configuração');
+  }
+}
+
+/**
+ * Obtém configurações da sala do DynamoDB
+ */
+async function handleGetRoomConfig(body) {
+  const { roomId } = body;
+  
+  if (!roomId) {
+    return errorResponse(400, 'roomId é obrigatório');
+  }
+  
+  const roomIdError = validateRoomId(roomId);
+  if (roomIdError) {
+    return errorResponse(400, roomIdError);
+  }
+  
+  const configKey = `${ROOM_CONFIG_PREFIX}${roomId}`;
+  
+  try {
+    const result = await dynamoClient.send(new GetItemCommand({
+      TableName: CONFIG.MEETINGS_TABLE,
+      Key: { roomId: { S: configKey } }
+    }));
+    
+    if (!result.Item) {
+      // Retornar configuração padrão se não existir
+      return successResponse({
+        exists: false,
+        config: {
+          type: 'REUNIAO',
+          topic: '',
+          jobDescription: '',
+          autoStartTranscription: false,
+          autoStartRecording: false,
+          allowGuestAccess: true,
+          enableChat: true
+        }
+      });
+    }
+    
+    const item = result.Item;
+    
+    return successResponse({
+      exists: true,
+      config: {
+        type: item.type?.S || 'REUNIAO',
+        topic: item.topic?.S || '',
+        jobDescription: item.jobDescription?.S || '',
+        autoStartTranscription: item.autoStartTranscription?.BOOL || false,
+        autoStartRecording: item.autoStartRecording?.BOOL || false,
+        allowGuestAccess: item.allowGuestAccess?.BOOL !== false,
+        enableChat: item.enableChat?.BOOL !== false,
+        createdBy: item.createdBy?.S,
+        createdAt: item.createdAt?.N ? parseInt(item.createdAt.N) * 1000 : null,
+        updatedAt: item.updatedAt?.N ? parseInt(item.updatedAt.N) * 1000 : null
+      }
+    });
+    
+  } catch (error) {
+    log(LOG_LEVELS.ERROR, 'Erro ao obter configuração da sala', { 
+      roomId, 
+      error: error.message 
+    });
+    return errorResponse(500, 'Erro ao obter configuração');
+  }
+}
+
+
+// ============ INTERVIEW DATA HANDLERS ============
+const INTERVIEW_DATA_PREFIX = 'interview_data_';
+
+/**
+ * Salva dados da entrevista (sugestões e perguntas) no DynamoDB
+ */
+async function handleSaveInterviewData(body) {
+  const { roomId, userLogin, suggestions, questionsAsked, lastUpdated } = body;
+  
+  // Validações
+  if (!roomId) {
+    return errorResponse(400, 'roomId é obrigatório');
+  }
+  
+  const roomIdError = validateRoomId(roomId);
+  if (roomIdError) {
+    return errorResponse(400, roomIdError);
+  }
+  
+  const now = Math.floor(Date.now() / 1000);
+  const dataKey = `${INTERVIEW_DATA_PREFIX}${roomId}`;
+  
+  // Sanitizar e limitar dados
+  const sanitizedSuggestions = Array.isArray(suggestions) 
+    ? suggestions.slice(0, 20).map(s => ({
+        id: String(s.id || '').substring(0, 100),
+        question: String(s.question || '').substring(0, 1000),
+        category: String(s.category || 'technical').substring(0, 50),
+        priority: String(s.priority || 'medium').substring(0, 20),
+        timestamp: Number(s.timestamp) || Date.now(),
+        isRead: Boolean(s.isRead),
+        context: String(s.context || '').substring(0, 500),
+        relatedTo: s.relatedTo ? String(s.relatedTo).substring(0, 100) : null
+      }))
+    : [];
+  
+  const sanitizedQuestionsAsked = Array.isArray(questionsAsked)
+    ? questionsAsked.slice(0, 50).map(qa => ({
+        questionId: String(qa.questionId || '').substring(0, 100),
+        question: String(qa.question || '').substring(0, 1000),
+        answer: String(qa.answer || '').substring(0, 5000),
+        timestamp: Number(qa.timestamp) || Date.now(),
+        category: String(qa.category || 'detected').substring(0, 50),
+        answerQuality: String(qa.answerQuality || 'incomplete').substring(0, 20),
+        keyTopics: Array.isArray(qa.keyTopics) 
+          ? qa.keyTopics.slice(0, 10).map(t => String(t).substring(0, 100))
+          : []
+      }))
+    : [];
+  
+  try {
+    await dynamoClient.send(new PutItemCommand({
+      TableName: CONFIG.MEETINGS_TABLE,
+      Item: {
+        roomId: { S: dataKey },
+        suggestions: { S: JSON.stringify(sanitizedSuggestions) },
+        questionsAsked: { S: JSON.stringify(sanitizedQuestionsAsked) },
+        lastUpdated: { N: String(lastUpdated || now) },
+        createdBy: { S: userLogin || 'anonymous' },
+        updatedAt: { N: String(now) },
+        ttl: { N: String(now + 86400 * 7) } // 7 dias de TTL
+      }
+    }));
+    
+    log(LOG_LEVELS.INFO, 'Dados da entrevista salvos', { 
+      roomId, 
+      suggestionsCount: sanitizedSuggestions.length,
+      questionsCount: sanitizedQuestionsAsked.length
+    });
+    
+    return successResponse({
+      success: true,
+      message: 'Dados salvos com sucesso'
+    });
+    
+  } catch (error) {
+    log(LOG_LEVELS.ERROR, 'Erro ao salvar dados da entrevista', { 
+      roomId, 
+      error: error.message 
+    });
+    return errorResponse(500, 'Erro ao salvar dados da entrevista');
+  }
+}
+
+/**
+ * Obtém dados da entrevista do DynamoDB
+ */
+async function handleGetInterviewData(body) {
+  const { roomId } = body;
+  
+  if (!roomId) {
+    return errorResponse(400, 'roomId é obrigatório');
+  }
+  
+  const roomIdError = validateRoomId(roomId);
+  if (roomIdError) {
+    return errorResponse(400, roomIdError);
+  }
+  
+  const dataKey = `${INTERVIEW_DATA_PREFIX}${roomId}`;
+  
+  try {
+    const result = await dynamoClient.send(new GetItemCommand({
+      TableName: CONFIG.MEETINGS_TABLE,
+      Key: { roomId: { S: dataKey } }
+    }));
+    
+    if (!result.Item) {
+      return successResponse({
+        exists: false,
+        data: null
+      });
+    }
+    
+    const item = result.Item;
+    
+    // Parse JSON strings
+    let suggestions = [];
+    let questionsAsked = [];
+    
+    try {
+      suggestions = item.suggestions?.S ? JSON.parse(item.suggestions.S) : [];
+    } catch (e) {
+      log(LOG_LEVELS.WARN, 'Erro ao parsear suggestions', { roomId, error: e.message });
+    }
+    
+    try {
+      questionsAsked = item.questionsAsked?.S ? JSON.parse(item.questionsAsked.S) : [];
+    } catch (e) {
+      log(LOG_LEVELS.WARN, 'Erro ao parsear questionsAsked', { roomId, error: e.message });
+    }
+    
+    return successResponse({
+      exists: true,
+      data: {
+        roomId,
+        suggestions,
+        questionsAsked,
+        lastUpdated: item.lastUpdated?.N ? parseInt(item.lastUpdated.N) : null,
+        createdBy: item.createdBy?.S,
+        updatedAt: item.updatedAt?.N ? parseInt(item.updatedAt.N) * 1000 : null
+      }
+    });
+    
+  } catch (error) {
+    log(LOG_LEVELS.ERROR, 'Erro ao obter dados da entrevista', { 
+      roomId, 
+      error: error.message 
+    });
+    return errorResponse(500, 'Erro ao obter dados da entrevista');
+  }
+}
+
+/**
+ * Limpa dados da entrevista do DynamoDB
+ */
+async function handleClearInterviewData(body) {
+  const { roomId, userLogin } = body;
+  
+  if (!roomId) {
+    return errorResponse(400, 'roomId é obrigatório');
+  }
+  
+  const roomIdError = validateRoomId(roomId);
+  if (roomIdError) {
+    return errorResponse(400, roomIdError);
+  }
+  
+  const dataKey = `${INTERVIEW_DATA_PREFIX}${roomId}`;
+  
+  try {
+    await dynamoClient.send(new DeleteItemCommand({
+      TableName: CONFIG.MEETINGS_TABLE,
+      Key: { roomId: { S: dataKey } }
+    }));
+    
+    log(LOG_LEVELS.INFO, 'Dados da entrevista limpos', { roomId, userLogin });
+    
+    return successResponse({
+      success: true,
+      message: 'Dados limpos com sucesso'
+    });
+    
+  } catch (error) {
+    log(LOG_LEVELS.ERROR, 'Erro ao limpar dados da entrevista', { 
+      roomId, 
+      error: error.message 
+    });
+    return errorResponse(500, 'Erro ao limpar dados da entrevista');
+  }
+}
+
+// ============ INTERVIEW AI CONFIG HANDLERS ============
+const INTERVIEW_CONFIG_KEY = 'interview_ai_config_global';
+
+// Configuração padrão da IA de entrevista
+const DEFAULT_INTERVIEW_CONFIG = {
+  minAnswerLength: 50,
+  minTimeBetweenSuggestionsMs: 5000,
+  minTranscriptionsForFollowup: 1,
+  maxUnreadSuggestions: 5,
+  initialSuggestionsCount: 3,
+  cooldownAfterSuggestionMs: 8000,
+  saveDebounceMs: 2000,
+  processDelayMs: 500,
+  keywordMatchWeight: 60,
+  lengthBonusMax: 20,
+  exampleBonus: 15,
+  structureBonus: 5,
+  excellentThreshold: 80,
+  goodThreshold: 60,
+  basicThreshold: 40,
+  enableAutoFollowUp: true,
+  enableTechnicalEvaluation: true,
+  generateNewQuestionsEveryN: 3,
+};
+
+/**
+ * Obtém configuração da IA de entrevista
+ */
+async function handleGetInterviewConfig(body) {
+  try {
+    const result = await dynamoClient.send(new GetItemCommand({
+      TableName: CONFIG.MEETINGS_TABLE,
+      Key: { roomId: { S: INTERVIEW_CONFIG_KEY } }
+    }));
+    
+    if (!result.Item) {
+      return successResponse({
+        config: DEFAULT_INTERVIEW_CONFIG,
+        isDefault: true
+      });
+    }
+    
+    let config = DEFAULT_INTERVIEW_CONFIG;
+    try {
+      config = result.Item.config?.S ? JSON.parse(result.Item.config.S) : DEFAULT_INTERVIEW_CONFIG;
+    } catch (e) {
+      log(LOG_LEVELS.WARN, 'Erro ao parsear config de entrevista', { error: e.message });
+    }
+    
+    return successResponse({
+      config: { ...DEFAULT_INTERVIEW_CONFIG, ...config },
+      isDefault: false,
+      lastUpdated: result.Item.lastUpdated?.N ? parseInt(result.Item.lastUpdated.N) : null,
+      updatedBy: result.Item.updatedBy?.S
+    });
+    
+  } catch (error) {
+    log(LOG_LEVELS.ERROR, 'Erro ao obter config de entrevista', { error: error.message });
+    return successResponse({
+      config: DEFAULT_INTERVIEW_CONFIG,
+      isDefault: true,
+      error: 'Usando configuração padrão'
+    });
+  }
+}
+
+/**
+ * Salva configuração da IA de entrevista (apenas admins)
+ */
+async function handleSaveInterviewConfig(body) {
+  const { userLogin, config } = body;
+  
+  if (!userLogin) {
+    return errorResponse(400, 'userLogin é obrigatório');
+  }
+  
+  // Verificar se é admin
+  const isAdmin = await checkIsAdmin(userLogin);
+  if (!isAdmin) {
+    return errorResponse(403, 'Apenas administradores podem alterar configurações');
+  }
+  
+  if (!config || typeof config !== 'object') {
+    return errorResponse(400, 'config é obrigatório');
+  }
+  
+  // Validar e sanitizar configuração
+  const sanitizedConfig = {
+    minAnswerLength: Math.max(10, Math.min(500, Number(config.minAnswerLength) || 50)),
+    minTimeBetweenSuggestionsMs: Math.max(1000, Math.min(60000, Number(config.minTimeBetweenSuggestionsMs) || 5000)),
+    minTranscriptionsForFollowup: Math.max(1, Math.min(10, Number(config.minTranscriptionsForFollowup) || 1)),
+    maxUnreadSuggestions: Math.max(1, Math.min(20, Number(config.maxUnreadSuggestions) || 5)),
+    initialSuggestionsCount: Math.max(1, Math.min(10, Number(config.initialSuggestionsCount) || 3)),
+    cooldownAfterSuggestionMs: Math.max(1000, Math.min(60000, Number(config.cooldownAfterSuggestionMs) || 8000)),
+    saveDebounceMs: Math.max(500, Math.min(10000, Number(config.saveDebounceMs) || 2000)),
+    processDelayMs: Math.max(100, Math.min(5000, Number(config.processDelayMs) || 500)),
+    keywordMatchWeight: Math.max(0, Math.min(100, Number(config.keywordMatchWeight) || 60)),
+    lengthBonusMax: Math.max(0, Math.min(50, Number(config.lengthBonusMax) || 20)),
+    exampleBonus: Math.max(0, Math.min(50, Number(config.exampleBonus) || 15)),
+    structureBonus: Math.max(0, Math.min(50, Number(config.structureBonus) || 5)),
+    excellentThreshold: Math.max(50, Math.min(100, Number(config.excellentThreshold) || 80)),
+    goodThreshold: Math.max(30, Math.min(90, Number(config.goodThreshold) || 60)),
+    basicThreshold: Math.max(10, Math.min(70, Number(config.basicThreshold) || 40)),
+    enableAutoFollowUp: Boolean(config.enableAutoFollowUp !== false),
+    enableTechnicalEvaluation: Boolean(config.enableTechnicalEvaluation !== false),
+    generateNewQuestionsEveryN: Math.max(1, Math.min(20, Number(config.generateNewQuestionsEveryN) || 3)),
+  };
+  
+  const now = Math.floor(Date.now() / 1000);
+  
+  try {
+    await dynamoClient.send(new PutItemCommand({
+      TableName: CONFIG.MEETINGS_TABLE,
+      Item: {
+        roomId: { S: INTERVIEW_CONFIG_KEY },
+        config: { S: JSON.stringify(sanitizedConfig) },
+        lastUpdated: { N: String(now) },
+        updatedBy: { S: userLogin },
+        updatedAt: { N: String(now) }
+      }
+    }));
+    
+    log(LOG_LEVELS.INFO, 'Configuração de entrevista salva', { userLogin, config: sanitizedConfig });
+    
+    return successResponse({
+      success: true,
+      config: sanitizedConfig,
+      message: 'Configuração salva com sucesso'
+    });
+    
+  } catch (error) {
+    log(LOG_LEVELS.ERROR, 'Erro ao salvar config de entrevista', { error: error.message });
+    return errorResponse(500, 'Erro ao salvar configuração');
+  }
 }
