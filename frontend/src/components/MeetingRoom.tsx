@@ -9,12 +9,15 @@ import MeetingSetupModal from './MeetingSetupModal';
 import InterviewSuggestions from './InterviewSuggestions';
 import EndMeetingModal from './EndMeetingModal';
 import InterviewReportModal from './InterviewReportModal';
+import ScopeAssistantPanel from './ScopeAssistantPanel';
+import ScopeReportModal from './ScopeReportModal';
 import BackgroundSelector from './BackgroundSelector';
 import { FeatureErrorBoundary } from './FeatureErrorBoundary';
 import { useWebSocket } from '../hooks/useWebSocket';
 import { useChimeMeeting } from '../hooks/useChimeMeeting';
 import { useChimeTranscription } from '../hooks/useChimeTranscription';
 import { useInterviewAssistant } from '../hooks/useInterviewAssistant';
+import { useScopeAssistant } from '../hooks/useScopeAssistant';
 import { useBackgroundEffect } from '../hooks/useBackgroundEffect';
 import { useMobile } from '../hooks/useMobile';
 import { useAuth } from '../contexts/AuthContext';
@@ -26,8 +29,8 @@ import { featureDetector } from '../utils/featureDetection';
 import { getRoomConfig, saveRoomConfig, RoomConfig } from '../services/roomConfigService';
 
 // Versão do aplicativo - atualizar a cada deploy
-const APP_VERSION = '3.7.0';
-const BUILD_DATE = '2025-12-22 16:10';
+const APP_VERSION = '3.8.0';
+const BUILD_DATE = '2025-12-23 10:30';
 
 interface Message {
   id: string;
@@ -79,6 +82,7 @@ export default function MeetingRoom({ darkMode }: { darkMode: boolean }) {
   const [showReportModal, setShowReportModal] = useState(false);
   const [isGeneratingReport, setIsGeneratingReport] = useState(false);
   const [interviewReport, setInterviewReport] = useState<InterviewReport | null>(null);
+  const [showScopeReportModal, setShowScopeReportModal] = useState(false);
   
   const controlsTimeoutRef = useRef<number>();
   const isChatOpenRef = useRef(isChatOpen);
@@ -220,6 +224,29 @@ export default function MeetingRoom({ darkMode }: { darkMode: boolean }) {
     roomId: roomId || '',
     userLogin: user?.login,
     userName, // Nome do entrevistador para filtrar transcrições
+  });
+
+  // Assistente de escopo
+  const {
+    requirements: scopeRequirements,
+    features: scopeFeatures,
+    suggestions: scopeSuggestions,
+    summary: scopeSummary,
+    objective: scopeObjective,
+    isAnalyzing: isScopeAnalyzing,
+    clarifyRequirement,
+    confirmRequirement,
+    removeRequirement,
+    updatePriority,
+    groupIntoFeatures,
+    dismissSuggestion: dismissScopeSuggestion,
+    updateObjective,
+  } = useScopeAssistant({
+    isEnabled: isAuthenticated && meetingType === 'ESCOPO' && hasSetupCompleted,
+    meetingType,
+    projectName: meetingTopic,
+    transcriptions,
+    roomId: roomId || '',
   });
 
   // Gravação
@@ -481,10 +508,14 @@ export default function MeetingRoom({ darkMode }: { darkMode: boolean }) {
       setIsGeneratingReport(false);
       setShowEndModal(false);
       setShowReportModal(true);
+    } else if (meetingType === 'ESCOPO' && scopeSummary) {
+      // Mostrar modal de LRD para reuniões de escopo
+      setShowEndModal(false);
+      setShowScopeReportModal(true);
     } else {
       handleLeaveOnly();
     }
-  }, [meetingType, meetingTopic, transcriptions, handleLeaveOnly, jobDescription, userName]);
+  }, [meetingType, meetingTopic, transcriptions, handleLeaveOnly, jobDescription, userName, scopeSummary]);
 
   const handleCloseReport = useCallback(() => {
     setShowReportModal(false);
@@ -496,6 +527,19 @@ export default function MeetingRoom({ darkMode }: { darkMode: boolean }) {
     sessionStorage.removeItem('videochat_user_name');
     navigate('/');
   }, [navigate, roomId, isAuthenticated, user?.login, currentMeetingId, leaveChimeMeeting]);
+
+  const handleCloseScopeReport = useCallback(() => {
+    setShowScopeReportModal(false);
+    // Salvar LRD no histórico
+    if (isAuthenticated && user?.login && currentMeetingId && scopeSummary) {
+      meetingHistoryService.saveScopeReport(user.login, currentMeetingId, scopeSummary);
+      meetingHistoryService.endMeeting(user.login, currentMeetingId);
+    }
+    leaveChimeMeeting();
+    sessionStorage.removeItem(`video-chat-userId-${roomId}`);
+    sessionStorage.removeItem('videochat_user_name');
+    navigate('/');
+  }, [navigate, roomId, isAuthenticated, user?.login, currentMeetingId, leaveChimeMeeting, scopeSummary]);
 
   const handleToggleChat = useCallback(() => {
     setIsChatOpen(prev => {
@@ -763,6 +807,29 @@ export default function MeetingRoom({ darkMode }: { darkMode: boolean }) {
         </FeatureErrorBoundary>
       )}
 
+      {/* Scope Assistant Panel */}
+      {isAuthenticated && meetingType === 'ESCOPO' && hasSetupCompleted && (
+        <FeatureErrorBoundary feature="ScopeAssistantPanel" darkMode={darkMode}>
+          <ScopeAssistantPanel
+            requirements={scopeRequirements}
+            features={scopeFeatures}
+            suggestions={scopeSuggestions}
+            summary={scopeSummary}
+            objective={scopeObjective}
+            isAnalyzing={isScopeAnalyzing}
+            darkMode={darkMode}
+            projectName={meetingTopic}
+            onClarifyRequirement={clarifyRequirement}
+            onConfirmRequirement={confirmRequirement}
+            onRemoveRequirement={removeRequirement}
+            onUpdatePriority={updatePriority}
+            onGroupIntoFeatures={groupIntoFeatures}
+            onDismissSuggestion={dismissScopeSuggestion}
+            onUpdateObjective={updateObjective}
+          />
+        </FeatureErrorBoundary>
+      )}
+
       {/* End Meeting Modal */}
       <FeatureErrorBoundary feature="EndMeetingModal" darkMode={darkMode}>
         <EndMeetingModal
@@ -783,6 +850,16 @@ export default function MeetingRoom({ darkMode }: { darkMode: boolean }) {
           isOpen={showReportModal}
           onClose={handleCloseReport}
           report={interviewReport}
+          darkMode={darkMode}
+        />
+      </FeatureErrorBoundary>
+
+      {/* Scope Report Modal (LRD) */}
+      <FeatureErrorBoundary feature="ScopeReportModal" darkMode={darkMode}>
+        <ScopeReportModal
+          isOpen={showScopeReportModal}
+          onClose={handleCloseScopeReport}
+          summary={scopeSummary}
           darkMode={darkMode}
         />
       </FeatureErrorBoundary>

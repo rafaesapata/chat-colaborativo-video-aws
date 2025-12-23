@@ -1,4 +1,5 @@
 // Serviço para gerenciar histórico de reuniões e transcrições
+import { ScopeSummary } from './scopeAIService';
 
 export interface MeetingTranscription {
   id: string;
@@ -21,6 +22,11 @@ export interface MeetingRecord {
   recordingKey?: string;
   recordingDuration?: number;
   recordingId?: string;
+  // Campos de tipo de reunião
+  meetingType?: 'ENTREVISTA' | 'ESCOPO' | 'REUNIAO' | 'TREINAMENTO' | 'OUTRO';
+  meetingTopic?: string;
+  // LRD para reuniões de escopo
+  scopeReport?: ScopeSummary;
 }
 
 const HISTORY_STORAGE_KEY = 'videochat_meeting_history';
@@ -167,6 +173,58 @@ export const meetingHistoryService = {
   // Limpar todo o histórico de um usuário
   clearHistory(userLogin: string): void {
     localStorage.removeItem(`${HISTORY_STORAGE_KEY}_${userLogin}`);
+  },
+
+  // Salvar LRD (Scope Report) em uma reunião
+  saveScopeReport(
+    userLogin: string,
+    meetingId: string,
+    scopeReport: ScopeSummary
+  ): void {
+    const history = this.getHistory(userLogin);
+    const meetingIndex = history.findIndex(m => m.id === meetingId);
+    
+    if (meetingIndex >= 0) {
+      history[meetingIndex].scopeReport = scopeReport;
+      history[meetingIndex].meetingType = 'ESCOPO';
+      
+      localStorage.setItem(
+        `${HISTORY_STORAGE_KEY}_${userLogin}`,
+        JSON.stringify(history)
+      );
+      console.log('[MeetingHistory] LRD salva:', scopeReport.projectName);
+    } else {
+      console.warn('[MeetingHistory] Reunião não encontrada para salvar LRD:', meetingId);
+    }
+  },
+
+  // Obter reuniões de escopo com LRD
+  getScopeReports(userLogin: string): MeetingRecord[] {
+    const history = this.getHistory(userLogin);
+    return history.filter(m => m.meetingType === 'ESCOPO' && m.scopeReport);
+  },
+
+  // Atualizar tipo e tópico da reunião
+  updateMeetingInfo(
+    userLogin: string,
+    meetingId: string,
+    meetingType: MeetingRecord['meetingType'],
+    meetingTopic?: string
+  ): void {
+    const history = this.getHistory(userLogin);
+    const meetingIndex = history.findIndex(m => m.id === meetingId);
+    
+    if (meetingIndex >= 0) {
+      history[meetingIndex].meetingType = meetingType;
+      if (meetingTopic) {
+        history[meetingIndex].meetingTopic = meetingTopic;
+      }
+      
+      localStorage.setItem(
+        `${HISTORY_STORAGE_KEY}_${userLogin}`,
+        JSON.stringify(history)
+      );
+    }
   },
 
   // Exportar transcrições de uma reunião como texto

@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { X, Briefcase, Users, BookOpen, MessageSquare, Mic, Video } from 'lucide-react';
+import { X, Briefcase, Users, BookOpen, MessageSquare, Mic, Video, Target } from 'lucide-react';
 
 interface MeetingSetupModalProps {
   isOpen: boolean;
@@ -10,6 +10,7 @@ interface MeetingSetupModalProps {
 
 const meetingTypes = [
   { value: 'ENTREVISTA', label: 'Entrevista', icon: Briefcase, description: 'Entrevista de emprego com assistente de IA' },
+  { value: 'ESCOPO', label: 'Definição de Escopo', icon: Target, description: 'Levantamento de requisitos com IA' },
   { value: 'REUNIAO', label: 'Reunião', icon: Users, description: 'Reunião de trabalho ou alinhamento' },
   { value: 'TREINAMENTO', label: 'Treinamento', icon: BookOpen, description: 'Sessão de treinamento ou capacitação' },
   { value: 'OUTRO', label: 'Outro', icon: MessageSquare, description: 'Outro tipo de conversa' },
@@ -41,6 +42,7 @@ export default function MeetingSetupModal({
   };
 
   const isInterview = selectedType === 'ENTREVISTA';
+  const isScope = selectedType === 'ESCOPO';
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 backdrop-blur-sm p-4">
@@ -112,10 +114,10 @@ export default function MeetingSetupModal({
             </div>
           </div>
 
-          {/* Topic Input - Mostrar sempre, mas destacar para entrevista */}
-          <div className={`transition-all ${isInterview ? 'opacity-100' : 'opacity-70'}`}>
+          {/* Topic Input - Mostrar sempre, mas destacar para entrevista/escopo */}
+          <div className={`transition-all ${isInterview || isScope ? 'opacity-100' : 'opacity-70'}`}>
             <label className={`block text-sm font-medium mb-2 ${darkMode ? 'text-gray-300' : 'text-gray-700'}`}>
-              {isInterview ? 'Vaga / Cargo *' : 'Tema da Reunião (opcional)'}
+              {isInterview ? 'Vaga / Cargo *' : isScope ? 'Nome do Projeto *' : 'Tema da Reunião (opcional)'}
             </label>
             <input
               type="text"
@@ -123,6 +125,8 @@ export default function MeetingSetupModal({
               onChange={(e) => setTopic(e.target.value)}
               placeholder={isInterview 
                 ? 'Ex: Desenvolvedor Full Stack Senior' 
+                : isScope
+                ? 'Ex: Sistema de Gestão de Pedidos'
                 : 'Ex: Alinhamento de projeto'
               }
               className={`w-full px-4 py-3 rounded-xl focus:ring-2 focus:border-transparent transition-all ${
@@ -134,6 +138,11 @@ export default function MeetingSetupModal({
             {isInterview && (
               <p className={`text-xs mt-1 ${darkMode ? 'text-purple-400' : 'text-indigo-600'}`}>
                 ✨ O assistente de IA irá sugerir perguntas baseadas na vaga
+              </p>
+            )}
+            {isScope && (
+              <p className={`text-xs mt-1 ${darkMode ? 'text-teal-400' : 'text-teal-600'}`}>
+                🎯 A IA irá identificar requisitos e gerar uma LRD automaticamente
               </p>
             )}
           </div>
@@ -177,6 +186,27 @@ export default function MeetingSetupModal({
                 <li>• Análise da conversa para follow-ups</li>
                 <li>• Perguntas técnicas e comportamentais</li>
                 <li>• Transcrição automática salva no histórico</li>
+              </ul>
+            </div>
+          )}
+
+          {/* Scope AI Info */}
+          {isScope && (
+            <div className={`p-3 rounded-xl ${
+              darkMode ? 'bg-teal-900/30 border border-teal-700/50' : 'bg-teal-50 border border-teal-200'
+            }`}>
+              <h4 className={`text-sm font-semibold mb-2 flex items-center gap-2 ${
+                darkMode ? 'text-teal-300' : 'text-teal-700'
+              }`}>
+                <Target size={16} />
+                Modo Definição de Escopo Ativado
+              </h4>
+              <ul className={`text-xs space-y-1 ${darkMode ? 'text-teal-200/80' : 'text-teal-600'}`}>
+                <li>• Identificação automática de requisitos</li>
+                <li>• Sugestões de perguntas para clarificação</li>
+                <li>• Agrupamento em features/módulos</li>
+                <li>• Geração de LRD ao final da reunião</li>
+                <li>• Exportação para PDF e histórico</li>
               </ul>
             </div>
           )}
@@ -259,7 +289,7 @@ export default function MeetingSetupModal({
           </button>
           <button
             onClick={handleConfirm}
-            disabled={isInterview && !topic.trim()}
+            disabled={(isInterview || isScope) && !topic.trim()}
             className={`px-6 py-2 rounded-lg text-sm font-semibold transition disabled:opacity-50 disabled:cursor-not-allowed ${
               darkMode 
                 ? 'bg-purple-600 hover:bg-purple-700 text-white' 
