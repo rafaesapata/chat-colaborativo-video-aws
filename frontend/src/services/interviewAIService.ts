@@ -439,25 +439,98 @@ function detectTechnologies(text: string): string[] {
   return [...new Set(detected)];
 }
 
-// Extrair requisitos técnicos da descrição da vaga
+// Extrair requisitos técnicos da descrição da vaga - VERSÃO MELHORADA
 function extractJobRequirements(jobDescription: string): {
   technologies: string[];
   level: 'junior' | 'pleno' | 'senior';
   keywords: string[];
+  focusAreas: string[];
+  mustHaveTechs: string[];
+  niceToHaveTechs: string[];
 } {
   if (!jobDescription) {
-    return { technologies: [], level: 'pleno', keywords: [] };
+    return { technologies: [], level: 'pleno', keywords: [], focusAreas: [], mustHaveTechs: [], niceToHaveTechs: [] };
   }
   
   const textLower = jobDescription.toLowerCase();
   const technologies = detectTechnologies(textLower);
   
-  // Detectar nível
+  // Detectar nível com mais precisão
   let level: 'junior' | 'pleno' | 'senior' = 'pleno';
-  if (textLower.includes('senior') || textLower.includes('sênior') || textLower.includes('sr.') || textLower.includes('lead')) {
+  const seniorIndicators = ['senior', 'sênior', 'sr.', 'lead', 'principal', 'staff', 'arquiteto', 'tech lead', '5+ anos', '6+ anos', '7+ anos', '8+ anos', '10+ anos'];
+  const juniorIndicators = ['junior', 'júnior', 'jr.', 'estágio', 'trainee', 'entry', 'iniciante', '1 ano', '2 anos', 'sem experiência'];
+  
+  if (seniorIndicators.some(ind => textLower.includes(ind))) {
     level = 'senior';
-  } else if (textLower.includes('junior') || textLower.includes('júnior') || textLower.includes('jr.') || textLower.includes('estágio')) {
+  } else if (juniorIndicators.some(ind => textLower.includes(ind))) {
     level = 'junior';
+  }
+  
+  // Identificar tecnologias obrigatórias vs desejáveis
+  const mustHaveTechs: string[] = [];
+  const niceToHaveTechs: string[] = [];
+  
+  // Padrões para identificar obrigatório
+  const mustHavePatterns = [
+    /obrigatório[:\s]+([^.]+)/gi,
+    /necessário[:\s]+([^.]+)/gi,
+    /requisitos[:\s]+([^.]+)/gi,
+    /experiência\s+(?:sólida\s+)?(?:em|com)\s+([^.]+)/gi,
+    /conhecimento\s+(?:avançado\s+)?(?:em|de)\s+([^.]+)/gi,
+    /domínio\s+(?:em|de)\s+([^.]+)/gi,
+  ];
+  
+  // Padrões para identificar desejável
+  const niceToHavePatterns = [
+    /desejável[:\s]+([^.]+)/gi,
+    /diferencial[:\s]+([^.]+)/gi,
+    /plus[:\s]+([^.]+)/gi,
+    /será\s+um\s+diferencial[:\s]+([^.]+)/gi,
+  ];
+  
+  // Extrair tecnologias obrigatórias
+  for (const pattern of mustHavePatterns) {
+    const matches = textLower.matchAll(pattern);
+    for (const match of matches) {
+      const techs = detectTechnologies(match[1]);
+      mustHaveTechs.push(...techs);
+    }
+  }
+  
+  // Extrair tecnologias desejáveis
+  for (const pattern of niceToHavePatterns) {
+    const matches = textLower.matchAll(pattern);
+    for (const match of matches) {
+      const techs = detectTechnologies(match[1]);
+      niceToHaveTechs.push(...techs);
+    }
+  }
+  
+  // Se não encontrou padrões específicos, usar todas as tecnologias detectadas como obrigatórias
+  const uniqueMustHave = [...new Set(mustHaveTechs)];
+  const uniqueNiceToHave = [...new Set(niceToHaveTechs.filter(t => !uniqueMustHave.includes(t)))];
+  
+  // Se não detectou nada específico, usar as tecnologias gerais
+  const finalMustHave = uniqueMustHave.length > 0 ? uniqueMustHave : technologies;
+  
+  // Identificar áreas de foco baseado no contexto
+  const focusAreas: string[] = [];
+  
+  const areaPatterns: Record<string, string[]> = {
+    'backend': ['backend', 'back-end', 'api', 'servidor', 'microserviços', 'microsserviços'],
+    'frontend': ['frontend', 'front-end', 'interface', 'ui', 'ux', 'web'],
+    'fullstack': ['fullstack', 'full-stack', 'full stack'],
+    'mobile': ['mobile', 'android', 'ios', 'react native', 'flutter'],
+    'devops': ['devops', 'infraestrutura', 'ci/cd', 'deploy', 'kubernetes', 'docker'],
+    'data': ['dados', 'data', 'analytics', 'bi', 'etl', 'pipeline'],
+    'cloud': ['cloud', 'aws', 'azure', 'gcp', 'nuvem'],
+    'security': ['segurança', 'security', 'pentest', 'vulnerabilidade'],
+  };
+  
+  for (const [area, patterns] of Object.entries(areaPatterns)) {
+    if (patterns.some(p => textLower.includes(p))) {
+      focusAreas.push(area);
+    }
   }
   
   // Extrair palavras-chave importantes
@@ -467,7 +540,14 @@ function extractJobRequirements(jobDescription: string): {
   ];
   const keywords = importantKeywords.filter(kw => textLower.includes(kw));
   
-  return { technologies, level, keywords };
+  return { 
+    technologies, 
+    level, 
+    keywords, 
+    focusAreas,
+    mustHaveTechs: finalMustHave,
+    niceToHaveTechs: uniqueNiceToHave
+  };
 }
 
 // Avaliar resposta técnica comparando com resposta esperada
@@ -641,7 +721,7 @@ export function detectAskedQuestion(
 }
 
 export const interviewAIService = {
-  // Gerar perguntas técnicas baseadas na vaga
+  // Gerar perguntas técnicas baseadas na vaga - VERSÃO MELHORADA
   generateSuggestions(context: InterviewContext, count: number = 3): InterviewSuggestion[] {
     if (context.meetingType !== 'ENTREVISTA') {
       return [];
@@ -655,46 +735,107 @@ export const interviewAIService = {
     const jobReqs = extractJobRequirements(context.jobDescription || context.topic);
     const questionCount = context.questionsAsked?.length || 0;
     
+    console.log('[InterviewAI] Requisitos da vaga detectados:', {
+      mustHaveTechs: jobReqs.mustHaveTechs,
+      niceToHaveTechs: jobReqs.niceToHaveTechs,
+      level: jobReqs.level,
+      focusAreas: jobReqs.focusAreas
+    });
+    
     // Determinar dificuldade baseada no nível da vaga e progresso
     let targetDifficulty: TechnicalQuestion['difficulty'][] = ['basic', 'intermediate'];
-    if (jobReqs.level === 'senior' || questionCount > 5) {
+    if (jobReqs.level === 'senior') {
       targetDifficulty = ['intermediate', 'advanced'];
     } else if (jobReqs.level === 'junior') {
-      targetDifficulty = ['basic', 'intermediate'];
+      targetDifficulty = ['basic'];
+      if (questionCount > 3) targetDifficulty.push('intermediate');
+    } else {
+      // Pleno - começar com básico/intermediário, avançar para avançado
+      if (questionCount > 5) {
+        targetDifficulty = ['intermediate', 'advanced'];
+      }
     }
     
-    // Priorizar tecnologias da vaga
-    const priorityTechs = jobReqs.technologies.length > 0 
-      ? jobReqs.technologies 
-      : ['architecture', 'api', 'testing'];
+    // PRIORIDADE 1: Tecnologias obrigatórias da vaga (mustHaveTechs)
+    // PRIORIDADE 2: Tecnologias desejáveis (niceToHaveTechs)
+    // PRIORIDADE 3: Áreas de foco (focusAreas)
+    // PRIORIDADE 4: Fallback genérico
     
-    // Coletar perguntas disponíveis
-    const availableQuestions: Array<TechnicalQuestion & { category: string }> = [];
+    const priorityTechs: string[] = [];
     
-    for (const tech of priorityTechs) {
+    // Adicionar tecnologias obrigatórias primeiro
+    if (jobReqs.mustHaveTechs.length > 0) {
+      priorityTechs.push(...jobReqs.mustHaveTechs);
+    }
+    
+    // Adicionar tecnologias desejáveis
+    if (jobReqs.niceToHaveTechs.length > 0) {
+      priorityTechs.push(...jobReqs.niceToHaveTechs.filter(t => !priorityTechs.includes(t)));
+    }
+    
+    // Se não tem tecnologias específicas, usar áreas de foco
+    if (priorityTechs.length === 0 && jobReqs.focusAreas.length > 0) {
+      // Mapear áreas de foco para categorias de perguntas
+      const areaToTech: Record<string, string[]> = {
+        'backend': ['nodejs', 'java', 'python', 'api', 'sql'],
+        'frontend': ['react', 'typescript'],
+        'fullstack': ['react', 'nodejs', 'typescript', 'api'],
+        'mobile': ['react'], // React Native
+        'devops': ['docker', 'kubernetes', 'aws'],
+        'data': ['sql', 'python'],
+        'cloud': ['aws'],
+        'security': ['security'],
+      };
+      
+      for (const area of jobReqs.focusAreas) {
+        const techs = areaToTech[area] || [];
+        priorityTechs.push(...techs.filter(t => !priorityTechs.includes(t)));
+      }
+    }
+    
+    // Fallback: se ainda não tem nada, usar genéricos
+    if (priorityTechs.length === 0) {
+      priorityTechs.push('architecture', 'api', 'testing');
+    }
+    
+    console.log('[InterviewAI] Tecnologias priorizadas para perguntas:', priorityTechs);
+    
+    // Coletar perguntas disponíveis COM PESO por prioridade
+    const availableQuestions: Array<TechnicalQuestion & { category: string; weight: number }> = [];
+    
+    for (let i = 0; i < priorityTechs.length; i++) {
+      const tech = priorityTechs[i];
       const questions = technicalQuestionsBank[tech] || [];
+      // Peso maior para tecnologias mais prioritárias (primeiras da lista)
+      const weight = Math.max(1, 10 - i * 2);
+      
       for (const q of questions) {
         if (!usedQuestions.has(q.question.toLowerCase()) && targetDifficulty.includes(q.difficulty)) {
-          availableQuestions.push({ ...q, category: tech });
+          availableQuestions.push({ ...q, category: tech, weight });
         }
       }
     }
     
-    // Adicionar perguntas comportamentais se já fez algumas técnicas
-    if (questionCount >= 3 && questionCount % 4 === 0) {
+    // Adicionar perguntas comportamentais APENAS se já fez várias técnicas
+    // E apenas 1 a cada 5 perguntas técnicas
+    if (questionCount >= 4 && questionCount % 5 === 0) {
       const behavioralQs = technicalQuestionsBank.behavioral || [];
       for (const q of behavioralQs) {
         if (!usedQuestions.has(q.question.toLowerCase())) {
-          availableQuestions.push({ ...q, category: 'behavioral' });
+          availableQuestions.push({ ...q, category: 'behavioral', weight: 3 });
         }
       }
     }
     
-    // Selecionar perguntas
-    const shuffled = availableQuestions.sort(() => Math.random() - 0.5);
+    // Ordenar por peso (maior primeiro) e depois randomizar dentro do mesmo peso
+    const sortedByWeight = availableQuestions.sort((a, b) => {
+      if (b.weight !== a.weight) return b.weight - a.weight;
+      return Math.random() - 0.5;
+    });
     
-    for (let i = 0; i < Math.min(count, shuffled.length); i++) {
-      const q = shuffled[i];
+    // Selecionar perguntas priorizando as de maior peso
+    for (let i = 0; i < Math.min(count, sortedByWeight.length); i++) {
+      const q = sortedByWeight[i];
       suggestions.push({
         id: `suggestion_${Date.now()}_${Math.random().toString(36).substring(2, 9)}`,
         question: q.question,

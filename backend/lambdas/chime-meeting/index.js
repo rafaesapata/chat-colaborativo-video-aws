@@ -657,8 +657,9 @@ async function handleJoinMeeting(body) {
   try {
     let meeting = null;
     let isNewMeeting = false;
+    let isScheduledMeeting = false;
 
-    // Verificar cache
+    // Verificar cache de reunião ativa
     const cachedMeeting = await getMeetingFromCache(roomId);
     
     if (cachedMeeting?.meetingId) {
@@ -679,8 +680,23 @@ async function handleJoinMeeting(body) {
       }
     }
 
-    // Se não existe reunião e usuário é convidado, bloquear criação
+    // Se não existe reunião ativa, verificar se é uma reunião agendada
+    if (!meeting) {
+      const scheduledMeeting = await findScheduledMeetingByRoomId(roomId);
+      if (scheduledMeeting) {
+        isScheduledMeeting = true;
+        log(LOG_LEVELS.INFO, 'Reunião agendada encontrada', { roomId, scheduleId: scheduledMeeting.scheduleId });
+      }
+    }
+
+    // Se não existe reunião e usuário é convidado
     if (!meeting && isGuest) {
+      // Se é uma reunião agendada, informar que o host precisa entrar primeiro
+      if (isScheduledMeeting) {
+        log(LOG_LEVELS.INFO, 'Convidado aguardando host em reunião agendada', { roomId, odUserId });
+        return errorResponse(403, 'Aguardando o organizador iniciar a reunião. Por favor, aguarde alguns instantes e tente novamente.');
+      }
+      // Se não é agendada, bloquear criação
       log(LOG_LEVELS.WARN, 'Convidado tentou criar sala inexistente', { roomId, odUserId });
       return errorResponse(404, 'Sala não encontrada. Apenas usuários autenticados podem criar novas salas.');
     }
@@ -702,7 +718,7 @@ async function handleJoinMeeting(body) {
       meeting = createMeetingResponse.Meeting;
       await setMeetingInCache(roomId, meeting.MeetingId, odUserId);
       isNewMeeting = true;
-      log(LOG_LEVELS.INFO, 'Nova reunião criada', { roomId, createdBy: odUserId });
+      log(LOG_LEVELS.INFO, 'Nova reunião criada', { roomId, createdBy: odUserId, isScheduled: isScheduledMeeting });
     }
 
     // Criar attendee (com tratamento de duplicação)
@@ -1702,6 +1718,42 @@ async function handleCheckUserRole(body) {
 // ============ SCHEDULED MEETINGS TABLE ============
 const SCHEDULED_MEETINGS_PREFIX = 'scheduled_';
 const API_KEYS_PREFIX = 'apikey_';
+
+// ============ HELPER: FIND SCHEDULED MEETING BY ROOM ID ============
+async function findScheduledMeetingByRoomId(roomId) {
+  if (!CONFIG.USE_DYNAMO) return null;
+  
+  try {
+    // Buscar reuniões agendadas que usam este roomId
+    const result = await dynamoClient.send(new ScanCommand({
+      TableName: CONFIG.MEETINGS_TABLE,
+      FilterExpression: 'begins_with(roomId, :prefix) AND meetingRoomId = :roomId AND #status = :scheduled',
+      ExpressionAttributeNames: { '#status': 'status' },
+      ExpressionAttributeValues: {
+        ':prefix': { S: SCHEDULED_MEETINGS_PREFIX },
+        ':roomId': { S: roomId },
+        ':scheduled': { S: 'scheduled' }
+      },
+      Limit: 1
+    }));
+    
+    if (result.Items && result.Items.length > 0) {
+      const item = result.Items[0];
+      return {
+        scheduleId: item.scheduleId?.S,
+        title: item.title?.S,
+        createdBy: item.createdBy?.S,
+        scheduledAt: item.scheduledAt?.N ? parseInt(item.scheduledAt.N) : null,
+        meetingRoomId: item.meetingRoomId?.S
+      };
+    }
+    
+    return null;
+  } catch (e) {
+    log(LOG_LEVELS.ERROR, 'Erro ao buscar reunião agendada', { roomId, error: e.message });
+    return null;
+  }
+}
 
 // ============ SCHEDULE: CREATE ============
 async function handleScheduleCreate(body) {
