@@ -15,9 +15,10 @@ export default function WebSocketTest() {
     setError('');
     setMessages([]);
 
-    // Gerar IDs de teste no formato correto
-    const testUserId = 'user_' + Math.random().toString(36).substring(2, 11);
-    const testRoomId = 'room_' + Math.random().toString(36).substring(2, 11);
+    // Gerar IDs de teste no formato correto com timestamp para unicidade
+    const timestamp = Date.now().toString(36);
+    const testUserId = `user_${timestamp}_${Math.random().toString(36).substring(2, 11)}`;
+    const testRoomId = `room_${timestamp}_${Math.random().toString(36).substring(2, 11)}`;
     
     const wsUrl = `${import.meta.env.VITE_WEBSOCKET_URL}?userId=${testUserId}&roomId=${testRoomId}`;
     

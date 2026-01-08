@@ -13,6 +13,11 @@ export interface InterviewData {
   questionsAsked: QuestionAnswer[];
   lastUpdated: number;
   createdBy?: string;
+  context?: {
+    topic: string;
+    meetingType: string;
+    jobDescription?: string;
+  };
 }
 
 /**
@@ -23,6 +28,11 @@ export async function saveInterviewData(
   data: {
     suggestions: InterviewSuggestion[];
     questionsAsked: QuestionAnswer[];
+    context?: {
+      topic: string;
+      meetingType: string;
+      jobDescription?: string;
+    };
   },
   userLogin?: string
 ): Promise<{ success: boolean; error?: string }> {

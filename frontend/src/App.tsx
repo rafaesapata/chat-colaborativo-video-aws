@@ -59,7 +59,10 @@ function HomePage({ darkMode, onToggleDarkMode }: HomePageProps) {
   const CHIME_API_URL = import.meta.env.VITE_CHIME_API_URL || '';
 
   const createRoom = () => {
-    const newRoomId = 'room_' + Math.random().toString(36).substring(2, 11);
+    // Gerar roomId único com timestamp + random para garantir unicidade
+    const timestamp = Date.now().toString(36);
+    const random = Math.random().toString(36).substring(2, 11);
+    const newRoomId = `room_${timestamp}_${random}`;
     navigate(`/meeting/${newRoomId}`);
   };
 

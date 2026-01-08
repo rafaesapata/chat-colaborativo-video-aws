@@ -65,7 +65,10 @@ export default function Lobby({ onJoinMeeting, darkMode, toggleDarkMode }: Lobby
 
   const handleJoinMeeting = () => {
     if (name.trim()) {
-      const roomId = 'room_' + Math.random().toString(36).substring(2, 11);
+      // Gerar roomId único com timestamp + random para garantir unicidade
+      const timestamp = Date.now().toString(36);
+      const random = Math.random().toString(36).substring(2, 11);
+      const roomId = `room_${timestamp}_${random}`;
       navigate(`/meeting/${roomId}?name=${encodeURIComponent(name)}`);
     }
   };

@@ -105,7 +105,11 @@ export function useInterviewAssistant({
         try {
           await saveInterviewData(
             roomId,
-            { suggestions: newSuggestions, questionsAsked: newQuestionsAsked },
+            { 
+              suggestions: newSuggestions, 
+              questionsAsked: newQuestionsAsked,
+              context: { topic, meetingType, jobDescription } // Salvar contexto
+            },
             userLogin
           );
           console.log('[InterviewAssistant] Dados salvos no DynamoDB');
@@ -114,7 +118,7 @@ export function useInterviewAssistant({
         }
       }, configRef.current.saveDebounceMs);
     },
-    [roomId, userLogin]
+    [roomId, userLogin, topic, meetingType, jobDescription]
   );
 
   // Carregar dados do DynamoDB ao iniciar
@@ -129,6 +133,23 @@ export function useInterviewAssistant({
         const result = await getInterviewData(roomId);
         if (result.exists && result.data) {
           console.log('[InterviewAssistant] Dados carregados do DynamoDB');
+          
+          // VALIDAR SE O CONTEXTO MUDOU
+          // Se o topic ou meetingType mudou, não carregar dados antigos
+          const contextChanged = 
+            result.data.context?.topic !== topic ||
+            result.data.context?.meetingType !== meetingType;
+          
+          if (contextChanged) {
+            console.log('[InterviewAssistant] ⚠️ Contexto mudou, ignorando dados antigos');
+            console.log('  Antigo:', result.data.context);
+            console.log('  Novo:', { topic, meetingType });
+            // Não carregar dados antigos, deixar vazio para gerar novos
+            dataLoadedRef.current = true;
+            setIsLoading(false);
+            return;
+          }
+          
           setSuggestions(result.data.suggestions || []);
           setQuestionsAsked(result.data.questionsAsked || []);
 
@@ -149,7 +170,7 @@ export function useInterviewAssistant({
     };
 
     loadData();
-  }, [isEnabled, roomId]);
+  }, [isEnabled, roomId, topic, meetingType]);
 
   // Gerar sugestões iniciais
   useEffect(() => {
