@@ -319,7 +319,19 @@ async function generateInitialQuestions(context, count) {
 async function generateFollowUpQuestion(context, lastAnswer) {
   const { topic, jobDescription, questionsAsked, transcriptionHistory } = context;
   
+  // Validar se há perguntas feitas
+  if (!questionsAsked || questionsAsked.length === 0) {
+    console.warn('[generateFollowUp] Nenhuma pergunta foi feita ainda');
+    return { questions: [] };
+  }
+  
   const lastQuestion = questionsAsked[questionsAsked.length - 1];
+  
+  // Validar se a última pergunta tem a propriedade question
+  if (!lastQuestion || !lastQuestion.question) {
+    console.warn('[generateFollowUp] Última pergunta inválida:', lastQuestion);
+    return { questions: [] };
+  }
   
   const prompt = buildFollowUpPrompt(
     topic,
@@ -339,7 +351,36 @@ async function generateFollowUpQuestion(context, lastAnswer) {
  */
 async function evaluateAnswer(context, answer) {
   const { questionsAsked } = context;
+  
+  // Validar se há perguntas feitas
+  if (!questionsAsked || questionsAsked.length === 0) {
+    console.warn('[evaluateAnswer] Nenhuma pergunta foi feita ainda');
+    return {
+      score: 0,
+      quality: 'incomplete',
+      feedback: 'Nenhuma pergunta foi feita ainda',
+      strengths: [],
+      improvements: [],
+      keyTopics: [],
+      missingTopics: []
+    };
+  }
+  
   const lastQuestion = questionsAsked[questionsAsked.length - 1];
+  
+  // Validar se a última pergunta é válida
+  if (!lastQuestion || !lastQuestion.question) {
+    console.warn('[evaluateAnswer] Última pergunta inválida:', lastQuestion);
+    return {
+      score: 0,
+      quality: 'incomplete',
+      feedback: 'Pergunta inválida',
+      strengths: [],
+      improvements: [],
+      keyTopics: [],
+      missingTopics: []
+    };
+  }
   
   const prompt = buildEvaluationPrompt(lastQuestion, answer);
   const response = await invokeBedrockModel(prompt);
