@@ -28,7 +28,15 @@ Amplify.configure({
       userPoolClientId: import.meta.env.VITE_USER_POOL_CLIENT_ID || ''
     }
   }
+}, {
+  // Desabilitar logs do Amplify
+  ssr: false
 });
+
+// Desabilitar logs do console do Amplify/Cognito
+if (typeof window !== 'undefined') {
+  (window as any).LOG_LEVEL = 'ERROR';
+}
 
 interface HomePageProps {
   darkMode: boolean;

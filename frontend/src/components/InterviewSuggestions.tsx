@@ -24,26 +24,41 @@ export default function InterviewSuggestions({
   const [isMinimized, setIsMinimized] = useState(false);
   const [expandedId, setExpandedId] = useState<string | null>(null);
   const [position, setPosition] = useState({ x: 0, y: 0 });
+  const [size, setSize] = useState({ width: 320, height: 480 }); // Tamanho inicial
   const [isDragging, setIsDragging] = useState(false);
+  const [isResizing, setIsResizing] = useState(false);
   const dragRef = useRef<HTMLDivElement>(null);
   const dragStartRef = useRef({ x: 0, y: 0, posX: 0, posY: 0 });
+  const resizeStartRef = useRef({ x: 0, y: 0, width: 0, height: 0 });
 
-  // Inicializar posição
+  // Inicializar posição e tamanho
   useEffect(() => {
     const savedPos = sessionStorage.getItem('interview_suggestions_pos');
+    const savedSize = sessionStorage.getItem('interview_suggestions_size');
+    
     if (savedPos) {
       try {
         setPosition(JSON.parse(savedPos));
       } catch { /* ignore */ }
     }
+    
+    if (savedSize) {
+      try {
+        setSize(JSON.parse(savedSize));
+      } catch { /* ignore */ }
+    }
   }, []);
 
-  // Salvar posição
+  // Salvar posição e tamanho
   useEffect(() => {
     if (position.x !== 0 || position.y !== 0) {
       sessionStorage.setItem('interview_suggestions_pos', JSON.stringify(position));
     }
   }, [position]);
+
+  useEffect(() => {
+    sessionStorage.setItem('interview_suggestions_size', JSON.stringify(size));
+  }, [size]);
 
   const handleDragStart = useCallback((e: React.MouseEvent | React.TouchEvent) => {
     e.preventDefault();
@@ -60,6 +75,23 @@ export default function InterviewSuggestions({
     };
   }, [position]);
 
+  const handleResizeStart = useCallback((e: React.MouseEvent | React.TouchEvent) => {
+    e.preventDefault();
+    e.stopPropagation();
+    setIsResizing(true);
+    
+    const clientX = 'touches' in e ? e.touches[0].clientX : e.clientX;
+    const clientY = 'touches' in e ? e.touches[0].clientY : e.clientY;
+    
+    resizeStartRef.current = {
+      x: clientX,
+      y: clientY,
+      width: size.width,
+      height: size.height
+    };
+  }, [size]);
+
+  // Drag effect
   useEffect(() => {
     if (!isDragging) return;
 
@@ -93,12 +125,74 @@ export default function InterviewSuggestions({
     };
   }, [isDragging]);
 
+  // Resize effect
+  useEffect(() => {
+    if (!isResizing) return;
+
+    const handleMove = (e: MouseEvent | TouchEvent) => {
+      const clientX = 'touches' in e ? e.touches[0].clientX : e.clientX;
+      const clientY = 'touches' in e ? e.touches[0].clientY : e.clientY;
+      
+      const deltaX = clientX - resizeStartRef.current.x;
+      const deltaY = clientY - resizeStartRef.current.y;
+      
+      // Limites mínimos e máximos
+      const newWidth = Math.max(280, Math.min(600, resizeStartRef.current.width + deltaX));
+      const newHeight = Math.max(300, Math.min(800, resizeStartRef.current.height + deltaY));
+      
+      setSize({
+        width: newWidth,
+        height: newHeight
+      });
+    };
+
+    const handleEnd = () => {
+      setIsResizing(false);
+    };
+
+    document.addEventListener('mousemove', handleMove);
+    document.addEventListener('mouseup', handleEnd);
+    document.addEventListener('touchmove', handleMove);
+    document.addEventListener('touchend', handleEnd);
+
+    return () => {
+      document.removeEventListener('mousemove', handleMove);
+      document.removeEventListener('mouseup', handleEnd);
+      document.removeEventListener('touchmove', handleMove);
+      document.removeEventListener('touchend', handleEnd);
+    };
+  }, [isResizing]);
+
   const unreadSuggestions = suggestions.filter(s => !s.isRead);
   
   // Incluir também as sugestões recém-marcadas (para mostrar animação de "FEITO")
   const recentlyMarkedSuggestions = suggestions.filter(s => 
     s.isRead && (s.justMarkedAsRead || recentlyMarkedIds.has(s.id))
   );
+
+  // DEBUG: Log quando props mudam
+  useEffect(() => {
+    console.log('[InterviewSuggestions] 📦 Props atualizadas:', {
+      suggestionsLength: suggestions.length,
+      recentlyMarkedIdsSize: recentlyMarkedIds.size,
+      recentlyMarkedIdsArray: Array.from(recentlyMarkedIds),
+    });
+  }, [suggestions, recentlyMarkedIds]);
+
+  // DEBUG: Log para verificar estado
+  console.log('[InterviewSuggestions] 🎨 Renderizando:', {
+    totalSuggestions: suggestions.length,
+    unreadCount: unreadSuggestions.length,
+    recentlyMarkedCount: recentlyMarkedSuggestions.length,
+    recentlyMarkedIdsSize: recentlyMarkedIds.size,
+    suggestions: suggestions.map(s => ({
+      id: s.id.substring(0, 20),
+      question: s.question.substring(0, 40),
+      isRead: s.isRead,
+      justMarkedAsRead: s.justMarkedAsRead,
+      autoDetected: s.autoDetected
+    }))
+  });
 
   if (unreadSuggestions.length === 0 && recentlyMarkedSuggestions.length === 0 && !isGenerating) {
     return null;
@@ -143,12 +237,16 @@ export default function InterviewSuggestions({
   return (
     <div 
       ref={dragRef}
-      className={`fixed z-40 w-80 max-w-[calc(100vw-2rem)] transition-all duration-300 ${
-        isMinimized ? 'h-auto' : 'max-h-[60vh]'
-      } ${isDragging ? 'cursor-grabbing' : ''}`}
+      className={`fixed z-40 transition-all duration-300 ${
+        isMinimized ? 'h-auto' : ''
+      } ${isDragging ? 'cursor-grabbing' : ''} ${isResizing ? 'cursor-nwse-resize' : ''}`}
       style={{
         top: `calc(5rem + ${position.y}px)`,
         right: `calc(1rem - ${position.x}px)`,
+        width: `${size.width}px`,
+        height: isMinimized ? 'auto' : `${size.height}px`,
+        maxWidth: 'calc(100vw - 2rem)',
+        maxHeight: 'calc(100vh - 7rem)',
       }}
     >
       {/* Header */}
@@ -206,7 +304,12 @@ export default function InterviewSuggestions({
           </div>
 
           {/* Suggestions List */}
-          <div className="max-h-[40vh] overflow-y-auto">
+          <div 
+            className="overflow-y-auto"
+            style={{
+              maxHeight: `calc(${size.height}px - 8rem)` // Altura total menos header e topic
+            }}
+          >
             {isGenerating && (
               <div className={`p-4 flex items-center gap-3 ${
                 darkMode ? 'text-gray-400' : 'text-gray-500'
@@ -286,6 +389,13 @@ export default function InterviewSuggestions({
             ))}
 
             {/* Sugestões recém-marcadas automaticamente (com animação de FEITO piscando) */}
+            {recentlyMarkedSuggestions.length > 0 && (
+              <div className={`px-3 py-2 text-xs font-semibold ${
+                darkMode ? 'bg-green-900/20 text-green-400' : 'bg-green-50 text-green-700'
+              }`}>
+                ✓ Perguntas Realizadas
+              </div>
+            )}
             {recentlyMarkedSuggestions.map((suggestion) => (
               <div
                 key={`marked-${suggestion.id}`}
@@ -341,6 +451,28 @@ export default function InterviewSuggestions({
               </div>
             )}
           </div>
+        </div>
+      )}
+
+      {/* Resize Handle */}
+      {!isMinimized && (
+        <div
+          className={`absolute bottom-0 right-0 w-6 h-6 cursor-nwse-resize touch-none ${
+            darkMode ? 'text-purple-400/50 hover:text-purple-400' : 'text-indigo-400/50 hover:text-indigo-600'
+          }`}
+          onMouseDown={handleResizeStart}
+          onTouchStart={handleResizeStart}
+          title="Arrastar para redimensionar"
+        >
+          <svg
+            className="w-full h-full"
+            viewBox="0 0 24 24"
+            fill="none"
+            stroke="currentColor"
+            strokeWidth="2"
+          >
+            <path d="M21 15l-6 6M21 9l-12 12" />
+          </svg>
         </div>
       )}
 

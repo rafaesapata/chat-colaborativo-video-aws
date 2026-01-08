@@ -44,19 +44,22 @@ async function openBackupDB(): Promise<IDBDatabase> {
 
 async function saveChunksToIndexedDB(recordingId: string, chunks: Blob[], duration: number): Promise<void> {
   try {
+    // Converter chunks para ArrayBuffer ANTES de abrir a transação
+    const chunkData = await Promise.all(chunks.map(chunk => chunk.arrayBuffer()));
+    const mimeType = chunks[0]?.type || 'video/webm';
+    
+    // Agora abrir a transação e fazer o put de forma síncrona
     const db = await openBackupDB();
     const tx = db.transaction(STORE_NAME, 'readwrite');
     const store = tx.objectStore(STORE_NAME);
     
-    // Converter chunks para ArrayBuffer para armazenamento
-    const chunkData = await Promise.all(chunks.map(chunk => chunk.arrayBuffer()));
-    
+    // Put deve ser chamado sincronamente após abrir a transação
     store.put({
       id: recordingId,
       chunks: chunkData,
       duration,
       timestamp: Date.now(),
-      mimeType: chunks[0]?.type || 'video/webm',
+      mimeType,
     });
     
     await new Promise<void>((resolve, reject) => {

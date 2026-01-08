@@ -103,6 +103,17 @@ export function useInterviewAssistant({
 
       saveTimeoutRef.current = setTimeout(async () => {
         try {
+          console.log('[InterviewAssistant] 💾 Salvando no DynamoDB:', {
+            suggestions: newSuggestions.length,
+            questionsAsked: newQuestionsAsked.length,
+            suggestionsRead: newSuggestions.filter(s => s.isRead).length,
+            suggestionsDetails: newSuggestions.map(s => ({
+              id: s.id.substring(0, 15),
+              question: s.question.substring(0, 30),
+              isRead: s.isRead
+            }))
+          });
+          
           await saveInterviewData(
             roomId,
             { 
@@ -112,9 +123,9 @@ export function useInterviewAssistant({
             },
             userLogin
           );
-          console.log('[InterviewAssistant] Dados salvos no DynamoDB');
+          console.log('[InterviewAssistant] ✅ Dados salvos no DynamoDB com sucesso');
         } catch (error) {
-          console.error('[InterviewAssistant] Erro ao salvar dados:', error);
+          console.error('[InterviewAssistant] ❌ Erro ao salvar dados:', error);
         }
       }, configRef.current.saveDebounceMs);
     },
@@ -149,6 +160,12 @@ export function useInterviewAssistant({
             setIsLoading(false);
             return;
           }
+          
+          console.log('[InterviewAssistant] 📥 Carregando dados do DynamoDB:', {
+            suggestions: result.data.suggestions?.length || 0,
+            questionsAsked: result.data.questionsAsked?.length || 0,
+            suggestionsRead: result.data.suggestions?.filter(s => s.isRead).length || 0,
+          });
           
           setSuggestions(result.data.suggestions || []);
           setQuestionsAsked(result.data.questionsAsked || []);
@@ -266,11 +283,15 @@ export function useInterviewAssistant({
         
         // Marcar a sugestão como lida com flag de animação
         setSuggestions((prev) => {
+          console.log('[InterviewAssistant] 🔄 Atualizando suggestions - antes:', prev.map(s => ({ id: s.id.substring(0, 10), isRead: s.isRead })));
+          
           const updated = prev.map((s) =>
             s.id === detectedSuggestion.id
               ? { ...s, isRead: true, justMarkedAsRead: true, autoDetected: true }
               : s
           );
+          
+          console.log('[InterviewAssistant] 🔄 Atualizando suggestions - depois:', updated.map(s => ({ id: s.id.substring(0, 10), isRead: s.isRead, justMarked: s.justMarkedAsRead })));
           
           // Adicionar ao QA
           const newQA: QuestionAnswer = {
@@ -291,26 +312,58 @@ export function useInterviewAssistant({
             return updatedQA;
           });
           
-          // Adicionar ao set de recém-marcados para animação
-          setRecentlyMarkedIds((prev) => new Set([...prev, detectedSuggestion.id]));
-          
-          // Remover da animação após 3 segundos
-          setTimeout(() => {
-            setRecentlyMarkedIds((prev) => {
-              const newSet = new Set(prev);
-              newSet.delete(detectedSuggestion.id);
-              return newSet;
-            });
-            // Remover flag justMarkedAsRead
-            setSuggestions((prev) =>
-              prev.map((s) =>
-                s.id === detectedSuggestion.id ? { ...s, justMarkedAsRead: false } : s
-              )
-            );
-          }, 3000);
+          // IMPORTANTE: Atualizar recentlyMarkedIds DENTRO do setSuggestions
+          // para garantir que ambos updates aconteçam no mesmo render cycle
+          setRecentlyMarkedIds((prevIds) => {
+            const newSet = new Set([...prevIds, detectedSuggestion.id]);
+            console.log('[InterviewAssistant] 🎨 recentlyMarkedIds atualizado:', Array.from(newSet));
+            return newSet;
+          });
           
           return updated;
         });
+        
+        // Remover da animação após 3 segundos
+        setTimeout(() => {
+          console.log('[InterviewAssistant] ⏰ Removendo animação para:', detectedSuggestion.id.substring(0, 10));
+          
+          setRecentlyMarkedIds((prev) => {
+            const newSet = new Set(prev);
+            newSet.delete(detectedSuggestion.id);
+            console.log('[InterviewAssistant] 🗑️ recentlyMarkedIds após remoção:', Array.from(newSet));
+            return newSet;
+          });
+          
+          // Remover flag justMarkedAsRead MAS MANTER isRead: true
+          setSuggestions((prev) => {
+            console.log('[InterviewAssistant] 🔄 Removendo animação - antes:', prev.map(s => ({ 
+              id: s.id.substring(0, 10), 
+              isRead: s.isRead, 
+              justMarked: s.justMarkedAsRead 
+            })));
+            
+            const updatedSuggestions = prev.map((s) =>
+              s.id === detectedSuggestion.id 
+                ? { ...s, justMarkedAsRead: false, isRead: true } // ✅ Manter isRead: true
+                : s
+            );
+            
+            console.log('[InterviewAssistant] 🔄 Removendo animação - depois:', updatedSuggestions.map(s => ({ 
+              id: s.id.substring(0, 10), 
+              isRead: s.isRead, 
+              justMarked: s.justMarkedAsRead 
+            })));
+            
+            // ✅ Salvar no DynamoDB para persistir o estado
+            setQuestionsAsked((qa) => {
+              console.log('[InterviewAssistant] 💾 Salvando após remover animação - questionsAsked:', qa.length);
+              saveDataToDynamoDB(updatedSuggestions, qa);
+              return qa;
+            });
+            
+            return updatedSuggestions;
+          });
+        }, 3000);
         
         // Gerar follow-up automaticamente após detectar a pergunta
         setTimeout(() => {
@@ -523,6 +576,12 @@ export function useInterviewAssistant({
     (suggestionId: string) => {
       setSuggestions((prev) => {
         const suggestion = prev.find((s) => s.id === suggestionId);
+        
+        // Atualizar suggestions com isRead: true
+        const updatedSuggestions = prev.map((s) =>
+          s.id === suggestionId ? { ...s, isRead: true } : s
+        );
+        
         if (suggestion && !suggestion.isRead) {
           const newQA: QuestionAnswer = {
             questionId: suggestionId,
@@ -533,19 +592,24 @@ export function useInterviewAssistant({
             answerQuality: 'incomplete',
             keyTopics: [],
           };
+          
           setQuestionsAsked((qa) => {
             const updatedQA = [...qa, newQA];
-            const updatedSuggestions = prev.map((s) =>
-              s.id === suggestionId ? { ...s, isRead: true } : s
-            );
+            // Salvar ambos no DynamoDB
             saveDataToDynamoDB(updatedSuggestions, updatedQA);
+            console.log('[InterviewAssistant] 📝 Pergunta marcada como lida e salva:', suggestionId.substring(0, 20));
             return updatedQA;
           });
+        } else {
+          // Se já estava lida, apenas salvar o estado atualizado
+          saveDataToDynamoDB(updatedSuggestions, questionsAsked);
+          console.log('[InterviewAssistant] 📝 Estado de leitura atualizado:', suggestionId.substring(0, 20));
         }
-        return prev.map((s) => (s.id === suggestionId ? { ...s, isRead: true } : s));
+        
+        return updatedSuggestions;
       });
     },
-    [saveDataToDynamoDB]
+    [saveDataToDynamoDB, questionsAsked]
   );
 
   // Remover sugestão
