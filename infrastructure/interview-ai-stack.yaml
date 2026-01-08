@@ -1,0 +1,181 @@
+AWSTemplateFormatVersion: '2010-09-09'
+Transform: AWS::Serverless-2016-10-31
+Description: Stack de IA para Entrevistas - Adiciona funcionalidades de IA generativa
+
+Parameters:
+  MainStackName:
+    Type: String
+    Default: chat-colaborativo-serverless
+    Description: Nome da stack principal
+  
+  ChatRoomsTableName:
+    Type: String
+    Default: chat-colaborativo-serverless-ChatRooms
+    Description: Nome da tabela DynamoDB de ChatRooms
+  
+  AudioBucketName:
+    Type: String
+    Default: chat-colaborativo-serverless-audio-383234048592
+    Description: Nome do bucket S3 de áudio
+
+Resources:
+  # Lambda de IA para Entrevistas
+  InterviewAIFunction:
+    Type: AWS::Serverless::Function
+    Properties:
+      FunctionName: !Sub '${MainStackName}-InterviewAIFunction'
+      CodeUri: ../backend/lambdas/interview-ai/
+      Handler: index.handler
+      Runtime: nodejs18.x
+      Timeout: 90
+      MemorySize: 2048
+      Environment:
+        Variables:
+          ENVIRONMENT: production
+      Policies:
+        - Statement:
+            - Effect: Allow
+              Action:
+                - bedrock:InvokeModel
+                - bedrock:InvokeModelWithResponseStream
+              Resource: 
+                - 'arn:aws:bedrock:*::foundation-model/*'
+                - 'arn:aws:bedrock:*:*:inference-profile/*'
+            - Effect: Allow
+              Action:
+                - cloudwatch:PutMetricData
+              Resource: '*'
+            - Effect: Allow
+              Action:
+                - logs:CreateLogGroup
+                - logs:CreateLogStream
+                - logs:PutLogEvents
+              Resource: '*'
+      Tags:
+        Application: ChatColaborativo
+        Component: InterviewAI
+
+  # Lambda de Gerenciamento de Meetings do Chime
+  ChimeMeetingFunction:
+    Type: AWS::Serverless::Function
+    Properties:
+      FunctionName: !Sub '${MainStackName}-chime-meeting'
+      CodeUri: ../backend/lambdas/chime-meeting/
+      Handler: index.handler
+      Runtime: nodejs18.x
+      Timeout: 30
+      MemorySize: 1024
+      Environment:
+        Variables:
+          MEETINGS_TABLE: !Ref ChatRoomsTableName
+          INTERVIEW_AI_LAMBDA: !GetAtt InterviewAIFunction.Arn
+      Policies:
+        - DynamoDBCrudPolicy:
+            TableName: !Ref ChatRoomsTableName
+        - S3CrudPolicy:
+            BucketName: !Ref AudioBucketName
+        - Statement:
+            - Effect: Allow
+              Action:
+                - chime:CreateMeeting
+                - chime:CreateAttendee
+                - chime:DeleteMeeting
+                - chime:DeleteAttendee
+                - chime:GetMeeting
+                - chime:ListAttendees
+                - chime:StartMeetingTranscription
+                - chime:StopMeetingTranscription
+              Resource: '*'
+            - Effect: Allow
+              Action:
+                - lambda:InvokeFunction
+              Resource: !GetAtt InterviewAIFunction.Arn
+      Tags:
+        Application: ChatColaborativo
+        Component: ChimeMeeting
+
+  # HTTP API para Chime Meeting
+  ChimeMeetingApi:
+    Type: AWS::ApiGatewayV2::Api
+    Properties:
+      Name: !Sub '${MainStackName}-chime-meeting-api'
+      ProtocolType: HTTP
+      CorsConfiguration:
+        AllowOrigins:
+          - 'https://livechat.ai.udstec.io'
+          - 'https://dmz2oaky7xb1w.cloudfront.net'
+          - 'http://localhost:5173'
+        AllowMethods:
+          - GET
+          - POST
+          - PUT
+          - DELETE
+          - OPTIONS
+        AllowHeaders:
+          - '*'
+        MaxAge: 300
+
+  ChimeMeetingApiStage:
+    Type: AWS::ApiGatewayV2::Stage
+    Properties:
+      ApiId: !Ref ChimeMeetingApi
+      StageName: prod
+      AutoDeploy: true
+
+  # Rota catch-all para POST
+  ChimeMeetingRoute:
+    Type: AWS::ApiGatewayV2::Route
+    Properties:
+      ApiId: !Ref ChimeMeetingApi
+      RouteKey: 'POST /{proxy+}'
+      Target: !Sub 'integrations/${ChimeMeetingIntegration}'
+
+  # Rota catch-all para GET
+  ChimeMeetingRouteGet:
+    Type: AWS::ApiGatewayV2::Route
+    Properties:
+      ApiId: !Ref ChimeMeetingApi
+      RouteKey: 'GET /{proxy+}'
+      Target: !Sub 'integrations/${ChimeMeetingIntegration}'
+
+  ChimeMeetingIntegration:
+    Type: AWS::ApiGatewayV2::Integration
+    Properties:
+      ApiId: !Ref ChimeMeetingApi
+      IntegrationType: AWS_PROXY
+      IntegrationUri: !Sub 'arn:aws:apigateway:${AWS::Region}:lambda:path/2015-03-31/functions/${ChimeMeetingFunction.Arn}/invocations'
+      PayloadFormatVersion: '2.0'
+
+  # Permissão para API Gateway invocar Lambda
+  ChimeMeetingPermission:
+    Type: AWS::Lambda::Permission
+    Properties:
+      FunctionName: !Ref ChimeMeetingFunction
+      Action: lambda:InvokeFunction
+      Principal: apigateway.amazonaws.com
+      SourceArn: !Sub 'arn:aws:execute-api:${AWS::Region}:${AWS::AccountId}:${ChimeMeetingApi}/*'
+
+Outputs:
+  InterviewAIFunctionArn:
+    Description: ARN do Lambda de IA para Entrevistas
+    Value: !GetAtt InterviewAIFunction.Arn
+    Export:
+      Name: !Sub '${MainStackName}-InterviewAIFunctionArn'
+
+  ChimeMeetingFunctionArn:
+    Description: ARN do Lambda de Chime Meeting
+    Value: !GetAtt ChimeMeetingFunction.Arn
+    Export:
+      Name: !Sub '${MainStackName}-ChimeMeetingFunctionArn'
+
+  ChimeMeetingApiUrl:
+    Description: URL da API HTTP para Chime Meeting
+    Value: !Sub 'https://${ChimeMeetingApi}.execute-api.${AWS::Region}.amazonaws.com/prod'
+    Export:
+      Name: !Sub '${MainStackName}-ChimeMeetingApiUrl'
+
+  ChimeMeetingApiId:
+    Description: ID da API HTTP
+    Value: !Ref ChimeMeetingApi
+    Export:
+      Name: !Sub '${MainStackName}-ChimeMeetingApiId'

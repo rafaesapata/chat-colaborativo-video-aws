@@ -1,0 +1,9 @@
+{
+  "rawPath": "/interview/ai",
+  "requestContext": {
+    "http": {
+      "method": "POST"
+    }
+  },
+  "body": "{\"action\":\"generateInitialQuestions\",\"context\":{\"meetingType\":\"ENTREVISTA\",\"topic\":\"Desenvolvedor Full Stack Sênior\",\"jobDescription\":\"Buscamos desenvolvedor com 5+ anos de experiência em React, Node.js, TypeScript, AWS\",\"transcriptionHistory\":[],\"questionsAsked\":[]},\"count\":3}"
+}

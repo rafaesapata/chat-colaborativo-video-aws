@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useState, useRef, useEffect } from 'react';
 import { X, Briefcase, Users, BookOpen, MessageSquare, Mic, Video, Target } from 'lucide-react';
 
 interface MeetingSetupModalProps {
@@ -27,6 +27,35 @@ export default function MeetingSetupModal({
   const [jobDescription, setJobDescription] = useState('');
   const [autoStartTranscription, setAutoStartTranscription] = useState(true); // Ativo por padrão
   const [autoStartRecording, setAutoStartRecording] = useState(true); // Ativo por padrão
+  const [width, setWidth] = useState(1000); // Largura inicial (25% maior que 800px)
+  const [isResizing, setIsResizing] = useState(false);
+  const modalRef = useRef<HTMLDivElement>(null);
+
+  // Handle resize
+  useEffect(() => {
+    if (!isResizing) return;
+
+    const handleMouseMove = (e: MouseEvent) => {
+      if (modalRef.current) {
+        const newWidth = e.clientX - modalRef.current.getBoundingClientRect().left;
+        if (newWidth >= 600 && newWidth <= window.innerWidth - 100) {
+          setWidth(newWidth);
+        }
+      }
+    };
+
+    const handleMouseUp = () => {
+      setIsResizing(false);
+    };
+
+    document.addEventListener('mousemove', handleMouseMove);
+    document.addEventListener('mouseup', handleMouseUp);
+
+    return () => {
+      document.removeEventListener('mousemove', handleMouseMove);
+      document.removeEventListener('mouseup', handleMouseUp);
+    };
+  }, [isResizing]);
 
   if (!isOpen) return null;
 
@@ -46,11 +75,24 @@ export default function MeetingSetupModal({
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 backdrop-blur-sm p-4">
-      <div className={`relative w-full max-w-lg rounded-2xl shadow-2xl overflow-hidden ${
-        darkMode ? 'bg-gray-800 text-white' : 'bg-white text-gray-900'
-      }`}>
-        {/* Header */}
-        <div className={`p-4 border-b ${darkMode ? 'border-gray-700' : 'border-gray-200'}`}>
+      <div 
+        ref={modalRef}
+        style={{ width: `${width}px` }}
+        className={`relative max-h-[85vh] rounded-2xl shadow-2xl flex flex-col ${
+          darkMode ? 'bg-gray-800 text-white' : 'bg-white text-gray-900'
+        }`}
+      >
+        {/* Resize Handle - Left */}
+        <div
+          onMouseDown={() => setIsResizing(true)}
+          className={`absolute left-0 top-0 bottom-0 w-2 cursor-ew-resize hover:bg-indigo-500/20 transition-colors ${
+            isResizing ? 'bg-indigo-500/30' : ''
+          }`}
+          style={{ zIndex: 10 }}
+        />
+
+        {/* Header - Fixed */}
+        <div className={`p-4 border-b flex-shrink-0 ${darkMode ? 'border-gray-700' : 'border-gray-200'}`}>
           <div className="flex items-center justify-between">
             <h2 className="text-xl font-bold">Configurar Reunião</h2>
             <button
@@ -63,18 +105,18 @@ export default function MeetingSetupModal({
             </button>
           </div>
           <p className={`text-sm mt-1 ${darkMode ? 'text-gray-400' : 'text-gray-500'}`}>
-            Escolha o tipo de reunião para ativar recursos especiais
+            Escolha o tipo de reunião para ativar recursos especiais • Arraste a borda esquerda para redimensionar
           </p>
         </div>
 
-        {/* Content */}
-        <div className="p-4 space-y-4">
+        {/* Content - Scrollable */}
+        <div className="p-4 space-y-4 overflow-y-auto flex-1">
           {/* Meeting Type Selection */}
           <div>
             <label className={`block text-sm font-medium mb-2 ${darkMode ? 'text-gray-300' : 'text-gray-700'}`}>
               Tipo de Reunião
             </label>
-            <div className="grid grid-cols-2 gap-2">
+            <div className="grid grid-cols-5 gap-2">
               {meetingTypes.map((type) => {
                 const Icon = type.icon;
                 const isSelected = selectedType === type.value;
@@ -215,68 +257,68 @@ export default function MeetingSetupModal({
           <div className={`space-y-3 p-3 rounded-xl ${
             darkMode ? 'bg-gray-700/50' : 'bg-gray-50'
           }`}>
-            <h4 className={`text-sm font-medium ${darkMode ? 'text-gray-300' : 'text-gray-700'}`}>
-              Opções Automáticas
-            </h4>
-            
-            {/* Auto Transcription */}
-            <label className="flex items-center justify-between cursor-pointer">
-              <div className="flex items-center gap-2">
-                <Mic size={16} className={darkMode ? 'text-gray-400' : 'text-gray-500'} />
-                <span className={`text-sm ${darkMode ? 'text-gray-300' : 'text-gray-600'}`}>
-                  Iniciar transcrição automaticamente
-                </span>
-              </div>
-              <div className="relative">
-                <input
-                  type="checkbox"
-                  checked={autoStartTranscription}
-                  onChange={(e) => setAutoStartTranscription(e.target.checked)}
-                  className="sr-only"
-                />
-                <div className={`w-10 h-6 rounded-full transition-colors ${
-                  autoStartTranscription
-                    ? darkMode ? 'bg-purple-600' : 'bg-indigo-600'
-                    : darkMode ? 'bg-gray-600' : 'bg-gray-300'
-                }`}>
-                  <div className={`w-4 h-4 rounded-full bg-white shadow transform transition-transform mt-1 ${
-                    autoStartTranscription ? 'translate-x-5' : 'translate-x-1'
-                  }`} />
+              <h4 className={`text-sm font-medium ${darkMode ? 'text-gray-300' : 'text-gray-700'}`}>
+                Opções Automáticas
+              </h4>
+              
+              {/* Auto Transcription */}
+              <label className="flex items-center justify-between cursor-pointer">
+                <div className="flex items-center gap-2">
+                  <Mic size={16} className={darkMode ? 'text-gray-400' : 'text-gray-500'} />
+                  <span className={`text-sm ${darkMode ? 'text-gray-300' : 'text-gray-600'}`}>
+                    Iniciar transcrição automaticamente
+                  </span>
                 </div>
-              </div>
-            </label>
+                <div className="relative">
+                  <input
+                    type="checkbox"
+                    checked={autoStartTranscription}
+                    onChange={(e) => setAutoStartTranscription(e.target.checked)}
+                    className="sr-only"
+                  />
+                  <div className={`w-10 h-6 rounded-full transition-colors ${
+                    autoStartTranscription
+                      ? darkMode ? 'bg-purple-600' : 'bg-indigo-600'
+                      : darkMode ? 'bg-gray-600' : 'bg-gray-300'
+                  }`}>
+                    <div className={`w-4 h-4 rounded-full bg-white shadow transform transition-transform mt-1 ${
+                      autoStartTranscription ? 'translate-x-5' : 'translate-x-1'
+                    }`} />
+                  </div>
+                </div>
+              </label>
 
-            {/* Auto Recording */}
-            <label className="flex items-center justify-between cursor-pointer">
-              <div className="flex items-center gap-2">
-                <Video size={16} className={darkMode ? 'text-gray-400' : 'text-gray-500'} />
-                <span className={`text-sm ${darkMode ? 'text-gray-300' : 'text-gray-600'}`}>
-                  Iniciar gravação automaticamente
-                </span>
-              </div>
-              <div className="relative">
-                <input
-                  type="checkbox"
-                  checked={autoStartRecording}
-                  onChange={(e) => setAutoStartRecording(e.target.checked)}
-                  className="sr-only"
-                />
-                <div className={`w-10 h-6 rounded-full transition-colors ${
-                  autoStartRecording
-                    ? darkMode ? 'bg-purple-600' : 'bg-indigo-600'
-                    : darkMode ? 'bg-gray-600' : 'bg-gray-300'
-                }`}>
-                  <div className={`w-4 h-4 rounded-full bg-white shadow transform transition-transform mt-1 ${
-                    autoStartRecording ? 'translate-x-5' : 'translate-x-1'
-                  }`} />
+              {/* Auto Recording */}
+              <label className="flex items-center justify-between cursor-pointer">
+                <div className="flex items-center gap-2">
+                  <Video size={16} className={darkMode ? 'text-gray-400' : 'text-gray-500'} />
+                  <span className={`text-sm ${darkMode ? 'text-gray-300' : 'text-gray-600'}`}>
+                    Iniciar gravação automaticamente
+                  </span>
                 </div>
-              </div>
-            </label>
-          </div>
+                <div className="relative">
+                  <input
+                    type="checkbox"
+                    checked={autoStartRecording}
+                    onChange={(e) => setAutoStartRecording(e.target.checked)}
+                    className="sr-only"
+                  />
+                  <div className={`w-10 h-6 rounded-full transition-colors ${
+                    autoStartRecording
+                      ? darkMode ? 'bg-purple-600' : 'bg-indigo-600'
+                      : darkMode ? 'bg-gray-600' : 'bg-gray-300'
+                  }`}>
+                    <div className={`w-4 h-4 rounded-full bg-white shadow transform transition-transform mt-1 ${
+                      autoStartRecording ? 'translate-x-5' : 'translate-x-1'
+                    }`} />
+                  </div>
+                </div>
+              </label>
+            </div>
         </div>
 
-        {/* Footer */}
-        <div className={`p-4 border-t flex justify-between ${darkMode ? 'border-gray-700' : 'border-gray-200'}`}>
+        {/* Footer - Fixed */}
+        <div className={`p-4 border-t flex justify-between flex-shrink-0 ${darkMode ? 'border-gray-700' : 'border-gray-200'}`}>
           <button
             onClick={handleSkip}
             className={`px-4 py-2 rounded-lg text-sm font-medium transition ${

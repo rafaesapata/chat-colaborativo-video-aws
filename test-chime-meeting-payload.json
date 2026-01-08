@@ -1,0 +1,8 @@
+{
+  "httpMethod": "POST",
+  "path": "/interview/ai",
+  "headers": {
+    "Content-Type": "application/json"
+  },
+  "body": "{\"action\":\"generateInitialQuestions\",\"context\":{\"meetingType\":\"interview\",\"jobTitle\":\"Desenvolvedor Full Stack\",\"jobDescription\":\"Desenvolvedor Full Stack com experiencia em React e Node.js\",\"topic\":\"Desenvolvimento Full Stack\"},\"count\":3}"
+}

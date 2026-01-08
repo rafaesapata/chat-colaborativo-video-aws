@@ -167,13 +167,20 @@ export function useInterviewAssistant({
       questionsAsked: [],
     };
 
-    const initialSuggestions = interviewAIService.generateSuggestions(
-      context,
-      configRef.current.initialSuggestionsCount
-    );
-    setSuggestions(initialSuggestions);
-    lastSuggestionTimeRef.current = Date.now();
-    saveDataToDynamoDB(initialSuggestions, []);
+    // Gerar perguntas iniciais usando IA (assíncrono)
+    setIsGenerating(true);
+    interviewAIService.generateSuggestions(context, configRef.current.initialSuggestionsCount)
+      .then((initialSuggestions) => {
+        setSuggestions(initialSuggestions);
+        lastSuggestionTimeRef.current = Date.now();
+        saveDataToDynamoDB(initialSuggestions, []);
+      })
+      .catch((error) => {
+        console.error('[InterviewAssistant] Erro ao gerar perguntas iniciais:', error);
+      })
+      .finally(() => {
+        setIsGenerating(false);
+      });
   }, [isEnabled, meetingType, topic, jobDescription, isLoading, saveDataToDynamoDB]);
 
   // Detectar automaticamente quando o entrevistador faz uma pergunta sugerida
@@ -277,22 +284,26 @@ export function useInterviewAssistant({
           };
           
           if (configRef.current.enableAutoFollowUp) {
-            const followUp = interviewAIService.generateFollowUp(trans.transcribedText, context);
-            
-            if (followUp) {
-              setSuggestions((prev) => {
-                const isDuplicate = prev.some(
-                  (s) => s.question.toLowerCase() === followUp.question.toLowerCase()
-                );
-                if (isDuplicate) return prev;
-                
-                console.log('[InterviewAssistant] 🔄 Follow-up automático gerado:', followUp.question.substring(0, 50));
-                lastSuggestionTimeRef.current = Date.now();
-                const newSuggestions = [followUp, ...prev].slice(0, 10);
-                saveDataToDynamoDB(newSuggestions, questionsAsked);
-                return newSuggestions;
+            interviewAIService.generateFollowUp(trans.transcribedText, context)
+              .then((followUp) => {
+                if (followUp) {
+                  setSuggestions((prev) => {
+                    const isDuplicate = prev.some(
+                      (s) => s.question.toLowerCase() === followUp.question.toLowerCase()
+                    );
+                    if (isDuplicate) return prev;
+                    
+                    console.log('[InterviewAssistant] 🔄 Follow-up automático gerado:', followUp.question.substring(0, 50));
+                    lastSuggestionTimeRef.current = Date.now();
+                    const newSuggestions = [followUp, ...prev].slice(0, 10);
+                    saveDataToDynamoDB(newSuggestions, questionsAsked);
+                    return newSuggestions;
+                  });
+                }
+              })
+              .catch((error) => {
+                console.error('[InterviewAssistant] Erro ao gerar follow-up automático:', error);
               });
-            }
           }
         }, 1500); // Delay para dar tempo de processar a resposta
         
@@ -358,7 +369,7 @@ export function useInterviewAssistant({
     setIsGenerating(true);
 
     // Usar processDelayMs da config
-    setTimeout(() => {
+    setTimeout(async () => {
       const cfg = configRef.current; // Pegar config mais recente
       
       const transcriptionsForProcessing = finalTranscriptions.map((t) => ({
@@ -367,56 +378,83 @@ export function useInterviewAssistant({
         timestamp: t.timestamp || Date.now(),
       }));
 
-      const updatedQA = interviewAIService.processTranscription(
-        transcriptionsForProcessing,
-        questionsAsked
-      );
-      setQuestionsAsked(updatedQA);
-
+      // Processar transcrição e avaliar resposta (assíncrono)
       const context: InterviewContext = {
         meetingType: meetingType as InterviewContext['meetingType'],
         topic,
         jobDescription,
         transcriptionHistory: finalTranscriptions.map((t) => t.transcribedText),
-        questionsAsked: updatedQA,
+        questionsAsked: questionsAsked,
       };
+
+      let updatedQA = questionsAsked;
+      const lastQA = questionsAsked[questionsAsked.length - 1];
+      
+      if (lastQA && cfg.enableTechnicalEvaluation) {
+        try {
+          const { evaluation } = await interviewAIService.processTranscription(
+            lastResponse,
+            context,
+            lastQA
+          );
+          
+          if (evaluation) {
+            updatedQA = questionsAsked.map((qa, idx) => 
+              idx === questionsAsked.length - 1 
+                ? { ...qa, ...evaluation, answer: lastResponse }
+                : qa
+            );
+            setQuestionsAsked(updatedQA);
+          }
+        } catch (error) {
+          console.error('[InterviewAssistant] Erro ao avaliar resposta:', error);
+        }
+      }
 
       let newSuggestions = [...suggestions];
       let suggestionAdded = false;
 
       // Gerar follow-up se habilitado na config
       if (cfg.enableAutoFollowUp) {
-        const followUp = interviewAIService.generateFollowUp(lastResponse, context);
+        try {
+          const followUp = await interviewAIService.generateFollowUp(lastResponse, context);
 
-        if (followUp) {
-          const isDuplicate = suggestions.some(
-            (s) => s.question.toLowerCase() === followUp.question.toLowerCase()
-          );
+          if (followUp) {
+            const isDuplicate = suggestions.some(
+              (s) => s.question.toLowerCase() === followUp.question.toLowerCase()
+            );
 
-          if (!isDuplicate) {
-            const currentUnread = suggestions.filter((s) => !s.isRead);
-            if (currentUnread.length < cfg.maxUnreadSuggestions) {
-              lastSuggestionTimeRef.current = Date.now();
-              newSuggestions = [followUp, ...suggestions].slice(0, 10);
-              suggestionAdded = true;
-              console.log('[InterviewAssistant] Follow-up gerado:', followUp.question);
+            if (!isDuplicate) {
+              const currentUnread = suggestions.filter((s) => !s.isRead);
+              if (currentUnread.length < cfg.maxUnreadSuggestions) {
+                lastSuggestionTimeRef.current = Date.now();
+                newSuggestions = [followUp, ...suggestions].slice(0, 10);
+                suggestionAdded = true;
+                console.log('[InterviewAssistant] Follow-up gerado:', followUp.question);
+              }
             }
           }
+        } catch (error) {
+          console.error('[InterviewAssistant] Erro ao gerar follow-up:', error);
         }
       }
 
       // Gerar novas perguntas a cada N respostas (configurável)
       if (!suggestionAdded && updatedQA.length > 0 && updatedQA.length % cfg.generateNewQuestionsEveryN === 0) {
-        const newSuggestionsFromAI = interviewAIService.generateSuggestions(context, 2);
-        const existingQuestions = new Set(newSuggestions.map((s) => s.question.toLowerCase()));
-        const uniqueNew = newSuggestionsFromAI.filter(
-          (s) => !existingQuestions.has(s.question.toLowerCase())
-        );
+        try {
+          const newSuggestionsFromAI = await interviewAIService.generateNewQuestions(context, 2);
+          const existingQuestions = new Set(newSuggestions.map((s) => s.question.toLowerCase()));
+          const uniqueNew = newSuggestionsFromAI.filter(
+            (s) => !existingQuestions.has(s.question.toLowerCase())
+          );
 
-        if (uniqueNew.length > 0) {
-          lastSuggestionTimeRef.current = Date.now();
-          newSuggestions = [...uniqueNew, ...newSuggestions].slice(0, 10);
-          console.log('[InterviewAssistant] Novas perguntas geradas:', uniqueNew.length);
+          if (uniqueNew.length > 0) {
+            lastSuggestionTimeRef.current = Date.now();
+            newSuggestions = [...uniqueNew, ...newSuggestions].slice(0, 10);
+            console.log('[InterviewAssistant] Novas perguntas geradas:', uniqueNew.length);
+          }
+        } catch (error) {
+          console.error('[InterviewAssistant] Erro ao gerar novas perguntas:', error);
         }
       }
 

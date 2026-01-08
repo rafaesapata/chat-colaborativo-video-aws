@@ -305,7 +305,7 @@ Resources:
               - 'http://localhost:5173'
             AllowedMethods: [GET, PUT, POST, HEAD]
             AllowedHeaders: ['*']
-            ExposeHeaders: ['ETag']
+            ExposedHeaders: ['ETag']
             MaxAge: 3000
       PublicAccessBlockConfiguration:
         BlockPublicAcls: true
@@ -669,6 +669,60 @@ Resources:
       Tags:
         Application: ChatColaborativo
 
+  InterviewAIFunction:
+    Type: AWS::Serverless::Function
+    Properties:
+      FunctionName: !Sub '${AWS::StackName}-InterviewAIFunction'
+      CodeUri: ../backend/lambdas/interview-ai/
+      Handler: index.handler
+      Timeout: 90
+      MemorySize: 2048
+      Policies:
+        - Statement:
+            - Effect: Allow
+              Action:
+                - bedrock:InvokeModel
+                - bedrock:InvokeModelWithResponseStream
+              Resource: '*'
+      Tags:
+        Application: ChatColaborativo
+
+  ChimeMeetingFunction:
+    Type: AWS::Serverless::Function
+    Properties:
+      FunctionName: !Sub '${AWS::StackName}-chime-meeting'
+      CodeUri: ../backend/lambdas/chime-meeting/
+      Handler: index.handler
+      Timeout: 30
+      MemorySize: 1024
+      Environment:
+        Variables:
+          MEETINGS_TABLE: !Ref ChatRoomsTable
+          INTERVIEW_AI_LAMBDA: !GetAtt InterviewAIFunction.Arn
+      Policies:
+        - DynamoDBCrudPolicy:
+            TableName: !Ref ChatRoomsTable
+        - S3CrudPolicy:
+            BucketName: !Ref AudioBucket
+        - Statement:
+            - Effect: Allow
+              Action:
+                - chime:CreateMeeting
+                - chime:CreateAttendee
+                - chime:DeleteMeeting
+                - chime:DeleteAttendee
+                - chime:GetMeeting
+                - chime:ListAttendees
+                - chime:StartMeetingTranscription
+                - chime:StopMeetingTranscription
+              Resource: '*'
+            - Effect: Allow
+              Action:
+                - lambda:InvokeFunction
+              Resource: !GetAtt InterviewAIFunction.Arn
+      Tags:
+        Application: ChatColaborativo
+
   RoomManagerFunction:
     Type: AWS::Serverless::Function
     Properties:
@@ -719,6 +773,30 @@ Resources:
     Type: AWS::Lambda::Permission
     Properties:
       FunctionName: !Ref TurnCredentialsFunction
+      Action: lambda:InvokeFunction
+      Principal: apigateway.amazonaws.com
+      SourceArn: !Sub 'arn:aws:execute-api:${AWS::Region}:${AWS::AccountId}:${RecordingApi}/*'
+
+  # Rotas HTTP para Chime Meeting (todas as rotas de meeting, interview, admin, etc)
+  ChimeMeetingRoute:
+    Type: AWS::ApiGatewayV2::Route
+    Properties:
+      ApiId: !Ref RecordingApi
+      RouteKey: 'POST /{proxy+}'
+      Target: !Sub 'integrations/${ChimeMeetingIntegration}'
+
+  ChimeMeetingIntegration:
+    Type: AWS::ApiGatewayV2::Integration
+    Properties:
+      ApiId: !Ref RecordingApi
+      IntegrationType: AWS_PROXY
+      IntegrationUri: !Sub 'arn:aws:apigateway:${AWS::Region}:lambda:path/2015-03-31/functions/${ChimeMeetingFunction.Arn}/invocations'
+      PayloadFormatVersion: '2.0'
+
+  ChimeMeetingPermission:
+    Type: AWS::Lambda::Permission
+    Properties:
+      FunctionName: !Ref ChimeMeetingFunction
       Action: lambda:InvokeFunction
       Principal: apigateway.amazonaws.com
       SourceArn: !Sub 'arn:aws:execute-api:${AWS::Region}:${AWS::AccountId}:${RecordingApi}/*'

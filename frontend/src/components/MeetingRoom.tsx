@@ -24,7 +24,7 @@ import { useAuth } from '../contexts/AuthContext';
 import { useRecording } from '../hooks/useRecording';
 import { useTabSync } from '../hooks/useStability';
 import { meetingHistoryService } from '../services/meetingHistoryService';
-import { interviewAIService, InterviewReport } from '../services/interviewAIService';
+import { interviewAIService, InterviewReport, InterviewContext } from '../services/interviewAIService';
 import { featureDetector } from '../utils/featureDetection';
 import { getRoomConfig, saveRoomConfig, RoomConfig } from '../services/roomConfigService';
 
@@ -210,6 +210,7 @@ export default function MeetingRoom({ darkMode }: { darkMode: boolean }) {
   // Assistente de entrevista
   const {
     suggestions: interviewSuggestions,
+    questionsAsked: interviewQuestionsAsked,
     isGenerating: isGeneratingSuggestions,
     recentlyMarkedIds,
     markAsRead: markSuggestionAsRead,
@@ -490,19 +491,18 @@ export default function MeetingRoom({ darkMode }: { darkMode: boolean }) {
   const handleEndRoom = useCallback(async () => {
     if (meetingType === 'ENTREVISTA' && transcriptions.length > 0) {
       setIsGeneratingReport(true);
-      await new Promise(resolve => setTimeout(resolve, 2000));
       
-      // Passar jobDescription e nome do entrevistador para identificação correta
-      const report = interviewAIService.generateInterviewReport(
-        meetingTopic,
-        transcriptions.map(t => ({
-          text: t.transcribedText,
-          speaker: t.speakerLabel || 'Desconhecido',
-          timestamp: t.timestamp
-        })),
-        jobDescription, // Descrição da vaga para análise técnica focada
-        userName // Nome do entrevistador para identificar corretamente o candidato
-      );
+      // Gerar relatório com contexto completo
+      const context: InterviewContext = {
+        meetingType: 'ENTREVISTA',
+        topic: meetingTopic,
+        jobDescription,
+        transcriptionHistory: transcriptions.map(t => t.transcribedText),
+        questionsAsked: interviewQuestionsAsked,
+        candidateName: userName
+      };
+      
+      const report = await interviewAIService.generateInterviewReport(context);
       
       setInterviewReport(report);
       setIsGeneratingReport(false);

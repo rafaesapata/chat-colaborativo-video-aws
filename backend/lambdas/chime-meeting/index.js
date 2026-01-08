@@ -560,6 +560,8 @@ const routes = Object.freeze({
   // Interview AI Config (configurações gerenciadas pelo admin)
   'POST:/interview/config/get': handleGetInterviewConfig,
   'POST:/interview/config/save': handleSaveInterviewConfig,
+  // Interview AI (geração de perguntas com Bedrock)
+  'POST:/interview/ai': handleInterviewAI,
   // Documentação
   'GET:/docs': handleDocsPage,
   'GET:/docs/swagger.json': handleSwaggerJson,
@@ -585,7 +587,14 @@ exports.handler = async (event) => {
 
 async function processRequest(event) {
   const method = event.httpMethod || event.requestContext?.http?.method || 'POST';
-  const path = event.path || event.rawPath || '';
+  let path = event.path || event.rawPath || '';
+  
+  // Remover stage do path (ex: /prod/interview/ai -> /interview/ai)
+  if (path.startsWith('/prod/')) {
+    path = path.substring(5); // Remove '/prod'
+  } else if (path.startsWith('/dev/')) {
+    path = path.substring(4); // Remove '/dev'
+  }
   
   // CORS preflight
   if (method === 'OPTIONS') {
@@ -3037,5 +3046,69 @@ async function handleSaveInterviewConfig(body) {
   } catch (error) {
     log(LOG_LEVELS.ERROR, 'Erro ao salvar config de entrevista', { error: error.message });
     return errorResponse(500, 'Erro ao salvar configuração');
+  }
+}
+
+// ============ INTERVIEW AI HANDLER (PROXY PARA LAMBDA DE IA) ============
+
+const { LambdaClient, InvokeCommand } = require('@aws-sdk/client-lambda');
+const lambdaClient = new LambdaClient({ region: CONFIG.REGION });
+
+/**
+ * Handler para chamadas de IA de entrevista
+ * Faz proxy para o Lambda especializado em IA
+ */
+async function handleInterviewAI(body) {
+  const { action, context, count, lastAnswer } = body;
+  
+  if (!action) {
+    return errorResponse(400, 'action é obrigatório');
+  }
+  
+  if (!context || !context.meetingType) {
+    return errorResponse(400, 'context é obrigatório');
+  }
+  
+  const validActions = ['generateInitialQuestions', 'generateFollowUp', 'evaluateAnswer', 'generateNewQuestions'];
+  if (!validActions.includes(action)) {
+    return errorResponse(400, `action inválido. Valores permitidos: ${validActions.join(', ')}`);
+  }
+  
+  try {
+    log(LOG_LEVELS.INFO, 'Chamando Lambda de IA para entrevista', { action, topic: context.topic });
+    
+    // Invocar Lambda de IA
+    const lambdaPayload = {
+      body: JSON.stringify({
+        action,
+        context,
+        count,
+        lastAnswer
+      })
+    };
+    
+    const command = new InvokeCommand({
+      FunctionName: process.env.INTERVIEW_AI_LAMBDA || 'chat-colaborativo-serverless-InterviewAIFunction',
+      InvocationType: 'RequestResponse',
+      Payload: JSON.stringify(lambdaPayload)
+    });
+    
+    const response = await lambdaClient.send(command);
+    const responsePayload = JSON.parse(new TextDecoder().decode(response.Payload));
+    
+    if (responsePayload.statusCode !== 200) {
+      const errorBody = JSON.parse(responsePayload.body);
+      log(LOG_LEVELS.ERROR, 'Erro no Lambda de IA', { error: errorBody.error });
+      return errorResponse(responsePayload.statusCode, errorBody.error || 'Erro ao processar IA');
+    }
+    
+    const result = JSON.parse(responsePayload.body);
+    log(LOG_LEVELS.INFO, 'Lambda de IA executado com sucesso', { action });
+    
+    return successResponse(result);
+    
+  } catch (error) {
+    log(LOG_LEVELS.ERROR, 'Erro ao chamar Lambda de IA', { error: error.message, stack: error.stack });
+    return errorResponse(500, 'Erro ao processar requisição de IA');
   }
 }
