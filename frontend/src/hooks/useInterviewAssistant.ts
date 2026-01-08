@@ -205,7 +205,17 @@ export function useInterviewAssistant({
              speaker.split(' ')[0] === interviewer.split(' ')[0];
     });
 
-    if (interviewerTranscriptions.length === 0) return;
+    console.log('[InterviewAssistant] 🔍 Detecção automática:', {
+      totalTranscriptions: finalTranscriptions.length,
+      interviewerTranscriptions: interviewerTranscriptions.length,
+      userName,
+      unreadSuggestions: suggestions.filter(s => !s.isRead).length
+    });
+
+    if (interviewerTranscriptions.length === 0) {
+      console.log('[InterviewAssistant] ⚠️ Nenhuma transcrição do entrevistador encontrada');
+      return;
+    }
 
     // Pegar as últimas 3 transcrições DO ENTREVISTADOR para verificar
     const recentTranscriptions = interviewerTranscriptions.slice(-3);
@@ -213,7 +223,15 @@ export function useInterviewAssistant({
     for (const trans of recentTranscriptions) {
       // Verificar se essa transcrição já foi processada para detecção
       const transKey = `detected_${trans.transcribedText.substring(0, 50)}`;
-      if (processedTranscriptionsRef.current.has(transKey)) continue;
+      if (processedTranscriptionsRef.current.has(transKey)) {
+        console.log('[InterviewAssistant] ⏭️ Transcrição já processada:', trans.transcribedText.substring(0, 50));
+        continue;
+      }
+      
+      console.log('[InterviewAssistant] 🔎 Analisando transcrição:', {
+        speaker: trans.speakerLabel,
+        text: trans.transcribedText.substring(0, 80) + '...'
+      });
       
       // Detectar se alguma sugestão foi feita
       const detectedSuggestion = detectAskedQuestion(trans.transcribedText, suggestions);
@@ -308,6 +326,10 @@ export function useInterviewAssistant({
         }, 1500); // Delay para dar tempo de processar a resposta
         
         break; // Processar apenas uma detecção por vez
+      } else if (detectedSuggestion && detectedSuggestion.isRead) {
+        console.log('[InterviewAssistant] ℹ️ Pergunta já foi marcada como lida:', detectedSuggestion.question.substring(0, 50));
+      } else {
+        console.log('[InterviewAssistant] ❌ Nenhuma pergunta detectada nesta transcrição');
       }
     }
   }, [transcriptions, isEnabled, meetingType, isLoading, suggestions, questionsAsked, topic, jobDescription, saveDataToDynamoDB, userName]);
