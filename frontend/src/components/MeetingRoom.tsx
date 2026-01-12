@@ -83,6 +83,7 @@ export default function MeetingRoom({ darkMode }: { darkMode: boolean }) {
   const [isGeneratingReport, setIsGeneratingReport] = useState(false);
   const [interviewReport, setInterviewReport] = useState<InterviewReport | null>(null);
   const [showScopeReportModal, setShowScopeReportModal] = useState(false);
+  const [userNamesMap, setUserNamesMap] = useState<Map<string, string>>(new Map()); // Map userId -> userName
   
   const controlsTimeoutRef = useRef<number>();
   const isChatOpenRef = useRef(isChatOpen);
@@ -161,6 +162,15 @@ export default function MeetingRoom({ darkMode }: { darkMode: boolean }) {
 
   // WebSocket para chat
   const handleWebSocketMessage = useCallback((data: any) => {
+    // Capturar nomes de usuários dos eventos
+    if (data.type === 'room_event' && data.data?.userName && data.data?.userId) {
+      setUserNamesMap(prev => {
+        const newMap = new Map(prev);
+        newMap.set(data.data.userId, data.data.userName);
+        return newMap;
+      });
+    }
+    
     if (data.type === 'message') {
       const newMessage: Message = {
         id: data.data.messageId,
@@ -492,22 +502,44 @@ export default function MeetingRoom({ darkMode }: { darkMode: boolean }) {
     if (meetingType === 'ENTREVISTA' && transcriptions.length > 0) {
       setIsGeneratingReport(true);
       
-      // Gerar relatório com contexto completo
-      const context: InterviewContext = {
-        meetingType: 'ENTREVISTA',
-        topic: meetingTopic,
-        jobDescription,
-        transcriptionHistory: transcriptions.map(t => t.transcribedText),
-        questionsAsked: interviewQuestionsAsked,
-        candidateName: userName
-      };
-      
-      const report = await interviewAIService.generateInterviewReport(context);
-      
-      setInterviewReport(report);
-      setIsGeneratingReport(false);
-      setShowEndModal(false);
-      setShowReportModal(true);
+      try {
+        // Identificar o candidato (outro participante que não é o usuário logado)
+        const otherAttendees = attendees.filter(a => a.odExternalUserId !== userId);
+        
+        // Buscar nome do candidato no mapa de nomes (via WebSocket) ou usar fallback
+        let candidateName = 'Candidato';
+        if (otherAttendees.length > 0) {
+          const candidateId = otherAttendees[0].odExternalUserId;
+          candidateName = userNamesMap.get(candidateId) || otherAttendees[0].name || candidateId;
+        }
+        
+        console.log('[MeetingRoom] Gerando relatório para candidato:', candidateName);
+        console.log('[MeetingRoom] Transcrições:', transcriptions.length);
+        console.log('[MeetingRoom] Perguntas:', interviewQuestionsAsked.length);
+        console.log('[MeetingRoom] Mapa de nomes:', Array.from(userNamesMap.entries()));
+        
+        // Gerar relatório com contexto completo
+        const context: InterviewContext = {
+          meetingType: 'ENTREVISTA',
+          topic: meetingTopic,
+          jobDescription,
+          transcriptionHistory: transcriptions.map(t => t.transcribedText),
+          questionsAsked: interviewQuestionsAsked,
+          candidateName
+        };
+        
+        const report = await interviewAIService.generateInterviewReport(context);
+        
+        console.log('[MeetingRoom] Relatório gerado com sucesso');
+        setInterviewReport(report);
+        setIsGeneratingReport(false);
+        setShowEndModal(false);
+        setShowReportModal(true);
+      } catch (error) {
+        console.error('[MeetingRoom] Erro ao gerar relatório:', error);
+        setIsGeneratingReport(false);
+        alert('Erro ao gerar relatório da entrevista. Por favor, tente novamente.');
+      }
     } else if (meetingType === 'ESCOPO' && scopeSummary) {
       // Mostrar modal de LRD para reuniões de escopo
       setShowEndModal(false);
@@ -515,7 +547,7 @@ export default function MeetingRoom({ darkMode }: { darkMode: boolean }) {
     } else {
       handleLeaveOnly();
     }
-  }, [meetingType, meetingTopic, transcriptions, handleLeaveOnly, jobDescription, userName, scopeSummary]);
+  }, [meetingType, meetingTopic, transcriptions, handleLeaveOnly, jobDescription, userName, scopeSummary, attendees, userId, interviewQuestionsAsked, userNamesMap]);
 
   const handleCloseReport = useCallback(() => {
     setShowReportModal(false);
@@ -803,6 +835,9 @@ export default function MeetingRoom({ darkMode }: { darkMode: boolean }) {
             darkMode={darkMode}
             meetingTopic={meetingTopic}
             recentlyMarkedIds={recentlyMarkedIds}
+            questionsAsked={interviewQuestionsAsked}
+            transcriptions={transcriptions.map(t => t.transcribedText)}
+            jobDescription={jobDescription}
           />
         </FeatureErrorBoundary>
       )}

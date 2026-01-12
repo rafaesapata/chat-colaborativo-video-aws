@@ -105,17 +105,29 @@ function cleanExpiredCache() {
 async function callInterviewAI(action: string, context: InterviewContext, params: any = {}): Promise<any> {
   const cacheKey = `${action}_${JSON.stringify({ topic: context.topic, jobDescription: context.jobDescription?.substring(0, 100), ...params })}`;
   
-  // Verificar cache
-  const cached = requestCache.get(cacheKey);
-  if (cached && Date.now() - cached.timestamp < CACHE_TTL) {
-    console.log('[InterviewAI] Usando resposta em cache para:', action);
-    return cached.data;
+  // Verificar cache (não usar cache para relatórios)
+  if (action !== 'generateReport') {
+    const cached = requestCache.get(cacheKey);
+    if (cached && Date.now() - cached.timestamp < CACHE_TTL) {
+      console.log('[InterviewAI] Usando resposta em cache para:', action);
+      return cached.data;
+    }
   }
   
   cleanExpiredCache();
   
   try {
-    console.log('[InterviewAI] Chamando API:', action, { topic: context.topic, hasJobDescription: !!context.jobDescription });
+    console.log('[InterviewAI] Chamando API:', action, { 
+      topic: context.topic, 
+      hasJobDescription: !!context.jobDescription,
+      transcriptionsCount: context.transcriptionHistory.length,
+      questionsCount: context.questionsAsked.length
+    });
+    
+    // Para relatórios, enviar TODAS as transcrições; para outras ações, últimas 10
+    const transcriptionsToSend = action === 'generateReport' 
+      ? context.transcriptionHistory // TODAS as transcrições para relatório completo
+      : context.transcriptionHistory.slice(-10); // Últimas 10 para outras ações
     
     const response = await fetch(`${API_URL}/interview/ai`, {
       method: 'POST',
@@ -126,9 +138,10 @@ async function callInterviewAI(action: string, context: InterviewContext, params
           meetingType: context.meetingType,
           topic: context.topic,
           jobDescription: context.jobDescription,
-          transcriptionHistory: context.transcriptionHistory.slice(-10), // Últimas 10 transcrições
+          transcriptionHistory: transcriptionsToSend,
           questionsAsked: context.questionsAsked.map(qa => ({
             question: qa.question,
+            answer: qa.answer, // Incluir resposta para relatório
             answerQuality: qa.answerQuality,
             category: qa.category
           })),
@@ -139,14 +152,17 @@ async function callInterviewAI(action: string, context: InterviewContext, params
     });
     
     if (!response.ok) {
-      const error = await response.json();
-      throw new Error(error.error || 'Erro ao chamar API de IA');
+      const errorText = await response.text();
+      console.error('[InterviewAI] Erro na resposta:', response.status, errorText);
+      throw new Error(`Erro ${response.status}: ${errorText}`);
     }
     
     const result = await response.json();
     
-    // Armazenar em cache
-    requestCache.set(cacheKey, { data: result, timestamp: Date.now() });
+    // Armazenar em cache (exceto relatórios)
+    if (action !== 'generateReport') {
+      requestCache.set(cacheKey, { data: result, timestamp: Date.now() });
+    }
     
     return result;
     

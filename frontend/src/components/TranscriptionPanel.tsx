@@ -40,7 +40,7 @@ export default function TranscriptionPanel({
     <>
       {/* Panel */}
       <div
-        className={`fixed right-0 top-0 h-full z-50 transition-transform duration-350 cubic-bezier(0.4, 0, 0.2, 1) backdrop-blur-xl ${
+        className={`fixed right-0 top-0 h-full z-50 transition-transform duration-350 cubic-bezier(0.4, 0, 0.2, 1) backdrop-blur-xl flex flex-col ${
           isOpen ? 'translate-x-0' : 'translate-x-full'
         } ${isMobile ? 'w-full' : 'w-96'} ${darkMode 
           ? 'bg-gray-900/40 border-l border-white/10' 
@@ -52,7 +52,7 @@ export default function TranscriptionPanel({
         }}
       >
         {/* Header */}
-        <div className={`${isMobile ? 'h-14' : 'h-16'} flex items-center justify-between px-4 border-b ${
+        <div className={`${isMobile ? 'h-14' : 'h-16'} flex-shrink-0 flex items-center justify-between px-4 border-b ${
           darkMode ? 'border-white/10' : 'border-black/5'
         }`}>
           <div className="flex items-center gap-2">
@@ -105,8 +105,8 @@ export default function TranscriptionPanel({
           </div>
         </div>
 
-        {/* Content */}
-        <div className="flex-1 overflow-hidden">
+        {/* Content - com flex-1 e overflow-y-auto */}
+        <div className="flex-1 overflow-y-auto">
           <LiveTranscription 
             transcriptions={transcriptions}
             speakingUsers={speakingUsers}
@@ -114,7 +114,7 @@ export default function TranscriptionPanel({
         </div>
 
         {/* Footer with info */}
-        <div className={`${isMobile ? 'p-3' : 'p-4'} border-t ${darkMode ? 'border-white/10' : 'border-black/5'}`}>
+        <div className={`${isMobile ? 'p-3' : 'p-4'} flex-shrink-0 border-t ${darkMode ? 'border-white/10' : 'border-black/5'}`}>
           {!isSpeechRecognitionSupported ? (
             <div className={`bg-yellow-50 border border-yellow-200 rounded-lg ${isMobile ? 'p-2' : 'p-3'} text-sm`}>
               <div className="flex items-start gap-2">

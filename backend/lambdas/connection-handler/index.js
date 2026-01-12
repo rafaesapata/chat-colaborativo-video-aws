@@ -120,6 +120,20 @@ async function handleConnect(event) {
       }
     }
 
+    // Buscar nome do usuário do DynamoDB
+    let userName = userId; // Fallback para userId
+    try {
+      const userResult = await ddb.send(new GetCommand({
+        TableName: USERS_TABLE,
+        Key: { userId }
+      }));
+      if (userResult.Item?.name) {
+        userName = userResult.Item.name;
+      }
+    } catch (error) {
+      logger.warn('Could not fetch user name', { userId, error: error.message });
+    }
+
     // Notificar outros usuários na sala sobre o novo usuário
     // ✅ IMPORTANTE: Incluir lista de participantes existentes na notificação
     // O novo usuário receberá isso via broadcast quando os outros responderem
@@ -128,6 +142,7 @@ async function handleConnect(event) {
       data: {
         eventType: 'user_joined',
         userId,
+        userName, // ✅ Incluir nome do usuário
         roomId,
         participants,
         existingParticipants, // ✅ Incluir para que o novo usuário saiba quem já está
@@ -135,7 +150,7 @@ async function handleConnect(event) {
       }
     }, null); // ✅ NÃO excluir ninguém - enviar para TODOS incluindo o novo usuário
 
-    logger.info('Connection established successfully', { connectionId, userId, roomId });
+    logger.info('Connection established successfully', { connectionId, userId, userName, roomId });
     return { statusCode: 200, body: 'Connected' };
 
   } catch (error) {

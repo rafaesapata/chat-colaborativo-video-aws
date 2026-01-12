@@ -15,10 +15,17 @@ export default function WebSocketTest() {
     setError('');
     setMessages([]);
 
-    // Gerar IDs de teste no formato correto com timestamp para unicidade
-    const timestamp = Date.now().toString(36);
-    const testUserId = `user_${timestamp}_${Math.random().toString(36).substring(2, 11)}`;
-    const testRoomId = `room_${timestamp}_${Math.random().toString(36).substring(2, 11)}`;
+    // Gerar IDs de teste no formato simplificado
+    const chars = 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789';
+    const generateId = (length: number) => {
+      let id = '';
+      for (let i = 0; i < length; i++) {
+        id += chars.charAt(Math.floor(Math.random() * chars.length));
+      }
+      return id;
+    };
+    const testUserId = `user_${generateId(8)}`;
+    const testRoomId = generateId(5);
     
     const wsUrl = `${import.meta.env.VITE_WEBSOCKET_URL}?userId=${testUserId}&roomId=${testRoomId}`;
     

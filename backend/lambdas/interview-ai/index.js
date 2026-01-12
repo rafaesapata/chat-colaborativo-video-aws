@@ -95,6 +95,10 @@ exports.handler = async (event) => {
         result = await generateInterviewReport(context);
         break;
       
+      case 'evaluateCompleteness':
+        result = await evaluateInterviewCompleteness(context);
+        break;
+      
       default:
         await recordMetric('InvalidAction', 1);
         return errorResponse(400, `Ação inválida: ${action}`);
@@ -136,7 +140,8 @@ function validateAndSanitizeInput(body) {
     'generateFollowUp', 
     'evaluateAnswer', 
     'generateNewQuestions', 
-    'generateReport'
+    'generateReport',
+    'evaluateCompleteness'
   ];
   
   if (!action || !validActions.includes(action)) {
@@ -769,6 +774,115 @@ function parseEvaluationResponse(response) {
 }
 
 /**
+ * Avalia a completude da entrevista em tempo real
+ */
+async function evaluateInterviewCompleteness(context) {
+  const { topic, jobDescription, questionsAsked, transcriptionHistory } = context;
+
+  const prompt = `Você é um especialista em recrutamento técnico. Avalie a completude desta entrevista em andamento.
+
+**CONTEXTO DA VAGA:**
+- Cargo: ${topic}
+- Descrição: ${jobDescription || 'Não fornecida'}
+
+**PERGUNTAS FEITAS E RESPOSTAS:**
+${questionsAsked.map((qa, i) => `
+${i + 1}. Pergunta (${qa.category}): ${qa.question}
+   Resposta: ${qa.answer || 'Não respondida'}
+   Qualidade: ${qa.answerQuality || 'Não avaliada'}
+`).join('\n')}
+
+**ÚLTIMAS TRANSCRIÇÕES:**
+${transcriptionHistory.slice(-15).join('\n')}
+
+**INSTRUÇÕES:**
+Avalie a completude da entrevista considerando:
+
+1. **Cobertura de Áreas**: As principais áreas foram exploradas?
+   - Habilidades técnicas específicas da vaga
+   - Experiência prática relevante
+   - Soft skills e trabalho em equipe
+   - Resolução de problemas
+
+2. **Profundidade**: As respostas foram suficientemente detalhadas?
+   - Respostas superficiais vs. detalhadas
+   - Exemplos concretos fornecidos
+   - Demonstração de conhecimento real
+
+3. **Qualidade das Perguntas**: As perguntas foram relevantes e bem distribuídas?
+   - Variedade de categorias
+   - Alinhamento com requisitos da vaga
+   - Progressão lógica
+
+4. **Informações Suficientes**: Há informação suficiente para tomar uma decisão?
+   - Pontos fortes identificados
+   - Áreas de melhoria identificadas
+   - Nível de senioridade claro
+
+Retorne um JSON com:
+{
+  "completenessScore": 0-100,
+  "status": "insufficient" | "minimum" | "good" | "excellent",
+  "message": "Mensagem curta sobre o status",
+  "areasEvaluated": {
+    "technicalSkills": { "score": 0-100, "covered": true/false },
+    "experience": { "score": 0-100, "covered": true/false },
+    "softSkills": { "score": 0-100, "covered": true/false },
+    "problemSolving": { "score": 0-100, "covered": true/false }
+  },
+  "missingAreas": ["área 1", "área 2"],
+  "suggestedNextSteps": ["sugestão 1", "sugestão 2"],
+  "canEndInterview": true/false,
+  "reasoning": "Explicação breve da avaliação"
+}
+
+**IMPORTANTE:**
+- Seja rigoroso na avaliação
+- Considere a qualidade, não apenas quantidade
+- Base-se no conteúdo real das respostas
+- Identifique lacunas específicas
+
+Retorne APENAS o JSON, sem texto adicional.`;
+
+  const response = await invokeBedrockModel(prompt, 2000);
+  
+  try {
+    const jsonMatch = response.match(/\{[\s\S]*\}/);
+    if (!jsonMatch) {
+      throw new Error('Resposta não contém JSON válido');
+    }
+    
+    const evaluation = JSON.parse(jsonMatch[0]);
+    
+    console.log('Completude avaliada:', evaluation.completenessScore);
+    return { evaluation };
+    
+  } catch (error) {
+    console.error('Error parsing completeness evaluation:', error);
+    console.error('Raw response:', response);
+    
+    // Fallback: retornar avaliação básica
+    return {
+      evaluation: {
+        completenessScore: Math.min((questionsAsked.length / 10) * 100, 100),
+        status: questionsAsked.length < 5 ? 'insufficient' : questionsAsked.length < 8 ? 'minimum' : 'good',
+        message: 'Avaliação básica (erro na IA)',
+        areasEvaluated: {
+          technicalSkills: { score: 50, covered: questionsAsked.length > 3 },
+          experience: { score: 50, covered: questionsAsked.length > 5 },
+          softSkills: { score: 50, covered: questionsAsked.length > 7 },
+          problemSolving: { score: 50, covered: questionsAsked.length > 9 }
+        },
+        missingAreas: [],
+        suggestedNextSteps: ['Continue a entrevista'],
+        canEndInterview: questionsAsked.length >= 10,
+        reasoning: 'Erro ao processar avaliação da IA'
+      }
+    };
+  }
+}
+
+/**
  * Gera relatório completo da entrevista
  */
 async function generateInterviewReport(context) {
@@ -788,7 +902,7 @@ ${i + 1}. Pergunta (${qa.category}): ${qa.question}
 `).join('\n')}
 
 **TRANSCRIÇÃO COMPLETA:**
-${transcriptionHistory.slice(-20).join('\n')}
+${transcriptionHistory.join('\n')}
 
 **INSTRUÇÕES:**
 Gere um relatório JSON completo com:

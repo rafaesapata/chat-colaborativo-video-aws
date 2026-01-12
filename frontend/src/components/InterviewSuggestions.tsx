@@ -1,6 +1,6 @@
 import { useState, useRef, useEffect, useCallback } from 'react';
-import { X, Check, Sparkles, ChevronDown, ChevronUp, GripVertical } from 'lucide-react';
-import { InterviewSuggestion } from '../services/interviewAIService';
+import { X, Check, Sparkles, ChevronDown, ChevronUp, GripVertical, TrendingUp } from 'lucide-react';
+import { InterviewSuggestion, QuestionAnswer } from '../services/interviewAIService';
 
 interface InterviewSuggestionsProps {
   suggestions: InterviewSuggestion[];
@@ -10,6 +10,9 @@ interface InterviewSuggestionsProps {
   darkMode: boolean;
   meetingTopic: string;
   recentlyMarkedIds?: Set<string>; // IDs das sugestões recém-marcadas automaticamente
+  questionsAsked?: QuestionAnswer[]; // Perguntas já feitas para calcular completude
+  transcriptions?: string[]; // Transcrições para avaliação da IA
+  jobDescription?: string; // Descrição da vaga
 }
 
 export default function InterviewSuggestions({
@@ -20,6 +23,9 @@ export default function InterviewSuggestions({
   darkMode,
   meetingTopic,
   recentlyMarkedIds = new Set(),
+  questionsAsked = [],
+  transcriptions = [],
+  jobDescription = '',
 }: InterviewSuggestionsProps) {
   const [isMinimized, setIsMinimized] = useState(false);
   const [expandedId, setExpandedId] = useState<string | null>(null);
@@ -27,9 +33,12 @@ export default function InterviewSuggestions({
   const [size, setSize] = useState({ width: 320, height: 480 }); // Tamanho inicial
   const [isDragging, setIsDragging] = useState(false);
   const [isResizing, setIsResizing] = useState(false);
+  const [aiEvaluation, setAiEvaluation] = useState<any>(null);
+  const [isEvaluating, setIsEvaluating] = useState(false);
   const dragRef = useRef<HTMLDivElement>(null);
   const dragStartRef = useRef({ x: 0, y: 0, posX: 0, posY: 0 });
   const resizeStartRef = useRef({ x: 0, y: 0, width: 0, height: 0 });
+  const evaluationTimeoutRef = useRef<number>();
 
   // Inicializar posição e tamanho
   useEffect(() => {
@@ -165,38 +174,159 @@ export default function InterviewSuggestions({
 
   const unreadSuggestions = suggestions.filter(s => !s.isRead);
   
-  // Incluir também as sugestões recém-marcadas (para mostrar animação de "FEITO")
-  const recentlyMarkedSuggestions = suggestions.filter(s => 
-    s.isRead && (s.justMarkedAsRead || recentlyMarkedIds.has(s.id))
-  );
+  // Incluir TODAS as sugestões marcadas como lidas (manual ou automático)
+  const recentlyMarkedSuggestions = suggestions.filter(s => s.isRead);
 
-  // DEBUG: Log quando props mudam
+  // ============ CÁLCULO DE COMPLETUDE ============
+  const calculateCompleteness = () => {
+    const totalQuestions = questionsAsked.length;
+    
+    // Critérios de completude
+    const minQuestions = 5; // Mínimo de perguntas
+    const idealQuestions = 10; // Ideal de perguntas
+    
+    // Categorias cobertas
+    const categories = new Set(questionsAsked.map(q => q.category));
+    const categoryScore = (categories.size / 4) * 100; // 4 categorias principais
+    
+    // Perguntas respondidas com qualidade
+    const answeredQuestions = questionsAsked.filter(q => q.answer && q.answer.length > 20);
+    const answerScore = totalQuestions > 0 ? (answeredQuestions.length / totalQuestions) * 100 : 0;
+    
+    // Score de quantidade
+    const quantityScore = Math.min((totalQuestions / idealQuestions) * 100, 100);
+    
+    // Score final (média ponderada)
+    const finalScore = (quantityScore * 0.4) + (categoryScore * 0.3) + (answerScore * 0.3);
+    
+    // Determinar status
+    let status: 'insufficient' | 'minimum' | 'good' | 'excellent';
+    let message: string;
+    let color: string;
+    
+    if (finalScore < 40) {
+      status = 'insufficient';
+      message = 'Insuficiente - Continue a entrevista';
+      color = darkMode ? 'text-red-400' : 'text-red-600';
+    } else if (finalScore < 60) {
+      status = 'minimum';
+      message = 'Mínimo - Faça mais algumas perguntas';
+      color = darkMode ? 'text-yellow-400' : 'text-yellow-600';
+    } else if (finalScore < 80) {
+      status = 'good';
+      message = 'Bom - Pode encerrar ou aprofundar';
+      color = darkMode ? 'text-blue-400' : 'text-blue-600';
+    } else {
+      status = 'excellent';
+      message = 'Excelente - Entrevista completa';
+      color = darkMode ? 'text-green-400' : 'text-green-600';
+    }
+    
+    return {
+      score: Math.round(finalScore),
+      totalQuestions,
+      answeredQuestions: answeredQuestions.length,
+      categoriesCovered: categories.size,
+      status,
+      message,
+      color
+    };
+  };
+  
+  const completeness = aiEvaluation || calculateCompleteness();
+
+  // Avaliar completude com IA em tempo real
   useEffect(() => {
-    console.log('[InterviewSuggestions] 📦 Props atualizadas:', {
-      suggestionsLength: suggestions.length,
-      recentlyMarkedIdsSize: recentlyMarkedIds.size,
-      recentlyMarkedIdsArray: Array.from(recentlyMarkedIds),
+    // Só avaliar se tiver pelo menos 3 perguntas
+    if (questionsAsked.length < 3) {
+      setAiEvaluation(null);
+      return;
+    }
+
+    // Debounce: aguardar 3 segundos após última mudança
+    if (evaluationTimeoutRef.current) {
+      clearTimeout(evaluationTimeoutRef.current);
+    }
+
+    evaluationTimeoutRef.current = window.setTimeout(async () => {
+      setIsEvaluating(true);
+      
+      try {
+        const API_URL = import.meta.env.VITE_CHIME_API_URL || '';
+        const response = await fetch(`${API_URL}/interview/ai`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            action: 'evaluateCompleteness',
+            context: {
+              meetingType: 'ENTREVISTA',
+              topic: meetingTopic,
+              jobDescription,
+              transcriptionHistory: transcriptions.slice(-15), // Últimas 15 transcrições
+              questionsAsked: questionsAsked.map(qa => ({
+                question: qa.question,
+                answer: qa.answer,
+                answerQuality: qa.answerQuality,
+                category: qa.category
+              }))
+            }
+          })
+        });
+
+        if (response.ok) {
+          const result = await response.json();
+          if (result.evaluation) {
+            // Mapear avaliação da IA para o formato do componente
+            const aiEval = result.evaluation;
+            setAiEvaluation({
+              score: aiEval.completenessScore,
+              totalQuestions: questionsAsked.length,
+              answeredQuestions: questionsAsked.filter(q => q.answer).length,
+              categoriesCovered: Object.values(aiEval.areasEvaluated).filter((a: any) => a.covered).length,
+              status: aiEval.status,
+              message: aiEval.message,
+              color: aiEval.status === 'insufficient' ? (darkMode ? 'text-red-400' : 'text-red-600') :
+                     aiEval.status === 'minimum' ? (darkMode ? 'text-yellow-400' : 'text-yellow-600') :
+                     aiEval.status === 'good' ? (darkMode ? 'text-blue-400' : 'text-blue-600') :
+                     (darkMode ? 'text-green-400' : 'text-green-600'),
+              aiEvaluation: aiEval // Dados completos da IA
+            });
+            console.log('[InterviewSuggestions] ✅ Avaliação da IA recebida:', aiEval.completenessScore);
+          }
+        }
+      } catch (error) {
+        console.error('[InterviewSuggestions] Erro ao avaliar completude:', error);
+        // Manter avaliação básica em caso de erro
+      } finally {
+        setIsEvaluating(false);
+      }
+    }, 3000); // 3 segundos de debounce
+
+    return () => {
+      if (evaluationTimeoutRef.current) {
+        clearTimeout(evaluationTimeoutRef.current);
+      }
+    };
+  }, [questionsAsked.length, transcriptions.length, meetingTopic, jobDescription, darkMode]);
+
+  // DEBUG: Log quando props mudam (apenas em dev)
+  useEffect(() => {
+    if (import.meta.env.DEV && suggestions.length > 0) {
+      console.log('[InterviewSuggestions] 📦 Suggestions atualizadas:', suggestions.length);
+    }
+  }, [suggestions.length]);
+
+  // DEBUG: Log para verificar estado (apenas em dev)
+  if (import.meta.env.DEV) {
+    console.log('[InterviewSuggestions] 🎨 Renderizando:', {
+      totalSuggestions: suggestions.length,
+      unreadCount: unreadSuggestions.length,
+      recentlyMarkedCount: recentlyMarkedSuggestions.length,
     });
-  }, [suggestions, recentlyMarkedIds]);
-
-  // DEBUG: Log para verificar estado
-  console.log('[InterviewSuggestions] 🎨 Renderizando:', {
-    totalSuggestions: suggestions.length,
-    unreadCount: unreadSuggestions.length,
-    recentlyMarkedCount: recentlyMarkedSuggestions.length,
-    recentlyMarkedIdsSize: recentlyMarkedIds.size,
-    suggestions: suggestions.map(s => ({
-      id: s.id.substring(0, 20),
-      question: s.question.substring(0, 40),
-      isRead: s.isRead,
-      justMarkedAsRead: s.justMarkedAsRead,
-      autoDetected: s.autoDetected
-    }))
-  });
-
-  if (unreadSuggestions.length === 0 && recentlyMarkedSuggestions.length === 0 && !isGenerating) {
-    return null;
   }
+
+  // REMOVIDO: return null - agora o componente sempre fica visível
+  // para evitar que suma e volte de forma inconsistente
 
   const getCategoryColor = (category: string) => {
     switch (category) {
@@ -303,25 +433,68 @@ export default function InterviewSuggestions({
             📋 {meetingTopic}
           </div>
 
+          {/* Barra de Completude */}
+          {questionsAsked.length > 0 && (
+            <div className={`px-3 py-3 border-b ${
+              darkMode ? 'bg-gray-700/30 border-gray-700' : 'bg-gray-50 border-gray-200'
+            }`}>
+              <div className="flex items-center justify-between mb-2">
+                <div className="flex items-center gap-2">
+                  <TrendingUp size={14} className={completeness.color} />
+                  <span className={`text-xs font-semibold ${completeness.color}`}>
+                    Completude da Avaliação
+                  </span>
+                  {isEvaluating && (
+                    <span className={`text-[10px] px-1.5 py-0.5 rounded ${
+                      darkMode ? 'bg-purple-900/50 text-purple-300' : 'bg-purple-100 text-purple-600'
+                    } animate-shimmer`}>
+                      Analisando...
+                    </span>
+                  )}
+                </div>
+                <span className={`text-xs font-bold ${completeness.color}`}>
+                  {completeness.score}%
+                </span>
+              </div>
+              
+              {/* Barra de progresso */}
+              <div className={`w-full h-2 rounded-full overflow-hidden relative ${
+                darkMode ? 'bg-gray-600' : 'bg-gray-200'
+              }`}>
+                <div 
+                  className={`h-full transition-all duration-500 ${
+                    completeness.status === 'insufficient' ? 'bg-red-500' :
+                    completeness.status === 'minimum' ? 'bg-yellow-500' :
+                    completeness.status === 'good' ? 'bg-blue-500' :
+                    'bg-green-500'
+                  } ${isEvaluating ? 'animate-pulse-soft' : ''}`}
+                  style={{ width: `${completeness.score}%` }}
+                />
+              </div>
+              
+              {/* Mensagem e detalhes */}
+              <div className="mt-2">
+                <p className={`text-xs font-medium ${completeness.color}`}>
+                  {completeness.message}
+                </p>
+                <div className={`text-[10px] mt-1 flex gap-3 ${
+                  darkMode ? 'text-gray-400' : 'text-gray-500'
+                }`}>
+                  <span>📝 {completeness.totalQuestions} perguntas</span>
+                  <span>✓ {completeness.answeredQuestions} respondidas</span>
+                  <span>🏷️ {completeness.categoriesCovered}/4 categorias</span>
+                </div>
+              </div>
+            </div>
+          )}
+
           {/* Suggestions List */}
           <div 
             className="overflow-y-auto"
             style={{
-              maxHeight: `calc(${size.height}px - 8rem)` // Altura total menos header e topic
+              maxHeight: `calc(${size.height}px - ${questionsAsked.length > 0 ? '12rem' : '8rem'})` // Ajustar altura se tiver barra de completude
             }}
           >
-            {isGenerating && (
-              <div className={`p-4 flex items-center gap-3 ${
-                darkMode ? 'text-gray-400' : 'text-gray-500'
-              }`}>
-                <div className="flex gap-1">
-                  <span className="w-2 h-2 rounded-full bg-purple-500 animate-bounce" style={{ animationDelay: '0ms' }} />
-                  <span className="w-2 h-2 rounded-full bg-purple-500 animate-bounce" style={{ animationDelay: '150ms' }} />
-                  <span className="w-2 h-2 rounded-full bg-purple-500 animate-bounce" style={{ animationDelay: '300ms' }} />
-                </div>
-                <span className="text-sm">Analisando conversa...</span>
-              </div>
-            )}
 
             {unreadSuggestions.map((suggestion, index) => (
               <div
@@ -396,23 +569,30 @@ export default function InterviewSuggestions({
                 ✓ Perguntas Realizadas
               </div>
             )}
-            {recentlyMarkedSuggestions.map((suggestion) => (
+            {recentlyMarkedSuggestions.map((suggestion) => {
+              const isRecentlyMarked = suggestion.justMarkedAsRead || recentlyMarkedIds.has(suggestion.id);
+              
+              return (
               <div
                 key={`marked-${suggestion.id}`}
-                className={`p-3 border-b last:border-b-0 transition-all animate-feitoBlink ${
+                className={`p-3 border-b last:border-b-0 transition-all ${
+                  isRecentlyMarked ? 'animate-feitoBlink' : ''
+                } ${
                   darkMode 
                     ? 'border-gray-700 bg-green-900/30' 
                     : 'border-gray-100 bg-green-50'
                 }`}
               >
                 <div className="flex items-start gap-2">
-                  <span className="w-2 h-2 rounded-full bg-green-500 animate-pulse" />
+                  <span className={`w-2 h-2 rounded-full bg-green-500 ${isRecentlyMarked ? 'animate-pulse' : ''}`} />
                   <div className="flex-1 min-w-0">
                     <div className="flex items-center gap-2 mb-1">
                       <span className={`text-[10px] px-1.5 py-0.5 rounded border ${getCategoryColor(suggestion.category)}`}>
                         {getCategoryLabel(suggestion.category)}
                       </span>
-                      <span className={`text-[10px] px-2 py-0.5 rounded-full font-bold animate-feitoBadge ${
+                      <span className={`text-[10px] px-2 py-0.5 rounded-full font-bold ${
+                        isRecentlyMarked ? 'animate-feitoBadge' : ''
+                      } ${
                         darkMode 
                           ? 'bg-green-500 text-white' 
                           : 'bg-green-500 text-white'
@@ -434,20 +614,37 @@ export default function InterviewSuggestions({
                         ? suggestion.question.substring(0, 60) + '...' 
                         : suggestion.question}
                     </p>
-                    <p className={`text-xs mt-1 ${
-                      darkMode ? 'text-green-400' : 'text-green-600'
-                    }`}>
-                      Gerando follow-up...
-                    </p>
+                    {isRecentlyMarked && (
+                      <p className={`text-xs mt-1 ${
+                        darkMode ? 'text-green-400' : 'text-green-600'
+                      }`}>
+                        Gerando follow-up...
+                      </p>
+                    )}
                   </div>
                 </div>
               </div>
-            ))}
+              );
+            })}
 
-            {unreadSuggestions.length === 0 && recentlyMarkedSuggestions.length === 0 && !isGenerating && (
+            {unreadSuggestions.length === 0 && recentlyMarkedSuggestions.length === 0 && (
               <div className={`p-6 text-center ${darkMode ? 'text-gray-500' : 'text-gray-400'}`}>
-                <Sparkles size={24} className="mx-auto mb-2 opacity-50" />
-                <p className="text-sm">Aguardando conversa para gerar sugestões...</p>
+                {isGenerating ? (
+                  <>
+                    <div className="flex justify-center gap-1 mb-2">
+                      <span className="w-2 h-2 rounded-full bg-purple-500 animate-bounce" style={{ animationDelay: '0ms' }} />
+                      <span className="w-2 h-2 rounded-full bg-purple-500 animate-bounce" style={{ animationDelay: '150ms' }} />
+                      <span className="w-2 h-2 rounded-full bg-purple-500 animate-bounce" style={{ animationDelay: '300ms' }} />
+                    </div>
+                    <p className="text-sm">Gerando sugestões...</p>
+                  </>
+                ) : (
+                  <>
+                    <Sparkles size={24} className="mx-auto mb-2 opacity-50" />
+                    <p className="text-sm">Aguardando conversa para gerar sugestões...</p>
+                    <p className="text-xs mt-1 opacity-70">As perguntas aparecerão aqui automaticamente</p>
+                  </>
+                )}
               </div>
             )}
           </div>
@@ -509,6 +706,21 @@ export default function InterviewSuggestions({
         }
         .animate-feitoBadge {
           animation: feitoBadgePulse 0.5s ease-in-out 4;
+        }
+        @keyframes shimmer {
+          0% { opacity: 0.6; }
+          50% { opacity: 1; }
+          100% { opacity: 0.6; }
+        }
+        .animate-shimmer {
+          animation: shimmer 2s ease-in-out infinite;
+        }
+        @keyframes pulseSoft {
+          0%, 100% { opacity: 1; }
+          50% { opacity: 0.85; }
+        }
+        .animate-pulse-soft {
+          animation: pulseSoft 2s ease-in-out infinite;
         }
       `}</style>
     </div>

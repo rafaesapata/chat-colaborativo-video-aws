@@ -67,10 +67,13 @@ function HomePage({ darkMode, onToggleDarkMode }: HomePageProps) {
   const CHIME_API_URL = import.meta.env.VITE_CHIME_API_URL || '';
 
   const createRoom = () => {
-    // Gerar roomId único com timestamp + random para garantir unicidade
-    const timestamp = Date.now().toString(36);
-    const random = Math.random().toString(36).substring(2, 11);
-    const newRoomId = `room_${timestamp}_${random}`;
+    // Gerar roomId curto e simples (5 caracteres alfanuméricos case-sensitive)
+    // 62^5 = ~916 milhões de combinações possíveis
+    const chars = 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789';
+    let newRoomId = '';
+    for (let i = 0; i < 5; i++) {
+      newRoomId += chars.charAt(Math.floor(Math.random() * chars.length));
+    }
     navigate(`/meeting/${newRoomId}`);
   };
 
