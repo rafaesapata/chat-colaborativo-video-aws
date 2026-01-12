@@ -15,6 +15,7 @@ export interface InterviewAIConfig {
   cooldownAfterSuggestionMs: number;
   saveDebounceMs: number;
   processDelayMs: number;
+  autoDetectionDelayMs: number; // Delay antes de marcar pergunta como detectada automaticamente
   
   // Avaliação
   keywordMatchWeight: number; // Peso das keywords na avaliação (0-100)
@@ -40,13 +41,14 @@ export interface InterviewAIConfig {
 // Configuração padrão
 export const DEFAULT_CONFIG: InterviewAIConfig = {
   minAnswerLength: 50,
-  minTimeBetweenSuggestionsMs: 5000,
+  minTimeBetweenSuggestionsMs: 8000, // Aumentado de 5s para 8s
   minTranscriptionsForFollowup: 1,
   maxUnreadSuggestions: 5,
   initialSuggestionsCount: 3,
-  cooldownAfterSuggestionMs: 8000,
+  cooldownAfterSuggestionMs: 10000, // Aumentado de 8s para 10s
   saveDebounceMs: 2000,
-  processDelayMs: 500,
+  processDelayMs: 1000, // Aumentado de 500ms para 1s
+  autoDetectionDelayMs: 3000, // 3 segundos de delay antes de marcar como detectada
   
   keywordMatchWeight: 60,
   lengthBonusMax: 20,

@@ -178,26 +178,57 @@ export default function InterviewSuggestions({
   const recentlyMarkedSuggestions = suggestions.filter(s => s.isRead);
 
   // ============ CÁLCULO DE COMPLETUDE ============
+  // Baseado em COBERTURA DE ÁREAS e QUALIDADE, não quantidade de perguntas
   const calculateCompleteness = () => {
-    const totalQuestions = questionsAsked.length;
+    const totalAsked = questionsAsked.length;
     
-    // Critérios de completude
-    const minQuestions = 5; // Mínimo de perguntas
-    const idealQuestions = 10; // Ideal de perguntas
+    if (totalAsked === 0) {
+      return {
+        score: 0,
+        totalQuestions: 0,
+        answeredQuestions: 0,
+        categoriesCovered: 0,
+        status: 'insufficient' as const,
+        message: 'Inicie a entrevista fazendo perguntas',
+        color: darkMode ? 'text-gray-400' : 'text-gray-500'
+      };
+    }
     
-    // Categorias cobertas
+    // 1. COBERTURA DE CATEGORIAS (40% do score)
+    // 4 categorias principais: technical, behavioral, experience, situational
     const categories = new Set(questionsAsked.map(q => q.category));
-    const categoryScore = (categories.size / 4) * 100; // 4 categorias principais
+    const categoryScore = Math.min((categories.size / 4) * 100, 100);
     
-    // Perguntas respondidas com qualidade
+    // 2. QUALIDADE DAS RESPOSTAS (35% do score)
+    // Avaliar qualidade das respostas recebidas
+    const qualityWeights: Record<string, number> = {
+      'excellent': 100,
+      'good': 80,
+      'basic': 50,
+      'incomplete': 20,
+      'incorrect': 0
+    };
+    
     const answeredQuestions = questionsAsked.filter(q => q.answer && q.answer.length > 20);
-    const answerScore = totalQuestions > 0 ? (answeredQuestions.length / totalQuestions) * 100 : 0;
+    let qualitySum = 0;
+    answeredQuestions.forEach(q => {
+      qualitySum += qualityWeights[q.answerQuality] || 50;
+    });
+    const qualityScore = answeredQuestions.length > 0 
+      ? qualitySum / answeredQuestions.length 
+      : 0;
     
-    // Score de quantidade
-    const quantityScore = Math.min((totalQuestions / idealQuestions) * 100, 100);
+    // 3. PROFUNDIDADE MÍNIMA (25% do score)
+    // Pelo menos 5 perguntas para uma avaliação básica, 8+ para completa
+    const minQuestions = 5;
+    const idealQuestions = 8;
+    const depthScore = totalAsked >= idealQuestions 
+      ? 100 
+      : Math.min((totalAsked / minQuestions) * 100, 100);
     
     // Score final (média ponderada)
-    const finalScore = (quantityScore * 0.4) + (categoryScore * 0.3) + (answerScore * 0.3);
+    // NÃO considera perguntas pendentes - só o que já foi feito
+    const finalScore = (categoryScore * 0.40) + (qualityScore * 0.35) + (depthScore * 0.25);
     
     // Determinar status
     let status: 'insufficient' | 'minimum' | 'good' | 'excellent';
@@ -206,11 +237,11 @@ export default function InterviewSuggestions({
     
     if (finalScore < 40) {
       status = 'insufficient';
-      message = 'Insuficiente - Continue a entrevista';
+      message = 'Continue - Cubra mais áreas';
       color = darkMode ? 'text-red-400' : 'text-red-600';
     } else if (finalScore < 60) {
       status = 'minimum';
-      message = 'Mínimo - Faça mais algumas perguntas';
+      message = 'Básico - Aprofunde em algumas áreas';
       color = darkMode ? 'text-yellow-400' : 'text-yellow-600';
     } else if (finalScore < 80) {
       status = 'good';
@@ -224,7 +255,7 @@ export default function InterviewSuggestions({
     
     return {
       score: Math.round(finalScore),
-      totalQuestions,
+      totalQuestions: totalAsked,
       answeredQuestions: answeredQuestions.length,
       categoriesCovered: categories.size,
       status,

@@ -121,7 +121,7 @@ async function handleUploadUrl(body, headers) {
 
 // Gerar URL pré-assinada para playback
 async function handlePlaybackUrl(body, headers) {
-  const { recordingKey, userLogin, recordingId } = body;
+  const { recordingKey, userLogin, recordingId, isAdmin } = body;
 
   if (!userLogin) {
     return {
@@ -151,14 +151,16 @@ async function handlePlaybackUrl(body, headers) {
       };
     }
 
-    // Verificar se o usuário tem acesso (comparar com userLogin salvo no DynamoDB)
-    const savedUserLogin = result.Item.userLogin;
-    if (savedUserLogin !== userLogin && savedUserLogin !== sanitizedUserLogin) {
-      return {
-        statusCode: 403,
-        headers,
-        body: JSON.stringify({ error: 'Acesso negado' }),
-      };
+    // Verificar se o usuário tem acesso (admin pode acessar qualquer gravação)
+    if (!isAdmin) {
+      const savedUserLogin = result.Item.userLogin;
+      if (savedUserLogin !== userLogin && savedUserLogin !== sanitizedUserLogin) {
+        return {
+          statusCode: 403,
+          headers,
+          body: JSON.stringify({ error: 'Acesso negado' }),
+        };
+      }
     }
 
     key = result.Item.recordingKey;
@@ -172,10 +174,8 @@ async function handlePlaybackUrl(body, headers) {
     };
   }
 
-  // Verificar se a key pertence ao usuário (segurança)
-  // A key tem formato: recordings/{userLogin}/{roomId}/{meetingId}_{timestamp}.webm
-  // Verificar tanto o userLogin original quanto o sanitizado
-  if (!key.includes(userLogin) && !key.includes(sanitizedUserLogin)) {
+  // Verificar se a key pertence ao usuário (segurança) - admin pode acessar qualquer gravação
+  if (!isAdmin && !key.includes(userLogin) && !key.includes(sanitizedUserLogin)) {
     console.log('Acesso negado - key:', key, 'userLogin:', userLogin, 'sanitized:', sanitizedUserLogin);
     return {
       statusCode: 403,
@@ -203,13 +203,33 @@ async function handlePlaybackUrl(body, headers) {
 
 // Listar gravações do usuário
 async function handleListRecordings(body, headers) {
-  const { userLogin } = body;
+  const { userLogin, isAdmin } = body;
 
   if (!userLogin) {
     return {
       statusCode: 400,
       headers,
       body: JSON.stringify({ error: 'userLogin é obrigatório' }),
+    };
+  }
+
+  // Se é admin, listar todas as gravações
+  if (isAdmin) {
+    const { ScanCommand } = require('@aws-sdk/lib-dynamodb');
+    const result = await docClient.send(new ScanCommand({
+      TableName: RECORDINGS_TABLE,
+      Limit: 200,
+    }));
+    
+    // Ordenar por data (mais recentes primeiro)
+    const recordings = (result.Items || []).sort((a, b) => b.createdAt - a.createdAt);
+    
+    return {
+      statusCode: 200,
+      headers,
+      body: JSON.stringify({
+        recordings,
+      }),
     };
   }
 

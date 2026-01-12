@@ -1,12 +1,49 @@
 import { useState, useEffect, useRef, useCallback } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
-import { Video, VideoOff, Mic, MicOff, Settings, RefreshCw } from 'lucide-react';
+import { Video, VideoOff, Mic, MicOff, Settings, RefreshCw, Shield, ShieldCheck, ShieldAlert, Info, X } from 'lucide-react';
 import { useAuth } from '../contexts/AuthContext';
 import { authService } from '../services/authService';
+
+type PermissionStatus = 'granted' | 'denied' | 'prompt' | 'unknown';
+
+interface PermissionsState {
+  camera: PermissionStatus;
+  microphone: PermissionStatus;
+}
 
 interface PreviewScreenProps {
   darkMode: boolean;
   onJoin?: () => void;
+}
+
+// Função para verificar status das permissões
+async function checkPermissions(): Promise<PermissionsState> {
+  const result: PermissionsState = { camera: 'unknown', microphone: 'unknown' };
+  
+  try {
+    // Verificar permissão da câmera
+    if (navigator.permissions && navigator.permissions.query) {
+      try {
+        const cameraPermission = await navigator.permissions.query({ name: 'camera' as PermissionName });
+        result.camera = cameraPermission.state as PermissionStatus;
+      } catch {
+        // Safari não suporta query para camera
+        result.camera = 'unknown';
+      }
+      
+      try {
+        const micPermission = await navigator.permissions.query({ name: 'microphone' as PermissionName });
+        result.microphone = micPermission.state as PermissionStatus;
+      } catch {
+        // Safari não suporta query para microphone
+        result.microphone = 'unknown';
+      }
+    }
+  } catch {
+    // Navegador não suporta Permissions API
+  }
+  
+  return result;
 }
 
 export default function PreviewScreen({ darkMode, onJoin }: PreviewScreenProps) {
@@ -36,11 +73,56 @@ export default function PreviewScreen({ darkMode, onJoin }: PreviewScreenProps) 
   const [selectedAudioDevice, setSelectedAudioDevice] = useState<string>('');
   const [selectedAudioOutput, setSelectedAudioOutput] = useState<string>('');
   const [showSettings, setShowSettings] = useState(false);
+  const [permissions, setPermissions] = useState<PermissionsState>({ camera: 'unknown', microphone: 'unknown' });
+  const [showPermissionTip, setShowPermissionTip] = useState(false);
+  const [permissionTipDismissed, setPermissionTipDismissed] = useState(() => {
+    return sessionStorage.getItem('permission_tip_dismissed') === 'true';
+  });
 
   const audioContextRef = useRef<AudioContext | null>(null);
   const analyserRef = useRef<AnalyserNode | null>(null);
   const animationRef = useRef<number>();
   const streamRef = useRef<MediaStream | null>(null);
+
+  // Verificar permissões ao montar e quando mudar
+  useEffect(() => {
+    const checkAndSetPermissions = async () => {
+      const perms = await checkPermissions();
+      setPermissions(perms);
+      
+      // Mostrar dica se permissão ainda está em "prompt" (não persistida)
+      if ((perms.camera === 'prompt' || perms.microphone === 'prompt') && !permissionTipDismissed) {
+        setShowPermissionTip(true);
+      }
+    };
+    
+    checkAndSetPermissions();
+    
+    // Escutar mudanças de permissão
+    const setupPermissionListeners = async () => {
+      try {
+        if (navigator.permissions && navigator.permissions.query) {
+          try {
+            const cameraPermission = await navigator.permissions.query({ name: 'camera' as PermissionName });
+            cameraPermission.addEventListener('change', checkAndSetPermissions);
+          } catch { /* Safari */ }
+          
+          try {
+            const micPermission = await navigator.permissions.query({ name: 'microphone' as PermissionName });
+            micPermission.addEventListener('change', checkAndSetPermissions);
+          } catch { /* Safari */ }
+        }
+      } catch { /* Navegador não suporta */ }
+    };
+    
+    setupPermissionListeners();
+  }, [permissionTipDismissed]);
+
+  const dismissPermissionTip = () => {
+    setShowPermissionTip(false);
+    setPermissionTipDismissed(true);
+    sessionStorage.setItem('permission_tip_dismissed', 'true');
+  };
 
   // Callback ref para conectar o stream ao vídeo
   const setVideoRef = useCallback((node: HTMLVideoElement | null) => {
@@ -95,6 +177,15 @@ export default function PreviewScreen({ darkMode, onJoin }: PreviewScreenProps) 
         streamRef.current = localStream;
         setStream(localStream);
         setHasInitialized(true);
+
+        // Atualizar status das permissões após obter acesso
+        const perms = await checkPermissions();
+        setPermissions(perms);
+        
+        // Se permissões foram concedidas, esconder a dica
+        if (perms.camera === 'granted' && perms.microphone === 'granted') {
+          setShowPermissionTip(false);
+        }
 
         // Listar dispositivos após obter permissão
         const deviceList = await navigator.mediaDevices.enumerateDevices();
@@ -283,7 +374,61 @@ export default function PreviewScreen({ darkMode, onJoin }: PreviewScreenProps) 
           <p className={`text-sm ${darkMode ? 'text-gray-400' : 'text-gray-500'}`}>
             Sala: <span className="font-mono font-semibold">{roomId}</span>
           </p>
+          
+          {/* Indicador de status das permissões */}
+          <div className="flex items-center justify-center gap-4 mt-3">
+            <div className={`flex items-center gap-1.5 text-xs px-2 py-1 rounded-full ${
+              permissions.camera === 'granted' 
+                ? 'bg-green-500/20 text-green-500' 
+                : permissions.camera === 'denied'
+                ? 'bg-red-500/20 text-red-500'
+                : darkMode ? 'bg-gray-700 text-gray-400' : 'bg-gray-200 text-gray-500'
+            }`}>
+              {permissions.camera === 'granted' ? <ShieldCheck size={12} /> : 
+               permissions.camera === 'denied' ? <ShieldAlert size={12} /> : <Shield size={12} />}
+              Câmera: {permissions.camera === 'granted' ? 'Permitida' : 
+                       permissions.camera === 'denied' ? 'Bloqueada' : 
+                       permissions.camera === 'prompt' ? 'Pendente' : 'Verificando'}
+            </div>
+            <div className={`flex items-center gap-1.5 text-xs px-2 py-1 rounded-full ${
+              permissions.microphone === 'granted' 
+                ? 'bg-green-500/20 text-green-500' 
+                : permissions.microphone === 'denied'
+                ? 'bg-red-500/20 text-red-500'
+                : darkMode ? 'bg-gray-700 text-gray-400' : 'bg-gray-200 text-gray-500'
+            }`}>
+              {permissions.microphone === 'granted' ? <ShieldCheck size={12} /> : 
+               permissions.microphone === 'denied' ? <ShieldAlert size={12} /> : <Shield size={12} />}
+              Microfone: {permissions.microphone === 'granted' ? 'Permitido' : 
+                          permissions.microphone === 'denied' ? 'Bloqueado' : 
+                          permissions.microphone === 'prompt' ? 'Pendente' : 'Verificando'}
+            </div>
+          </div>
         </div>
+
+        {/* Banner de dica para persistir permissões */}
+        {showPermissionTip && (
+          <div className={`mb-4 p-3 rounded-xl flex items-start gap-3 ${
+            darkMode ? 'bg-blue-900/30 border border-blue-700/50' : 'bg-blue-50 border border-blue-200'
+          }`}>
+            <Info className={`w-5 h-5 flex-shrink-0 mt-0.5 ${darkMode ? 'text-blue-400' : 'text-blue-600'}`} />
+            <div className="flex-1">
+              <p className={`text-sm font-medium ${darkMode ? 'text-blue-300' : 'text-blue-800'}`}>
+                Dica: Permita o acesso permanentemente
+              </p>
+              <p className={`text-xs mt-1 ${darkMode ? 'text-blue-400/80' : 'text-blue-600'}`}>
+                Para não precisar autorizar toda vez, clique no ícone de cadeado 🔒 na barra de endereços 
+                e selecione "Permitir" para câmera e microfone.
+              </p>
+            </div>
+            <button 
+              onClick={dismissPermissionTip}
+              className={`p-1 rounded-full hover:bg-black/10 ${darkMode ? 'text-blue-400' : 'text-blue-600'}`}
+            >
+              <X size={16} />
+            </button>
+          </div>
+        )}
 
         <div className="grid md:grid-cols-2 gap-6">
           {/* Preview de Vídeo */}

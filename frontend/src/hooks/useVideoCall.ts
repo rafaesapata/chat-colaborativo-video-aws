@@ -280,6 +280,16 @@ export function useVideoCall({ roomId, userId, userName = 'Usuário', sendMessag
     if (data.type === 'room_event' && data.data.roomId === roomId) {
       const { eventType, userId: euid, existingParticipants, userName: eun } = data.data;
       if (eun && euid) setParticipantNames(prev => new Map(prev).set(euid, eun));
+      
+      // Sala encerrada pelo administrador
+      if (eventType === 'room_ended') {
+        alert('A sala foi encerrada pelo administrador.');
+        // Limpar recursos e redirecionar
+        closeAllConnections();
+        window.location.href = '/';
+        return;
+      }
+      
       if (eventType === 'participants_list' && existingParticipants?.length > 0) {
         const fn = async () => { for (const p of existingParticipants) { if (p !== userId && !peerConnections.current.has(p)) { try { await createOffer(p); } catch (e) { console.error(e); } await new Promise(r => setTimeout(r, 200)); } } };
         if (localStreamRef.current) await fn(); else { let a = 0; const i = setInterval(async () => { a++; if (localStreamRef.current) { clearInterval(i); await fn(); } else if (a >= 20) clearInterval(i); }, 500); }

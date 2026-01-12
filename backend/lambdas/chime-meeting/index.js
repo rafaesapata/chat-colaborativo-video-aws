@@ -567,6 +567,9 @@ const routes = Object.freeze({
   'POST:/interview/config/save': handleSaveInterviewConfig,
   // Interview AI (geração de perguntas com Bedrock)
   'POST:/interview/ai': handleInterviewAI,
+  // Meeting History (histórico de reuniões para admin)
+  'POST:/admin/history/list': handleAdminListHistory,
+  'POST:/admin/history/save': handleSaveMeetingHistory,
   // Documentação
   'GET:/docs': handleDocsPage,
   'GET:/docs/swagger.json': handleSwaggerJson,
@@ -901,6 +904,18 @@ async function handleEndMeeting(body) {
       }
     }
 
+    // Notificar todos os usuários via WebSocket ANTES de deletar a reunião
+    // Excluir o próprio host da notificação (ele já sabe que está encerrando)
+    if (roomId) {
+      try {
+        await notifyRoomEnded(roomId, odUserId || 'host', odUserId);
+        log(LOG_LEVELS.INFO, 'Notificação de encerramento enviada', { roomId, excludedUser: odUserId });
+      } catch (notifyError) {
+        log(LOG_LEVELS.WARN, 'Erro ao notificar usuários', { error: notifyError.message });
+        // Continuar mesmo se a notificação falhar
+      }
+    }
+
     // Deletar reunião no Chime
     try {
       await chimeClient.send(new DeleteMeetingCommand({
@@ -1192,20 +1207,33 @@ async function handleStopTranscription(body) {
 
 
 // ============ ADMIN: VERIFICAR AUTORIZAÇÃO ============
+// Normaliza o login para formato consistente (converte underscore em @)
+function normalizeLogin(userLogin) {
+  if (!userLogin) return '';
+  let normalized = userLogin.toLowerCase().trim();
+  // Cognito usa underscore no lugar de @ em alguns casos
+  // Ex: rafael_uds.com.br -> rafael@uds.com.br
+  if (normalized.includes('_') && !normalized.includes('@') && normalized.includes('.')) {
+    normalized = normalized.replace('_', '@');
+  }
+  return normalized;
+}
+
 function isSuperAdmin(userLogin) {
-  return SUPER_ADMINS.includes(userLogin?.toLowerCase());
+  const normalized = normalizeLogin(userLogin);
+  return SUPER_ADMINS.includes(normalized);
 }
 
 async function isAdmin(userLogin) {
   if (!userLogin) return false;
-  const normalizedLogin = userLogin.toLowerCase();
+  const normalizedLogin = normalizeLogin(userLogin);
   
   // Super admins sempre têm acesso
   if (SUPER_ADMINS.includes(normalizedLogin)) return true;
   
   // Verificar lista dinâmica
   const adminList = await getAdminList();
-  return adminList.map(a => a.toLowerCase()).includes(normalizedLogin);
+  return adminList.map(a => normalizeLogin(a)).includes(normalizedLogin);
 }
 
 // ============ ADMIN: LISTAR SALAS ATIVAS ============
@@ -1283,7 +1311,7 @@ async function handleAdminListRooms(body) {
 }
 
 // ============ NOTIFICAR ENCERRAMENTO DE SALA VIA WEBSOCKET ============
-async function notifyRoomEnded(roomId, adminLogin) {
+async function notifyRoomEnded(roomId, adminLogin, excludeUserId = null) {
   try {
     const CONNECTIONS_TABLE = process.env.CONNECTIONS_TABLE;
     if (!CONNECTIONS_TABLE) {
@@ -1299,7 +1327,14 @@ async function notifyRoomEnded(roomId, adminLogin) {
       ExpressionAttributeValues: { ':roomId': roomId }
     }));
 
-    const connections = result.Items || [];
+    let connections = result.Items || [];
+    
+    // Excluir o usuário que está encerrando (ele não precisa receber a notificação)
+    if (excludeUserId) {
+      connections = connections.filter(c => c.odUserId !== excludeUserId);
+      log(LOG_LEVELS.INFO, 'Excluindo host da notificação', { excludeUserId, remainingConnections: connections.length });
+    }
+    
     log(LOG_LEVELS.INFO, 'Conexões encontradas para notificar', { roomId, count: connections.length });
 
     if (connections.length === 0) {
@@ -1323,7 +1358,7 @@ async function notifyRoomEnded(roomId, adminLogin) {
       }
     };
 
-    // Enviar para todas as conexões
+    // Enviar para todas as conexões (exceto o host)
     const promises = connections.map(async (connection) => {
       try {
         await apiGateway.send(new PostToConnectionCommand({
@@ -1906,7 +1941,7 @@ async function handleScheduleCreate(body) {
 
 // ============ SCHEDULE: LIST ============
 async function handleScheduleList(body) {
-  const { userLogin, status, fromDate, toDate } = body;
+  const { userLogin, status, fromDate, toDate, includePast } = body;
   
   if (!userLogin) return errorResponse(400, 'userLogin é obrigatório');
   if (!await isAdmin(userLogin)) return errorResponse(403, 'Acesso negado');
@@ -1916,6 +1951,8 @@ async function handleScheduleList(body) {
     FilterExpression: 'begins_with(roomId, :prefix)',
     ExpressionAttributeValues: { ':prefix': { S: SCHEDULED_MEETINGS_PREFIX } },
   }));
+  
+  const now = Date.now();
   
   let meetings = (result.Items || []).map(item => ({
     scheduleId: item.scheduleId?.S,
@@ -1932,6 +1969,15 @@ async function handleScheduleList(body) {
     status: item.status?.S || 'scheduled',
     createdAt: item.createdAt?.N ? new Date(parseInt(item.createdAt.N)).toISOString() : null,
   }));
+  
+  // Por padrão, mostrar apenas agendamentos futuros (a menos que includePast seja true)
+  if (!includePast) {
+    meetings = meetings.filter(m => {
+      const scheduledTime = new Date(m.scheduledAt).getTime();
+      const endTime = scheduledTime + (m.duration * 60 * 1000); // Adiciona duração em ms
+      return endTime > now; // Mostra apenas se ainda não terminou
+    });
+  }
   
   if (status) meetings = meetings.filter(m => m.status === status);
   if (fromDate) meetings = meetings.filter(m => new Date(m.scheduledAt) >= new Date(fromDate));
@@ -3198,5 +3244,194 @@ async function handleInterviewAI(body) {
   } catch (error) {
     log(LOG_LEVELS.ERROR, 'Erro ao chamar Lambda de IA', { error: error.message, stack: error.stack });
     return errorResponse(500, 'Erro ao processar requisição de IA');
+  }
+}
+
+// ============ ADMIN: HISTÓRICO DE REUNIÕES ============
+// Tabela: chat-colaborativo-meeting-history (será criada se não existir)
+const MEETING_HISTORY_TABLE = process.env.MEETING_HISTORY_TABLE || 'chat-colaborativo-meeting-history';
+
+// Salvar histórico de reunião (chamado pelo frontend ao encerrar reunião)
+async function handleSaveMeetingHistory(body) {
+  const { 
+    userLogin, 
+    meetingId, 
+    roomId, 
+    roomName,
+    startTime, 
+    endTime, 
+    duration,
+    participants,
+    transcriptions,
+    meetingType,
+    meetingTopic,
+    jobDescription,
+    questionsAsked,
+    recordingKey,
+    recordingDuration,
+    recordingId
+  } = body;
+
+  if (!userLogin || !meetingId || !roomId) {
+    return errorResponse(400, 'userLogin, meetingId e roomId são obrigatórios');
+  }
+
+  try {
+    // Converter transcriptions para formato DynamoDB
+    const transcriptionsFormatted = (transcriptions || []).map(t => ({
+      M: {
+        id: { S: t.id || '' },
+        text: { S: t.text || '' },
+        speaker: { S: t.speaker || '' },
+        timestamp: { N: String(t.timestamp || 0) }
+      }
+    }));
+
+    const historyItem = {
+      meetingId: { S: meetingId },
+      userLogin: { S: userLogin },
+      roomId: { S: roomId },
+      roomName: { S: roomName || roomId },
+      startTime: { N: String(startTime || Date.now()) },
+      endTime: { N: String(endTime || Date.now()) },
+      duration: { N: String(duration || 0) },
+      participants: { L: (participants || []).map(p => ({ S: p })) },
+      transcriptionCount: { N: String(transcriptions?.length || 0) },
+      transcriptions: { L: transcriptionsFormatted },
+      meetingType: { S: meetingType || 'REUNIAO' },
+      meetingTopic: { S: meetingTopic || '' },
+      jobDescription: { S: jobDescription || '' },
+      questionsAsked: { L: (questionsAsked || []).map(q => ({ S: q })) },
+      createdAt: { N: String(Date.now()) },
+      ttl: { N: String(Math.floor(Date.now() / 1000) + (180 * 24 * 60 * 60)) }, // 180 dias
+    };
+
+    // Adicionar campos opcionais de gravação se existirem
+    if (recordingKey) {
+      historyItem.recordingKey = { S: recordingKey };
+    }
+    if (recordingDuration) {
+      historyItem.recordingDuration = { N: String(recordingDuration) };
+    }
+    if (recordingId) {
+      historyItem.recordingId = { S: recordingId };
+    }
+
+    await dynamoClient.send(new PutItemCommand({
+      TableName: MEETING_HISTORY_TABLE,
+      Item: historyItem,
+    }));
+
+    log(LOG_LEVELS.INFO, 'Histórico de reunião salvo', { meetingId, userLogin, roomId });
+
+    return successResponse({ success: true, meetingId });
+
+  } catch (error) {
+    log(LOG_LEVELS.ERROR, 'Erro ao salvar histórico de reunião', { error: error.message });
+    return errorResponse(500, 'Erro ao salvar histórico');
+  }
+}
+
+// Listar histórico de reuniões (admin)
+async function handleAdminListHistory(body) {
+  const { userLogin, filters } = body;
+
+  if (!(await isAdmin(userLogin))) {
+    return errorResponse(403, 'Acesso negado. Apenas administradores.');
+  }
+
+  try {
+    // Scan da tabela de histórico
+    const scanParams = {
+      TableName: MEETING_HISTORY_TABLE,
+      Limit: 500,
+    };
+
+    // Aplicar filtros se fornecidos
+    const filterExpressions = [];
+    const expressionAttributeValues = {};
+
+    if (filters?.userLogin) {
+      filterExpressions.push('userLogin = :filterUser');
+      expressionAttributeValues[':filterUser'] = { S: filters.userLogin };
+    }
+
+    if (filters?.meetingType) {
+      filterExpressions.push('meetingType = :filterType');
+      expressionAttributeValues[':filterType'] = { S: filters.meetingType };
+    }
+
+    if (filters?.startDate) {
+      filterExpressions.push('startTime >= :startDate');
+      expressionAttributeValues[':startDate'] = { N: String(filters.startDate) };
+    }
+
+    if (filters?.endDate) {
+      filterExpressions.push('startTime <= :endDate');
+      expressionAttributeValues[':endDate'] = { N: String(filters.endDate) };
+    }
+
+    if (filterExpressions.length > 0) {
+      scanParams.FilterExpression = filterExpressions.join(' AND ');
+      scanParams.ExpressionAttributeValues = expressionAttributeValues;
+    }
+
+    const result = await dynamoClient.send(new ScanCommand(scanParams));
+    
+    // Ordenar por data (mais recentes primeiro)
+    const history = (result.Items || [])
+      .map(item => ({
+        meetingId: item.meetingId?.S || '',
+        userLogin: item.userLogin?.S || '',
+        roomId: item.roomId?.S || '',
+        roomName: item.roomName?.S || '',
+        startTime: parseInt(item.startTime?.N || '0'),
+        endTime: parseInt(item.endTime?.N || '0'),
+        duration: parseInt(item.duration?.N || '0'),
+        participants: item.participants?.L?.map(p => p.S) || [],
+        transcriptionCount: parseInt(item.transcriptionCount?.N || '0'),
+        meetingType: item.meetingType?.S || 'REUNIAO',
+        meetingTopic: item.meetingTopic?.S || '',
+        jobDescription: item.jobDescription?.S || '',
+        questionsAsked: item.questionsAsked?.L?.map(q => q.S) || [],
+        recordingKey: item.recordingKey?.S || null,
+        recordingDuration: parseInt(item.recordingDuration?.N || '0'),
+        recordingId: item.recordingId?.S || null,
+        createdAt: parseInt(item.createdAt?.N || '0'),
+        // Incluir transcrições se existirem (para download)
+        transcriptions: item.transcriptions?.L?.map(t => ({
+          id: t.M?.id?.S || '',
+          text: t.M?.text?.S || '',
+          speaker: t.M?.speaker?.S || '',
+          timestamp: parseInt(t.M?.timestamp?.N || '0'),
+        })) || [],
+      }))
+      .sort((a, b) => b.startTime - a.startTime);
+
+    // Obter lista de usuários únicos para filtro
+    const uniqueUsers = [...new Set(history.map(h => h.userLogin))].filter(u => u).sort();
+
+    log(LOG_LEVELS.INFO, 'Histórico listado (admin)', { count: history.length, userLogin });
+
+    return successResponse({ 
+      history,
+      totalCount: history.length,
+      uniqueUsers,
+    });
+
+  } catch (error) {
+    log(LOG_LEVELS.ERROR, 'Erro ao listar histórico (admin)', { error: error.message });
+    
+    // Se a tabela não existir, retornar lista vazia
+    if (error.name === 'ResourceNotFoundException') {
+      return successResponse({ 
+        history: [],
+        totalCount: 0,
+        uniqueUsers: [],
+        message: 'Tabela de histórico não encontrada. Será criada automaticamente quando a primeira reunião for salva.'
+      });
+    }
+    
+    return errorResponse(500, 'Erro ao listar histórico');
   }
 }

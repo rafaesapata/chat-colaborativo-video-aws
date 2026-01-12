@@ -168,10 +168,22 @@ export function useRecording({ roomId, userLogin, meetingId }: UseRecordingProps
   const streamRef = useRef<MediaStream | null>(null);
   const audioContextIdRef = useRef<string | null>(null); // ID para AudioContext Manager
   const isRecordingRef = useRef(false); // Ref para controle de animação
-  const shouldSaveOnStopRef = useRef(false); // Flag para controlar se deve salvar ao parar
   const currentRecordingIdRef = useRef<string | null>(null); // ID da gravação atual para backup
   const currentDurationRef = useRef(0); // Duração atual para backup
   const mimeTypeRef = useRef<string>('video/webm'); // Tipo MIME para backup
+  
+  // Refs para valores atuais (evitar stale closures)
+  const roomIdRef = useRef(roomId);
+  const userLoginRef = useRef(userLogin);
+  const meetingIdRef = useRef(meetingId);
+  
+  // Atualizar refs quando props mudam
+  useEffect(() => {
+    roomIdRef.current = roomId;
+    userLoginRef.current = userLogin;
+    meetingIdRef.current = meetingId;
+    console.log('[Recording] Props atualizadas:', { roomId, userLogin, meetingId });
+  }, [roomId, userLogin, meetingId]);
 
   // Criar canvas para composição de vídeos
   const createCompositeCanvas = useCallback(() => {
@@ -271,18 +283,41 @@ export function useRecording({ roomId, userLogin, meetingId }: UseRecordingProps
 
   // Salvar referência no histórico usando o service
   const saveRecordingToHistory = useCallback((recordingKey: string, duration: number, recordingId?: string) => {
-    if (!userLogin || !meetingId) {
-      console.warn('[Recording] userLogin ou meetingId não disponível para salvar no histórico');
+    const currentUserLogin = userLoginRef.current;
+    const currentMeetingId = meetingIdRef.current;
+    
+    console.log('[Recording] saveRecordingToHistory chamado:', {
+      userLogin: currentUserLogin,
+      meetingId: currentMeetingId,
+      recordingKey,
+      duration,
+      recordingId
+    });
+    
+    if (!currentUserLogin || !currentMeetingId) {
+      console.warn('[Recording] userLogin ou meetingId não disponível para salvar no histórico', {
+        userLogin: currentUserLogin,
+        meetingId: currentMeetingId
+      });
       return;
     }
     
-    meetingHistoryService.addRecording(userLogin, meetingId, recordingKey, duration, recordingId);
-  }, [userLogin, meetingId]);
+    meetingHistoryService.addRecording(currentUserLogin, currentMeetingId, recordingKey, duration, recordingId);
+  }, []); // Sem dependências - usa refs
 
   // Upload para S3 via URL pré-assinada
   const uploadRecording = useCallback(async (blob: Blob, duration: number): Promise<string> => {
+    const currentUserLogin = userLoginRef.current;
+    const currentRoomId = roomIdRef.current;
+    const currentMeetingId = meetingIdRef.current;
+    
     try {
-      console.log('[Recording] Iniciando upload...', blob.size, 'bytes');
+      console.log('[Recording] Iniciando upload...', {
+        blobSize: blob.size,
+        userLogin: currentUserLogin,
+        roomId: currentRoomId,
+        meetingId: currentMeetingId
+      });
       
       // Validar tipo MIME (segurança)
       const allowedTypes = ['video/webm', 'video/mp4', 'video/ogg', 'audio/webm'];
@@ -290,9 +325,9 @@ export function useRecording({ roomId, userLogin, meetingId }: UseRecordingProps
       
       // Sanitizar componentes do filename (prevenir path traversal)
       const sanitize = (s: string) => s.replace(/[^a-zA-Z0-9_.-]/g, '_').substring(0, 64);
-      const safeUserLogin = sanitize(userLogin);
-      const safeRoomId = sanitize(roomId);
-      const safeMeetingId = sanitize(meetingId);
+      const safeUserLogin = sanitize(currentUserLogin);
+      const safeRoomId = sanitize(currentRoomId);
+      const safeMeetingId = sanitize(currentMeetingId);
       
       // Gerar nome do arquivo
       const filename = `${safeUserLogin}/${safeRoomId}/${safeMeetingId}_${Date.now()}.webm`;
@@ -340,7 +375,7 @@ export function useRecording({ roomId, userLogin, meetingId }: UseRecordingProps
       console.error('[Recording] Erro no upload:', error);
       throw error;
     }
-  }, [userLogin, roomId, meetingId, saveRecordingToHistory]);
+  }, [saveRecordingToHistory]); // Removidas dependências de props - usa refs
 
   // Auto-save: salva chunks no IndexedDB periodicamente
   const performAutoSave = useCallback(async () => {
@@ -383,9 +418,9 @@ export function useRecording({ roomId, userLogin, meetingId }: UseRecordingProps
           `${RECORDING_API_URL}/recording/emergency-save`,
           JSON.stringify({
             recordingId: currentRecordingIdRef.current,
-            userLogin: sanitize(userLogin),
-            roomId: sanitize(roomId),
-            meetingId: sanitize(meetingId),
+            userLogin: sanitize(userLoginRef.current),
+            roomId: sanitize(roomIdRef.current),
+            meetingId: sanitize(meetingIdRef.current),
             duration: currentDurationRef.current,
           })
         );
@@ -396,7 +431,7 @@ export function useRecording({ roomId, userLogin, meetingId }: UseRecordingProps
     event.preventDefault();
     event.returnValue = 'Você tem uma gravação em andamento. Tem certeza que deseja sair?';
     return event.returnValue;
-  }, [userLogin, roomId, meetingId]);
+  }, []); // Sem dependências - usa refs
 
   // Registrar/desregistrar beforeunload listener
   useEffect(() => {
@@ -451,7 +486,17 @@ export function useRecording({ roomId, userLogin, meetingId }: UseRecordingProps
     }
 
     try {
-      console.log('[Recording] Iniciando gravação...');
+      const currentRoomId = roomIdRef.current;
+      const currentUserLogin = userLoginRef.current;
+      const currentMeetingId = meetingIdRef.current;
+      
+      console.log('[Recording] Iniciando gravação...', {
+        roomId: currentRoomId,
+        userLogin: currentUserLogin,
+        meetingId: currentMeetingId,
+        RECORDING_API_URL,
+        USE_S3_STORAGE
+      });
       
       // Liberar AudioContext anterior se existir
       if (audioContextIdRef.current) {
@@ -556,7 +601,16 @@ export function useRecording({ roomId, userLogin, meetingId }: UseRecordingProps
       };
 
       mediaRecorder.onstop = async () => {
-        console.log('[Recording] MediaRecorder parou, processando...');
+        const currentUserLogin = userLoginRef.current;
+        const currentMeetingId = meetingIdRef.current;
+        
+        console.log('[Recording] MediaRecorder parou, processando...', {
+          chunksLength: chunksRef.current.length,
+          currentRecordingId: currentRecordingIdRef.current,
+          userLogin: currentUserLogin,
+          meetingId: currentMeetingId,
+          USE_S3_STORAGE
+        });
         
         // Parar animação
         isRecordingRef.current = false;
@@ -570,31 +624,8 @@ export function useRecording({ roomId, userLogin, meetingId }: UseRecordingProps
           autoSaveIntervalRef.current = undefined;
         }
         
-        // Verificar se deve salvar (só salva se o usuário clicou em parar gravação)
-        if (!shouldSaveOnStopRef.current) {
-          console.log('[Recording] Gravação cancelada (usuário saiu sem parar), salvando backup...');
-          
-          // Salvar backup no IndexedDB antes de descartar
-          if (currentRecordingIdRef.current && chunksRef.current.length > 0) {
-            await saveChunksToIndexedDB(
-              currentRecordingIdRef.current,
-              [...chunksRef.current],
-              currentDurationRef.current
-            );
-            console.log('[Recording] Backup salvo, gravação pode ser recuperada');
-          }
-          
-          chunksRef.current = [];
-          streamRef.current?.getTracks().forEach(t => t.stop());
-          if (audioContextIdRef.current) {
-            audioContextManager.release(audioContextIdRef.current);
-            audioContextIdRef.current = null;
-          }
-          return;
-        }
-        
-        // Resetar flag
-        shouldSaveOnStopRef.current = false;
+        // SEMPRE fazer upload quando a gravação parar (não importa como parou)
+        // Isso garante que a gravação seja salva mesmo se o usuário fechar o navegador
         
         // Criar blob final
         const blob = new Blob(chunksRef.current, { type: mimeType });
@@ -602,12 +633,29 @@ export function useRecording({ roomId, userLogin, meetingId }: UseRecordingProps
         
         // Validar tamanho do blob
         const MAX_BLOB_SIZE = 500 * 1024 * 1024; // 500MB
-        if (blob.size > MAX_BLOB_SIZE) {
-          console.warn('[Recording] Gravação muito grande, descartando');
-          // NÃO fazer download automático - apenas logar
+        if (blob.size === 0) {
+          console.log('[Recording] Gravação vazia, ignorando');
+        } else if (blob.size > MAX_BLOB_SIZE) {
+          console.warn('[Recording] Gravação muito grande, salvando backup no IndexedDB');
+          // Salvar backup no IndexedDB para recuperação posterior
+          if (currentRecordingIdRef.current) {
+            await saveChunksToIndexedDB(
+              currentRecordingIdRef.current,
+              [...chunksRef.current],
+              currentDurationRef.current
+            );
+          }
           saveRecordingToHistory(`discarded_too_large_${Date.now()}`, finalDuration);
-        } else if (USE_S3_STORAGE && blob.size > 0) {
+        } else if (USE_S3_STORAGE) {
           // Upload para S3
+          console.log('[Recording] Iniciando upload para S3...', {
+            blobSize: blob.size,
+            finalDuration,
+            userLogin: currentUserLogin,
+            roomId: roomIdRef.current,
+            meetingId: currentMeetingId,
+            RECORDING_API_URL
+          });
           try {
             const recordingKey = await uploadRecording(blob, finalDuration);
             console.log('[Recording] Upload para S3 concluído:', recordingKey);
@@ -618,13 +666,27 @@ export function useRecording({ roomId, userLogin, meetingId }: UseRecordingProps
               await clearBackupFromIndexedDB(currentRecordingIdRef.current);
             }
           } catch (error) {
-            console.warn('[Recording] Falha no upload, mantendo backup no IndexedDB');
-            // Manter backup no IndexedDB para recuperação posterior
+            console.warn('[Recording] Falha no upload, salvando backup no IndexedDB');
+            // Salvar backup no IndexedDB para recuperação posterior
+            if (currentRecordingIdRef.current) {
+              await saveChunksToIndexedDB(
+                currentRecordingIdRef.current,
+                [...chunksRef.current],
+                currentDurationRef.current
+              );
+            }
             saveRecordingToHistory(`upload_failed_${Date.now()}`, finalDuration);
           }
-        } else if (blob.size > 0) {
-          // Sem API configurada - NÃO fazer download automático
-          console.log('[Recording] API não configurada, gravação não salva');
+        } else {
+          // Sem API configurada - salvar backup no IndexedDB
+          console.log('[Recording] API não configurada, salvando backup no IndexedDB');
+          if (currentRecordingIdRef.current) {
+            await saveChunksToIndexedDB(
+              currentRecordingIdRef.current,
+              [...chunksRef.current],
+              currentDurationRef.current
+            );
+          }
           saveRecordingToHistory(`no_api_${Date.now()}`, finalDuration);
         }
         
@@ -720,9 +782,6 @@ export function useRecording({ roomId, userLogin, meetingId }: UseRecordingProps
     }
 
     isRecordingRef.current = false;
-    
-    // Marcar que deve salvar ao parar (usuário clicou em parar)
-    shouldSaveOnStopRef.current = true;
     
     if (mediaRecorderRef.current && mediaRecorderRef.current.state !== 'inactive') {
       mediaRecorderRef.current.stop();

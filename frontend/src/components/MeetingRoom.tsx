@@ -29,8 +29,10 @@ import { featureDetector } from '../utils/featureDetection';
 import { getRoomConfig, saveRoomConfig, RoomConfig } from '../services/roomConfigService';
 
 // Versão do aplicativo - atualizar a cada deploy
-const APP_VERSION = '3.8.0';
-const BUILD_DATE = '2025-12-23 10:30';
+const APP_VERSION = '3.8.1';
+const BUILD_DATE = '2026-01-12 15:00';
+
+const CHIME_API_URL = import.meta.env.VITE_CHIME_API_URL || '';
 
 interface Message {
   id: string;
@@ -171,6 +173,18 @@ export default function MeetingRoom({ darkMode }: { darkMode: boolean }) {
       });
     }
     
+    // Tratar evento de sala encerrada
+    if (data.type === 'room_event' && data.data?.eventType === 'room_ended') {
+      console.log('[MeetingRoom] Sala encerrada pelo administrador/host');
+      alert('A sala foi encerrada.');
+      // Limpar recursos e redirecionar
+      leaveChimeMeeting();
+      sessionStorage.removeItem(`video-chat-userId-${roomId}`);
+      sessionStorage.removeItem('videochat_user_name');
+      navigate('/');
+      return;
+    }
+    
     if (data.type === 'message') {
       const newMessage: Message = {
         id: data.data.messageId,
@@ -188,7 +202,7 @@ export default function MeetingRoom({ darkMode }: { darkMode: boolean }) {
         setUnreadCount(prev => prev + 1);
       }
     }
-  }, [userId]);
+  }, [userId, roomId, navigate, leaveChimeMeeting]);
 
   const wsUrl = import.meta.env.VITE_WEBSOCKET_URL || '';
   const { sendMessage, isConnected, addMessageHandler } = useWebSocket(
@@ -292,6 +306,20 @@ export default function MeetingRoom({ darkMode }: { darkMode: boolean }) {
   // Ref para controlar se a gravação automática já foi iniciada
   const autoRecordingStartedRef = useRef(false);
   const autoTranscriptionStartedRef = useRef(false);
+  
+  // Ref para rastrear o último valor de autoStartRecording
+  const prevAutoStartRecordingRef = useRef(false);
+
+  // Resetar ref quando autoStartRecording muda de false para true (para permitir nova tentativa após configuração)
+  useEffect(() => {
+    // Detectar mudança de false para true
+    if (autoStartRecording && !prevAutoStartRecordingRef.current && !isRecordingMeeting) {
+      // Se auto-gravação foi habilitada (mudou de false para true) e não está gravando, resetar a ref
+      autoRecordingStartedRef.current = false;
+      console.log('[MeetingRoom] autoStartRecording mudou para true, resetando ref para permitir auto-gravação');
+    }
+    prevAutoStartRecordingRef.current = autoStartRecording;
+  }, [autoStartRecording, isRecordingMeeting]);
 
   // Auto-iniciar transcrição quando configurado
   useEffect(() => {
@@ -333,15 +361,24 @@ export default function MeetingRoom({ darkMode }: { darkMode: boolean }) {
     
     // Evitar múltiplas tentativas
     if (autoRecordingStartedRef.current || isRecordingMeeting) {
+      console.log('[MeetingRoom] Auto-gravação já iniciada ou em andamento');
       return;
     }
     
     autoRecordingStartedRef.current = true;
-    console.log('[MeetingRoom] Iniciando auto-gravação...');
+    console.log('[MeetingRoom] Iniciando auto-gravação...', {
+      isJoined,
+      isAuthenticated,
+      userLogin: user?.login,
+      currentMeetingId,
+      autoStartRecording,
+      isRecordingMeeting
+    });
     
     // Delay maior para garantir que vídeos estão prontos
     const timer = setTimeout(async () => {
       try {
+        console.log('[MeetingRoom] Chamando startRecording...');
         const success = await startRecording();
         if (success) {
           console.log('[MeetingRoom] Auto-gravação iniciada com sucesso');
@@ -423,6 +460,18 @@ export default function MeetingRoom({ darkMode }: { darkMode: boolean }) {
     }
   }, [transcriptions, isAuthenticated, user?.login, currentMeetingId]);
 
+  // Salvar metadados da reunião (tipo, tópico, descrição da vaga, perguntas)
+  useEffect(() => {
+    if (isAuthenticated && user?.login && currentMeetingId && hasSetupCompleted) {
+      meetingHistoryService.updateMeetingMetadata(user.login, currentMeetingId, {
+        meetingType: meetingType as 'ENTREVISTA' | 'ESCOPO' | 'REUNIAO' | 'TREINAMENTO' | 'OUTRO',
+        meetingTopic,
+        jobDescription,
+        questionsAsked: interviewQuestionsAsked.map(q => q.question)
+      });
+    }
+  }, [isAuthenticated, user?.login, currentMeetingId, meetingType, meetingTopic, jobDescription, interviewQuestionsAsked, hasSetupCompleted]);
+
   // Controles visíveis
   useEffect(() => {
     if (isTouch) {
@@ -487,7 +536,15 @@ export default function MeetingRoom({ darkMode }: { darkMode: boolean }) {
     navigate('/');
   }, [navigate, roomId, isAuthenticated, leaveChimeMeeting]);
 
-  const handleLeaveOnly = useCallback(() => {
+  const handleLeaveOnly = useCallback(async () => {
+    // Parar gravação antes de sair (se estiver gravando)
+    if (isRecordingMeeting) {
+      console.log('[MeetingRoom] Parando gravação antes de sair...');
+      stopRecording();
+      // Aguardar um pouco para o upload iniciar
+      await new Promise(resolve => setTimeout(resolve, 500));
+    }
+    
     if (isAuthenticated && user?.login && currentMeetingId) {
       meetingHistoryService.endMeeting(user.login, currentMeetingId);
     }
@@ -496,10 +553,49 @@ export default function MeetingRoom({ darkMode }: { darkMode: boolean }) {
     sessionStorage.removeItem('videochat_user_name');
     setShowEndModal(false);
     navigate('/');
-  }, [navigate, roomId, isAuthenticated, user?.login, currentMeetingId, leaveChimeMeeting]);
+  }, [navigate, roomId, isAuthenticated, user?.login, currentMeetingId, leaveChimeMeeting, isRecordingMeeting, stopRecording]);
 
   const handleEndRoom = useCallback(async () => {
+    console.log('[MeetingRoom] handleEndRoom chamado:', {
+      meetingType,
+      transcriptionsLength: transcriptions.length,
+      isEntrevista: meetingType === 'ENTREVISTA',
+      isRecordingMeeting
+    });
+    
+    // Parar gravação antes de encerrar (se estiver gravando)
+    if (isRecordingMeeting) {
+      console.log('[MeetingRoom] Parando gravação antes de encerrar sala...');
+      stopRecording();
+      // Aguardar um pouco para o upload iniciar
+      await new Promise(resolve => setTimeout(resolve, 500));
+    }
+    
+    // Primeiro, encerrar a sala no backend para notificar outros usuários
+    try {
+      console.log('[MeetingRoom] Encerrando sala no backend...');
+      const response = await fetch(`${CHIME_API_URL}/meeting/end`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          roomId,
+          meetingId: chimeMeetingId,
+          odUserId: userId
+        })
+      });
+      
+      if (!response.ok) {
+        console.warn('[MeetingRoom] Erro ao encerrar sala no backend:', response.status);
+      } else {
+        console.log('[MeetingRoom] Sala encerrada no backend com sucesso');
+      }
+    } catch (error) {
+      console.warn('[MeetingRoom] Erro ao encerrar sala:', error);
+      // Continuar mesmo se falhar
+    }
+    
     if (meetingType === 'ENTREVISTA' && transcriptions.length > 0) {
+      console.log('[MeetingRoom] Iniciando geração de relatório...');
       setIsGeneratingReport(true);
       
       try {
@@ -547,7 +643,7 @@ export default function MeetingRoom({ darkMode }: { darkMode: boolean }) {
     } else {
       handleLeaveOnly();
     }
-  }, [meetingType, meetingTopic, transcriptions, handleLeaveOnly, jobDescription, userName, scopeSummary, attendees, userId, interviewQuestionsAsked, userNamesMap]);
+  }, [meetingType, meetingTopic, transcriptions, handleLeaveOnly, jobDescription, userName, scopeSummary, attendees, userId, interviewQuestionsAsked, userNamesMap, roomId, chimeMeetingId, isRecordingMeeting, stopRecording]);
 
   const handleCloseReport = useCallback(() => {
     setShowReportModal(false);
@@ -562,10 +658,9 @@ export default function MeetingRoom({ darkMode }: { darkMode: boolean }) {
 
   const handleCloseScopeReport = useCallback(() => {
     setShowScopeReportModal(false);
-    // Salvar LRD no histórico
+    // Salvar LRD no histórico (saveScopeReport já finaliza a reunião)
     if (isAuthenticated && user?.login && currentMeetingId && scopeSummary) {
       meetingHistoryService.saveScopeReport(user.login, currentMeetingId, scopeSummary);
-      meetingHistoryService.endMeeting(user.login, currentMeetingId);
     }
     leaveChimeMeeting();
     sessionStorage.removeItem(`video-chat-userId-${roomId}`);

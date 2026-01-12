@@ -19,6 +19,88 @@ import {
   stopConfigPolling,
 } from '../services/interviewConfigService';
 
+/**
+ * Calcula a completude da entrevista baseado em cobertura e qualidade
+ * Retorna um score de 0-100
+ */
+function calculateInterviewCompleteness(questionsAsked: QuestionAnswer[]): number {
+  if (questionsAsked.length === 0) return 0;
+  
+  // 1. Cobertura de categorias (40%)
+  const categories = new Set(questionsAsked.map(q => q.category));
+  const categoryScore = Math.min((categories.size / 4) * 100, 100);
+  
+  // 2. Qualidade das respostas (35%)
+  const qualityWeights: Record<string, number> = {
+    'excellent': 100, 'good': 80, 'basic': 50, 'incomplete': 20, 'incorrect': 0
+  };
+  const answered = questionsAsked.filter(q => q.answer && q.answer.length > 20);
+  let qualitySum = 0;
+  answered.forEach(q => { qualitySum += qualityWeights[q.answerQuality] || 50; });
+  const qualityScore = answered.length > 0 ? qualitySum / answered.length : 0;
+  
+  // 3. Profundidade (25%) - 5 mínimo, 8 ideal
+  const depthScore = questionsAsked.length >= 8 ? 100 : Math.min((questionsAsked.length / 5) * 100, 100);
+  
+  return (categoryScore * 0.40) + (qualityScore * 0.35) + (depthScore * 0.25);
+}
+
+/**
+ * Verifica se uma pergunta é similar a outra (para evitar duplicatas)
+ */
+function isSimilarQuestion(q1: string, q2: string): boolean {
+  const normalize = (s: string) => s.toLowerCase().trim();
+  const n1 = normalize(q1);
+  const n2 = normalize(q2);
+  
+  // Match exato
+  if (n1 === n2) return true;
+  
+  // Uma contém a outra
+  if (n1.includes(n2) || n2.includes(n1)) return true;
+  
+  // Similaridade por palavras-chave (50%+ de match)
+  const words1 = n1.split(/\s+/).filter(w => w.length > 3);
+  const words2 = n2.split(/\s+/).filter(w => w.length > 3);
+  if (words1.length === 0 || words2.length === 0) return false;
+  
+  const commonWords = words1.filter(w => words2.some(w2 => w === w2 || w.includes(w2) || w2.includes(w)));
+  const similarity = commonWords.length / Math.min(words1.length, words2.length);
+  
+  return similarity >= 0.5;
+}
+
+/**
+ * Filtra perguntas que já foram feitas ou já existem nas sugestões
+ */
+function filterDuplicateQuestions(
+  newQuestions: InterviewSuggestion[],
+  existingSuggestions: InterviewSuggestion[],
+  questionsAsked: QuestionAnswer[]
+): InterviewSuggestion[] {
+  return newQuestions.filter(newQ => {
+    // Verificar contra sugestões existentes
+    const existsInSuggestions = existingSuggestions.some(
+      existing => isSimilarQuestion(existing.question, newQ.question)
+    );
+    if (existsInSuggestions) {
+      console.log('[InterviewAssistant] ⏭️ Pergunta já existe nas sugestões:', newQ.question.substring(0, 50));
+      return false;
+    }
+    
+    // Verificar contra perguntas já feitas
+    const alreadyAsked = questionsAsked.some(
+      asked => isSimilarQuestion(asked.question, newQ.question)
+    );
+    if (alreadyAsked) {
+      console.log('[InterviewAssistant] ⏭️ Pergunta já foi feita:', newQ.question.substring(0, 50));
+      return false;
+    }
+    
+    return true;
+  });
+}
+
 interface UseInterviewAssistantProps {
   isEnabled: boolean;
   meetingType: string;
@@ -275,129 +357,118 @@ export function useInterviewAssistant({
       const detectedSuggestion = detectAskedQuestion(trans.transcribedText, suggestions);
       
       if (detectedSuggestion && !detectedSuggestion.isRead) {
-        console.log('[InterviewAssistant] 🎯 Pergunta detectada automaticamente (entrevistador):', detectedSuggestion.question.substring(0, 50));
-        console.log('[InterviewAssistant] Speaker:', trans.speakerLabel, '| Entrevistador:', userName);
+        console.log('[InterviewAssistant] 🎯 Pergunta detectada, aguardando confirmação...:', detectedSuggestion.question.substring(0, 50));
         
-        // Marcar como processada
+        // Marcar como processada para não detectar novamente
         processedTranscriptionsRef.current.add(transKey);
         
-        // Marcar a sugestão como lida com flag de animação
-        setSuggestions((prev) => {
-          console.log('[InterviewAssistant] 🔄 Atualizando suggestions - antes:', prev.map(s => ({ id: s.id.substring(0, 10), isRead: s.isRead })));
-          
-          const updated = prev.map((s) =>
-            s.id === detectedSuggestion.id
-              ? { ...s, isRead: true, justMarkedAsRead: true, autoDetected: true }
-              : s
-          );
-          
-          console.log('[InterviewAssistant] 🔄 Atualizando suggestions - depois:', updated.map(s => ({ id: s.id.substring(0, 10), isRead: s.isRead, justMarked: s.justMarkedAsRead })));
-          
-          // Adicionar ao QA
-          const newQA: QuestionAnswer = {
-            questionId: detectedSuggestion.id,
-            question: detectedSuggestion.question,
-            answer: '',
-            timestamp: Date.now(),
-            category: detectedSuggestion.category,
-            answerQuality: 'incomplete',
-            keyTopics: [],
-          };
-          
-          setQuestionsAsked((qa) => {
-            // Evitar duplicatas
-            if (qa.some(q => q.questionId === detectedSuggestion.id)) return qa;
-            const updatedQA = [...qa, newQA];
-            saveDataToDynamoDB(updated, updatedQA);
-            return updatedQA;
-          });
-          
-          // IMPORTANTE: Atualizar recentlyMarkedIds DENTRO do setSuggestions
-          // para garantir que ambos updates aconteçam no mesmo render cycle
-          setRecentlyMarkedIds((prevIds) => {
-            const newSet = new Set([...prevIds, detectedSuggestion.id]);
-            console.log('[InterviewAssistant] 🎨 recentlyMarkedIds atualizado:', Array.from(newSet));
-            return newSet;
-          });
-          
-          return updated;
-        });
+        // DELAY antes de marcar como realizada (para dar tempo de confirmar)
+        const detectionDelay = configRef.current.autoDetectionDelayMs || 3000;
         
-        // Remover da animação após 3 segundos
         setTimeout(() => {
-          console.log('[InterviewAssistant] ⏰ Removendo animação para:', detectedSuggestion.id.substring(0, 10));
+          console.log('[InterviewAssistant] ⏰ Confirmando detecção após delay:', detectedSuggestion.question.substring(0, 50));
+          console.log('[InterviewAssistant] Speaker:', trans.speakerLabel, '| Entrevistador:', userName);
           
-          setRecentlyMarkedIds((prev) => {
-            const newSet = new Set(prev);
-            newSet.delete(detectedSuggestion.id);
-            console.log('[InterviewAssistant] 🗑️ recentlyMarkedIds após remoção:', Array.from(newSet));
-            return newSet;
-          });
-          
-          // Remover flag justMarkedAsRead MAS MANTER isRead: true
+          // Verificar se a sugestão ainda existe e não foi marcada manualmente
           setSuggestions((prev) => {
-            console.log('[InterviewAssistant] 🔄 Removendo animação - antes:', prev.map(s => ({ 
-              id: s.id.substring(0, 10), 
-              isRead: s.isRead, 
-              justMarked: s.justMarkedAsRead 
-            })));
+            const currentSuggestion = prev.find(s => s.id === detectedSuggestion.id);
             
-            const updatedSuggestions = prev.map((s) =>
-              s.id === detectedSuggestion.id 
-                ? { ...s, justMarkedAsRead: false, isRead: true } // ✅ Manter isRead: true
+            // Se já foi marcada como lida (manualmente), não fazer nada
+            if (!currentSuggestion || currentSuggestion.isRead) {
+              console.log('[InterviewAssistant] ⏭️ Sugestão já foi marcada ou removida, ignorando');
+              return prev;
+            }
+            
+            console.log('[InterviewAssistant] 🔄 Marcando como realizada após delay');
+            
+            const updated = prev.map((s) =>
+              s.id === detectedSuggestion.id
+                ? { ...s, isRead: true, justMarkedAsRead: true, autoDetected: true }
                 : s
             );
             
-            console.log('[InterviewAssistant] 🔄 Removendo animação - depois:', updatedSuggestions.map(s => ({ 
-              id: s.id.substring(0, 10), 
-              isRead: s.isRead, 
-              justMarked: s.justMarkedAsRead 
-            })));
+            // Adicionar ao QA
+            const newQA: QuestionAnswer = {
+              questionId: detectedSuggestion.id,
+              question: detectedSuggestion.question,
+              answer: '',
+              timestamp: Date.now(),
+              category: detectedSuggestion.category,
+              answerQuality: 'incomplete',
+              keyTopics: [],
+            };
             
-            // ✅ Salvar no DynamoDB para persistir o estado
             setQuestionsAsked((qa) => {
-              console.log('[InterviewAssistant] 💾 Salvando após remover animação - questionsAsked:', qa.length);
-              saveDataToDynamoDB(updatedSuggestions, qa);
-              return qa;
+              if (qa.some(q => q.questionId === detectedSuggestion.id)) return qa;
+              const updatedQA = [...qa, newQA];
+              saveDataToDynamoDB(updated, updatedQA);
+              return updatedQA;
             });
             
-            return updatedSuggestions;
-          });
-        }, 3000);
-        
-        // Gerar follow-up automaticamente após detectar a pergunta
-        setTimeout(() => {
-          const context: InterviewContext = {
-            meetingType: meetingType as InterviewContext['meetingType'],
-            topic,
-            jobDescription,
-            transcriptionHistory: finalTranscriptions.map((t) => t.transcribedText),
-            questionsAsked: questionsAsked,
-          };
-          
-          if (configRef.current.enableAutoFollowUp) {
-            interviewAIService.generateFollowUp(trans.transcribedText, context)
-              .then((followUp) => {
-                if (followUp) {
-                  setSuggestions((prev) => {
-                    const isDuplicate = prev.some(
-                      (s) => s.question.toLowerCase() === followUp.question.toLowerCase()
-                    );
-                    if (isDuplicate) return prev;
-                    
-                    console.log('[InterviewAssistant] 🔄 Follow-up automático gerado:', followUp.question.substring(0, 50));
-                    lastSuggestionTimeRef.current = Date.now();
-                    const newSuggestions = [followUp, ...prev].slice(0, 10);
-                    saveDataToDynamoDB(newSuggestions, questionsAsked);
-                    return newSuggestions;
-                  });
-                }
-              })
-              .catch((error) => {
-                console.error('[InterviewAssistant] Erro ao gerar follow-up automático:', error);
+            setRecentlyMarkedIds((prevIds) => {
+              const newSet = new Set([...prevIds, detectedSuggestion.id]);
+              return newSet;
+            });
+            
+            // Remover animação após 5 segundos
+            setTimeout(() => {
+              setRecentlyMarkedIds((prev) => {
+                const newSet = new Set(prev);
+                newSet.delete(detectedSuggestion.id);
+                return newSet;
               });
-          }
-        }, 1500); // Delay para dar tempo de processar a resposta
+              
+              setSuggestions((prev) => {
+                const suggestion = prev.find(s => s.id === detectedSuggestion.id);
+                if (!suggestion || !suggestion.isRead) return prev;
+                
+                return prev.map((s) =>
+                  s.id === detectedSuggestion.id 
+                    ? { ...s, justMarkedAsRead: false }
+                    : s
+                );
+              });
+            }, 5000);
+            
+            return updated;
+          });
+          
+          // Gerar follow-up após mais um delay
+          setTimeout(() => {
+            if (configRef.current.enableAutoFollowUp) {
+              const context: InterviewContext = {
+                meetingType: meetingType as InterviewContext['meetingType'],
+                topic,
+                jobDescription,
+                transcriptionHistory: transcriptions.filter(t => !t.isPartial).map((t) => t.transcribedText),
+                questionsAsked: questionsAsked,
+              };
+              
+              interviewAIService.generateFollowUp(trans.transcribedText, context)
+                .then((followUp) => {
+                  if (followUp) {
+                    setSuggestions((prev) => {
+                      const filtered = filterDuplicateQuestions([followUp], prev, questionsAsked);
+                      if (filtered.length === 0) return prev;
+                      
+                      console.log('[InterviewAssistant] 🔄 Follow-up gerado:', followUp.question.substring(0, 50));
+                      lastSuggestionTimeRef.current = Date.now();
+                      const newSuggestions = [followUp, ...prev].slice(0, 10);
+                      
+                      setQuestionsAsked((qa) => {
+                        saveDataToDynamoDB(newSuggestions, qa);
+                        return qa;
+                      });
+                      
+                      return newSuggestions;
+                    });
+                  }
+                })
+                .catch(console.error);
+            }
+          }, 2000);
+          
+        }, detectionDelay);
         
         break; // Processar apenas uma detecção por vez
       } else if (detectedSuggestion && detectedSuggestion.isRead) {
@@ -446,9 +517,7 @@ export function useInterviewAssistant({
     unprocessed.forEach((t) => processedTranscriptionsRef.current.add(t.transcribedText));
 
     const newAnswerLength = unprocessed.reduce((sum, t) => sum + t.transcribedText.length, 0);
-    totalAnswerLengthRef.current += newAnswerLength;
-
-    if (finalTranscriptions.length < currentConfig.minTranscriptionsForFollowup) {
+    totalAnswerLengthRef.current += newAnswerLength;    if (finalTranscriptions.length < currentConfig.minTranscriptionsForFollowup) {
       return;
     }
 
@@ -511,16 +580,18 @@ export function useInterviewAssistant({
       let suggestionAdded = false;
 
       // Gerar follow-up se habilitado na config
-      if (cfg.enableAutoFollowUp) {
+      // MAS só se a completude ainda não estiver muito alta (< 85%)
+      const completenessForFollowUp = calculateInterviewCompleteness(updatedQA);
+      
+      if (cfg.enableAutoFollowUp && completenessForFollowUp < 85) {
         try {
           const followUp = await interviewAIService.generateFollowUp(lastResponse, context);
 
           if (followUp) {
-            const isDuplicate = suggestions.some(
-              (s) => s.question.toLowerCase() === followUp.question.toLowerCase()
-            );
+            // Usar filtro de duplicatas (verifica sugestões existentes E perguntas já feitas)
+            const filtered = filterDuplicateQuestions([followUp], suggestions, updatedQA);
 
-            if (!isDuplicate) {
+            if (filtered.length > 0) {
               const currentUnread = suggestions.filter((s) => !s.isRead);
               if (currentUnread.length < cfg.maxUnreadSuggestions) {
                 lastSuggestionTimeRef.current = Date.now();
@@ -528,30 +599,41 @@ export function useInterviewAssistant({
                 suggestionAdded = true;
                 console.log('[InterviewAssistant] Follow-up gerado:', followUp.question);
               }
+            } else {
+              console.log('[InterviewAssistant] ⏭️ Follow-up descartado (duplicata)');
             }
           }
         } catch (error) {
           console.error('[InterviewAssistant] Erro ao gerar follow-up:', error);
         }
+      } else if (completenessForFollowUp >= 85) {
+        console.log('[InterviewAssistant] ✅ Completude alta (' + Math.round(completenessForFollowUp) + '%), não gerando follow-up');
       }
 
       // Gerar novas perguntas a cada N respostas (configurável)
-      if (!suggestionAdded && updatedQA.length > 0 && updatedQA.length % cfg.generateNewQuestionsEveryN === 0) {
+      // MAS só se a completude ainda não estiver alta (< 75%)
+      const currentCompleteness = calculateInterviewCompleteness(updatedQA);
+      const shouldGenerateMore = currentCompleteness < 75;
+      
+      if (!suggestionAdded && updatedQA.length > 0 && updatedQA.length % cfg.generateNewQuestionsEveryN === 0 && shouldGenerateMore) {
         try {
           const newSuggestionsFromAI = await interviewAIService.generateNewQuestions(context, 2);
-          const existingQuestions = new Set(newSuggestions.map((s) => s.question.toLowerCase()));
-          const uniqueNew = newSuggestionsFromAI.filter(
-            (s) => !existingQuestions.has(s.question.toLowerCase())
-          );
+          
+          // Usar filtro de duplicatas (verifica sugestões existentes E perguntas já feitas)
+          const uniqueNew = filterDuplicateQuestions(newSuggestionsFromAI, newSuggestions, updatedQA);
 
           if (uniqueNew.length > 0) {
             lastSuggestionTimeRef.current = Date.now();
             newSuggestions = [...uniqueNew, ...newSuggestions].slice(0, 10);
             console.log('[InterviewAssistant] Novas perguntas geradas:', uniqueNew.length);
+          } else {
+            console.log('[InterviewAssistant] ⏭️ Todas as novas perguntas eram duplicatas');
           }
         } catch (error) {
           console.error('[InterviewAssistant] Erro ao gerar novas perguntas:', error);
         }
+      } else if (!shouldGenerateMore) {
+        console.log('[InterviewAssistant] ✅ Completude alta (' + Math.round(currentCompleteness) + '%), não gerando mais perguntas');
       }
 
       setSuggestions(newSuggestions);

@@ -5,13 +5,17 @@ import {
   Clock, Server, Activity, ArrowLeft, AlertTriangle,
   ChevronDown, ChevronUp, UserPlus, Crown, Calendar,
   Key, Copy, Eye, EyeOff, Plus, ExternalLink, FileText,
-  Image, ToggleLeft, ToggleRight, Check, X as XIcon, Brain
+  Image, ToggleLeft, ToggleRight, Check, X as XIcon, Brain,
+  Download, Play, History
 } from 'lucide-react';
 import { useAuth } from '../contexts/AuthContext';
 import { backgroundService, CustomBackground } from '../services/backgroundService';
 import InterviewAIConfigPanel from './InterviewAIConfigPanel';
+import { meetingHistoryService, MeetingRecord } from '../services/meetingHistoryService';
+import { interviewAIService } from '../services/interviewAIService';
 
 const CHIME_API_URL = import.meta.env.VITE_CHIME_API_URL || '';
+const RECORDING_API_URL = import.meta.env.VITE_API_URL || '';
 
 interface Attendee {
   attendeeId: string;
@@ -74,6 +78,17 @@ interface ApiKey {
   permissions: string[];
 }
 
+interface Recording {
+  recordingId: string;
+  userLogin: string;
+  roomId: string;
+  meetingId: string;
+  recordingKey: string;
+  duration: number;
+  createdAt: number;
+  status: string;
+}
+
 interface AdminPanelProps {
   darkMode: boolean;
 }
@@ -89,8 +104,30 @@ export default function AdminPanel({ darkMode }: AdminPanelProps) {
   const [expandedRoom, setExpandedRoom] = useState<string | null>(null);
   const [actionLoading, setActionLoading] = useState<string | null>(null);
   const [newAdminInput, setNewAdminInput] = useState('');
-  const [activeTab, setActiveTab] = useState<'rooms' | 'admins' | 'schedule' | 'apikeys' | 'backgrounds' | 'interviewai'>('rooms');
+  const [activeTab, setActiveTab] = useState<'rooms' | 'admins' | 'schedule' | 'apikeys' | 'backgrounds' | 'interviewai' | 'history'>('rooms');
   const [cleanupResult, setCleanupResult] = useState<string | null>(null);
+  
+  // History/Recordings state
+  const [allRecordings, setAllRecordings] = useState<Recording[]>([]);
+  const [allMeetingHistory, setAllMeetingHistory] = useState<MeetingRecord[]>([]);
+  const [historyLoading, setHistoryLoading] = useState(false);
+  const [playingRecording, setPlayingRecording] = useState<string | null>(null);
+  const [generatingReport, setGeneratingReport] = useState<string | null>(null);
+  const [reportModal, setReportModal] = useState<{ meeting: MeetingRecord; report: any } | null>(null);
+  
+  // Filtros de histórico
+  const [historyFilters, setHistoryFilters] = useState<{
+    userLogin: string;
+    meetingType: string;
+    startDate: string;
+    endDate: string;
+  }>({
+    userLogin: '',
+    meetingType: '',
+    startDate: '',
+    endDate: '',
+  });
+  const [uniqueUsers, setUniqueUsers] = useState<string[]>([]);
   
   // Schedule state
   const [scheduledMeetings, setScheduledMeetings] = useState<ScheduledMeeting[]>([]);
@@ -561,6 +598,209 @@ export default function AdminPanel({ darkMode }: AdminPanelProps) {
     alert('Copiado para a área de transferência!');
   };
 
+  // History/Recordings handlers
+  const fetchAllRecordings = useCallback(async () => {
+    if (!user?.login) return;
+    
+    setHistoryLoading(true);
+    try {
+      // Buscar gravações do S3/DynamoDB
+      const res = await fetch(`${RECORDING_API_URL}/recording/list`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ userLogin: user.login, isAdmin: true }),
+      });
+      
+      if (res.ok) {
+        const data = await res.json();
+        setAllRecordings(data.recordings || []);
+      }
+      
+      // Buscar históricos do backend (DynamoDB)
+      const filters: any = {};
+      if (historyFilters.userLogin) filters.userLogin = historyFilters.userLogin;
+      if (historyFilters.meetingType) filters.meetingType = historyFilters.meetingType;
+      if (historyFilters.startDate) filters.startDate = new Date(historyFilters.startDate).getTime();
+      if (historyFilters.endDate) filters.endDate = new Date(historyFilters.endDate).getTime() + 86400000; // +1 dia
+      
+      const { history, uniqueUsers: users } = await meetingHistoryService.getAdminHistory(
+        user.login,
+        Object.keys(filters).length > 0 ? filters : undefined
+      );
+      
+      setAllMeetingHistory(history);
+      setUniqueUsers(users);
+      
+      console.log('[AdminPanel] Históricos carregados do backend:', history.length);
+    } catch (err) {
+      console.error('Erro ao carregar histórico:', err);
+    } finally {
+      setHistoryLoading(false);
+    }
+  }, [user?.login, historyFilters]);
+
+  // Migrar dados do localStorage para o backend
+  const migrateLocalStorageToBackend = useCallback(async () => {
+    if (!user?.login) return;
+    
+    setHistoryLoading(true);
+    try {
+      const localHistory = meetingHistoryService.getAllUsersHistory();
+      console.log('[AdminPanel] Migrando', localHistory.length, 'reuniões do localStorage para o backend');
+      
+      let migrated = 0;
+      for (const meeting of localHistory) {
+        const success = await meetingHistoryService.saveToBackend(meeting);
+        if (success) migrated++;
+      }
+      
+      alert(`Migração concluída! ${migrated} de ${localHistory.length} reuniões migradas.`);
+      
+      // Recarregar dados
+      await fetchAllRecordings();
+    } catch (err) {
+      console.error('Erro na migração:', err);
+      alert('Erro ao migrar dados');
+    } finally {
+      setHistoryLoading(false);
+    }
+  }, [user?.login, fetchAllRecordings]);
+
+  // Carregar gravações quando a aba de histórico é selecionada
+  useEffect(() => {
+    if (activeTab === 'history') {
+      fetchAllRecordings();
+    }
+  }, [activeTab, fetchAllRecordings]);
+
+  const handlePlayRecording = async (recording: Recording) => {
+    setActionLoading(recording.recordingId);
+    try {
+      const res = await fetch(`${RECORDING_API_URL}/recording/playback-url`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ 
+          recordingId: recording.recordingId,
+          userLogin: user?.login,
+          isAdmin: true
+        }),
+      });
+      
+      if (res.ok) {
+        const data = await res.json();
+        setPlayingRecording(data.playbackUrl);
+      } else {
+        alert('Erro ao obter URL de reprodução');
+      }
+    } catch (err) {
+      alert('Erro ao reproduzir gravação');
+    } finally {
+      setActionLoading(null);
+    }
+  };
+
+  const handleDownloadRecording = async (recording: Recording) => {
+    setActionLoading(recording.recordingId);
+    try {
+      const res = await fetch(`${RECORDING_API_URL}/recording/playback-url`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ 
+          recordingId: recording.recordingId,
+          userLogin: user?.login,
+          isAdmin: true
+        }),
+      });
+      
+      if (res.ok) {
+        const data = await res.json();
+        // Abrir em nova aba para download
+        window.open(data.playbackUrl, '_blank');
+      } else {
+        alert('Erro ao obter URL de download');
+      }
+    } catch (err) {
+      alert('Erro ao baixar gravação');
+    } finally {
+      setActionLoading(null);
+    }
+  };
+
+  const handleDownloadTranscription = (meeting: MeetingRecord) => {
+    if (!meeting.transcriptions || meeting.transcriptions.length === 0) {
+      alert('Esta reunião não possui transcrições');
+      return;
+    }
+    
+    const text = meetingHistoryService.exportTranscriptions(meeting);
+    const blob = new Blob([text], { type: 'text/plain;charset=utf-8' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = `transcricao_${meeting.roomId}_${new Date(meeting.startTime).toISOString().split('T')[0]}.txt`;
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+    URL.revokeObjectURL(url);
+  };
+
+  const handleGenerateReport = async (meeting: MeetingRecord) => {
+    if (!meeting.transcriptions || meeting.transcriptions.length === 0) {
+      alert('Esta reunião não possui transcrições para gerar relatório');
+      return;
+    }
+    
+    setGeneratingReport(meeting.id);
+    try {
+      const transcriptionText = meeting.transcriptions
+        .sort((a, b) => a.timestamp - b.timestamp)
+        .map(t => `${t.speaker}: ${t.text}`)
+        .join('\n');
+      
+      const context = {
+        meetingType: meeting.meetingType || 'ENTREVISTA' as const,
+        topic: meeting.meetingTopic || meeting.roomId,
+        jobDescription: meeting.jobDescription || '',
+        transcriptionHistory: meeting.transcriptions.map(t => `${t.speaker}: ${t.text}`),
+        questionsAsked: (meeting.questionsAsked || []).map((q, i) => ({
+          questionId: `q${i}`,
+          question: q,
+          answer: '',
+          timestamp: Date.now(),
+          category: 'technical',
+          answerQuality: 'good' as const,
+          keyTopics: []
+        })),
+        candidateName: meeting.participants[0] || 'Candidato'
+      };
+      
+      const report = await interviewAIService.generateInterviewReport(context);
+      
+      setReportModal({ meeting, report });
+    } catch (error) {
+      console.error('Erro ao gerar relatório:', error);
+      alert('Erro ao gerar relatório. Verifique se a IA está configurada.');
+    } finally {
+      setGeneratingReport(null);
+    }
+  };
+
+  const formatRecordingDate = (timestamp: number) => {
+    return new Date(timestamp).toLocaleString('pt-BR', {
+      day: '2-digit',
+      month: '2-digit',
+      year: 'numeric',
+      hour: '2-digit',
+      minute: '2-digit'
+    });
+  };
+
+  const formatDuration = (seconds: number) => {
+    const mins = Math.floor(seconds / 60);
+    const secs = seconds % 60;
+    return `${mins}:${secs.toString().padStart(2, '0')}`;
+  };
+
   if (!isAuthenticated) {
     return (
       <div className={`min-h-screen flex items-center justify-center ${darkMode ? 'bg-gray-900' : 'bg-gray-50'}`}>
@@ -780,6 +1020,17 @@ export default function AdminPanel({ darkMode }: AdminPanelProps) {
           >
             <Brain size={18} />
             IA Entrevista
+          </button>
+          <button
+            onClick={() => setActiveTab('history')}
+            className={`flex-1 py-2 px-4 rounded-lg font-medium transition flex items-center justify-center gap-2 ${
+              activeTab === 'history'
+                ? darkMode ? 'bg-gray-700 text-white' : 'bg-white text-gray-900 shadow'
+                : darkMode ? 'text-gray-400 hover:text-white' : 'text-gray-600 hover:text-gray-900'
+            }`}
+          >
+            <History size={18} />
+            Histórico
           </button>
         </div>
 
@@ -1687,6 +1938,376 @@ export default function AdminPanel({ darkMode }: AdminPanelProps) {
         {/* Interview AI Config Tab */}
         {activeTab === 'interviewai' && (
           <InterviewAIConfigPanel darkMode={darkMode} userLogin={user?.login || ''} />
+        )}
+
+        {/* History Tab */}
+        {activeTab === 'history' && (
+          <div className={`rounded-xl ${darkMode ? 'bg-gray-800' : 'bg-white'} shadow-lg overflow-hidden`}>
+            <div className={`px-6 py-4 border-b ${darkMode ? 'border-gray-700' : 'border-gray-200'} flex items-center justify-between`}>
+              <h2 className="text-lg font-semibold flex items-center gap-2">
+                <History size={20} />
+                Histórico de Reuniões ({allMeetingHistory.length})
+              </h2>
+              <button
+                onClick={fetchAllRecordings}
+                disabled={historyLoading}
+                className={`flex items-center gap-2 px-3 py-1.5 rounded-lg text-sm ${
+                  darkMode ? 'bg-gray-700 hover:bg-gray-600' : 'bg-gray-100 hover:bg-gray-200'
+                } ${historyLoading ? 'opacity-50' : ''}`}
+              >
+                <RefreshCw size={14} className={historyLoading ? 'animate-spin' : ''} />
+                Atualizar
+              </button>
+            </div>
+
+            {/* Filtros */}
+            <div className={`px-6 py-4 border-b ${darkMode ? 'border-gray-700 bg-gray-700/30' : 'border-gray-200 bg-gray-50'}`}>
+              <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
+                <div>
+                  <label className={`block text-xs font-medium mb-1 ${darkMode ? 'text-gray-400' : 'text-gray-600'}`}>
+                    Usuário
+                  </label>
+                  <select
+                    value={historyFilters.userLogin}
+                    onChange={(e) => setHistoryFilters(prev => ({ ...prev, userLogin: e.target.value }))}
+                    className={`w-full px-3 py-2 rounded-lg border text-sm ${
+                      darkMode 
+                        ? 'bg-gray-700 border-gray-600 text-white' 
+                        : 'bg-white border-gray-300 text-gray-900'
+                    }`}
+                  >
+                    <option value="">Todos os usuários</option>
+                    {uniqueUsers.map(u => (
+                      <option key={u} value={u}>{u}</option>
+                    ))}
+                  </select>
+                </div>
+                
+                <div>
+                  <label className={`block text-xs font-medium mb-1 ${darkMode ? 'text-gray-400' : 'text-gray-600'}`}>
+                    Tipo de Reunião
+                  </label>
+                  <select
+                    value={historyFilters.meetingType}
+                    onChange={(e) => setHistoryFilters(prev => ({ ...prev, meetingType: e.target.value }))}
+                    className={`w-full px-3 py-2 rounded-lg border text-sm ${
+                      darkMode 
+                        ? 'bg-gray-700 border-gray-600 text-white' 
+                        : 'bg-white border-gray-300 text-gray-900'
+                    }`}
+                  >
+                    <option value="">Todos os tipos</option>
+                    <option value="ENTREVISTA">Entrevista</option>
+                    <option value="ESCOPO">Escopo</option>
+                    <option value="REUNIAO">Reunião</option>
+                    <option value="TREINAMENTO">Treinamento</option>
+                    <option value="OUTRO">Outro</option>
+                  </select>
+                </div>
+                
+                <div>
+                  <label className={`block text-xs font-medium mb-1 ${darkMode ? 'text-gray-400' : 'text-gray-600'}`}>
+                    Data Início
+                  </label>
+                  <input
+                    type="date"
+                    value={historyFilters.startDate}
+                    onChange={(e) => setHistoryFilters(prev => ({ ...prev, startDate: e.target.value }))}
+                    className={`w-full px-3 py-2 rounded-lg border text-sm ${
+                      darkMode 
+                        ? 'bg-gray-700 border-gray-600 text-white' 
+                        : 'bg-white border-gray-300 text-gray-900'
+                    }`}
+                  />
+                </div>
+                
+                <div>
+                  <label className={`block text-xs font-medium mb-1 ${darkMode ? 'text-gray-400' : 'text-gray-600'}`}>
+                    Data Fim
+                  </label>
+                  <input
+                    type="date"
+                    value={historyFilters.endDate}
+                    onChange={(e) => setHistoryFilters(prev => ({ ...prev, endDate: e.target.value }))}
+                    className={`w-full px-3 py-2 rounded-lg border text-sm ${
+                      darkMode 
+                        ? 'bg-gray-700 border-gray-600 text-white' 
+                        : 'bg-white border-gray-300 text-gray-900'
+                    }`}
+                  />
+                </div>
+              </div>
+              
+              <div className="flex justify-end gap-2 mt-3">
+                <button
+                  onClick={() => setHistoryFilters({ userLogin: '', meetingType: '', startDate: '', endDate: '' })}
+                  className={`px-3 py-1.5 rounded-lg text-sm ${
+                    darkMode ? 'bg-gray-600 hover:bg-gray-500' : 'bg-gray-200 hover:bg-gray-300'
+                  }`}
+                >
+                  Limpar Filtros
+                </button>
+                <button
+                  onClick={fetchAllRecordings}
+                  disabled={historyLoading}
+                  className={`px-3 py-1.5 rounded-lg text-sm ${
+                    darkMode ? 'bg-blue-600 hover:bg-blue-700' : 'bg-blue-500 hover:bg-blue-600'
+                  } text-white ${historyLoading ? 'opacity-50' : ''}`}
+                >
+                  Aplicar Filtros
+                </button>
+              </div>
+            </div>
+
+            {/* Video Player Modal */}
+            {playingRecording && (
+              <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/80">
+                <div className={`relative w-full max-w-4xl mx-4 rounded-xl overflow-hidden ${darkMode ? 'bg-gray-900' : 'bg-white'}`}>
+                  <div className={`flex items-center justify-between px-4 py-3 border-b ${darkMode ? 'border-gray-700' : 'border-gray-200'}`}>
+                    <h3 className="font-semibold">Reproduzindo Gravação</h3>
+                    <button
+                      onClick={() => setPlayingRecording(null)}
+                      className={`p-1.5 rounded-lg ${darkMode ? 'hover:bg-gray-700' : 'hover:bg-gray-100'}`}
+                    >
+                      <XIcon size={20} />
+                    </button>
+                  </div>
+                  <div className="p-4">
+                    <video
+                      src={playingRecording}
+                      controls
+                      autoPlay
+                      className="w-full rounded-lg"
+                      style={{ maxHeight: '70vh' }}
+                    />
+                  </div>
+                </div>
+              </div>
+            )}
+
+            {/* Report Modal */}
+            {reportModal && (
+              <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/80 p-4">
+                <div className={`relative w-full max-w-4xl max-h-[90vh] overflow-y-auto rounded-xl ${darkMode ? 'bg-gray-900' : 'bg-white'}`}>
+                  <div className={`sticky top-0 flex items-center justify-between px-6 py-4 border-b ${darkMode ? 'border-gray-700 bg-gray-900' : 'border-gray-200 bg-white'}`}>
+                    <h3 className="font-semibold">Relatório da Reunião</h3>
+                    <button
+                      onClick={() => setReportModal(null)}
+                      className={`p-1.5 rounded-lg ${darkMode ? 'hover:bg-gray-700' : 'hover:bg-gray-100'}`}
+                    >
+                      <XIcon size={20} />
+                    </button>
+                  </div>
+                  <div className="p-6">
+                    <div className={`mb-4 p-4 rounded-lg ${darkMode ? 'bg-gray-800' : 'bg-gray-50'}`}>
+                      <p className="text-sm"><strong>Sala:</strong> {reportModal.meeting.roomId}</p>
+                      <p className="text-sm"><strong>Data:</strong> {new Date(reportModal.meeting.startTime).toLocaleString('pt-BR')}</p>
+                      {reportModal.meeting.meetingType && (
+                        <p className="text-sm"><strong>Tipo:</strong> {reportModal.meeting.meetingType}</p>
+                      )}
+                    </div>
+                    <div className={`prose ${darkMode ? 'prose-invert' : ''} max-w-none`}>
+                      <pre className="whitespace-pre-wrap text-sm">{JSON.stringify(reportModal.report, null, 2)}</pre>
+                    </div>
+                  </div>
+                </div>
+              </div>
+            )}
+
+            {historyLoading ? (
+              <div className="p-8 text-center">
+                <RefreshCw size={32} className="mx-auto mb-4 animate-spin text-blue-500" />
+                <p className={darkMode ? 'text-gray-400' : 'text-gray-500'}>Carregando histórico...</p>
+              </div>
+            ) : allMeetingHistory.length === 0 ? (
+              <div className="p-8 text-center">
+                <History size={48} className={`mx-auto mb-4 ${darkMode ? 'text-gray-600' : 'text-gray-300'}`} />
+                <p className={darkMode ? 'text-gray-400' : 'text-gray-500'}>Nenhuma reunião encontrada</p>
+              </div>
+            ) : (
+              <div className="divide-y divide-gray-700">
+                {allMeetingHistory.map(meeting => {
+                  // Buscar gravação correspondente
+                  const recording = allRecordings.find(r => r.meetingId === meeting.id || r.roomId === meeting.roomId);
+                  const hasTranscription = meeting.transcriptions && meeting.transcriptions.length > 0;
+                  const hasRecording = !!recording || !!meeting.recordingKey;
+                  
+                  return (
+                    <div 
+                      key={meeting.id} 
+                      className={`px-6 py-4 ${darkMode ? 'hover:bg-gray-700/50' : 'hover:bg-gray-50'}`}
+                    >
+                      <div className="flex items-start justify-between gap-4">
+                        <div className="flex-1">
+                          <div className="flex items-center gap-2 mb-2 flex-wrap">
+                            <span className={`font-mono text-sm px-2 py-1 rounded ${
+                              darkMode ? 'bg-purple-900/50 text-purple-300' : 'bg-purple-100 text-purple-700'
+                            }`}>
+                              {meeting.roomId}
+                            </span>
+                            
+                            {meeting.meetingType && (
+                              <span className={`text-xs px-2 py-1 rounded font-medium ${
+                                meeting.meetingType === 'ENTREVISTA' 
+                                  ? darkMode ? 'bg-blue-900/50 text-blue-300' : 'bg-blue-100 text-blue-700'
+                                  : meeting.meetingType === 'ESCOPO'
+                                  ? darkMode ? 'bg-green-900/50 text-green-300' : 'bg-green-100 text-green-700'
+                                  : meeting.meetingType === 'TREINAMENTO'
+                                  ? darkMode ? 'bg-yellow-900/50 text-yellow-300' : 'bg-yellow-100 text-yellow-700'
+                                  : darkMode ? 'bg-gray-700 text-gray-300' : 'bg-gray-200 text-gray-700'
+                              }`}>
+                                {meeting.meetingType}
+                              </span>
+                            )}
+                            
+                            {meeting.duration && (
+                              <span className={`text-xs px-2 py-1 rounded flex items-center gap-1 ${
+                                darkMode ? 'bg-gray-700 text-gray-300' : 'bg-gray-200 text-gray-700'
+                              }`}>
+                                <Clock size={12} />
+                                {Math.round(meeting.duration / 60000)} min
+                              </span>
+                            )}
+                          </div>
+                          
+                          {meeting.meetingTopic && (
+                            <p className={`text-sm font-medium mb-1 ${darkMode ? 'text-gray-200' : 'text-gray-800'}`}>
+                              {meeting.meetingTopic}
+                            </p>
+                          )}
+                          
+                          <div className={`text-sm ${darkMode ? 'text-gray-400' : 'text-gray-600'}`}>
+                            <span className="flex items-center gap-2">
+                              <Users size={14} />
+                              {meeting.userLogin}
+                            </span>
+                            <span className="flex items-center gap-2 mt-1">
+                              <Calendar size={14} />
+                              {new Date(meeting.startTime).toLocaleString('pt-BR')}
+                            </span>
+                            {meeting.participants.length > 0 && (
+                              <span className="flex items-center gap-2 mt-1">
+                                <Users size={14} />
+                                {meeting.participants.length} participante(s)
+                              </span>
+                            )}
+                          </div>
+                          
+                          <div className="flex items-center gap-2 mt-2">
+                            {hasTranscription && (
+                              <span className={`text-xs px-2 py-0.5 rounded flex items-center gap-1 ${
+                                darkMode ? 'bg-green-900/30 text-green-400' : 'bg-green-100 text-green-700'
+                              }`}>
+                                <FileText size={12} />
+                                {meeting.transcriptions.length} transcrições
+                              </span>
+                            )}
+                            {hasRecording && (
+                              <span className={`text-xs px-2 py-0.5 rounded flex items-center gap-1 ${
+                                darkMode ? 'bg-blue-900/30 text-blue-400' : 'bg-blue-100 text-blue-700'
+                              }`}>
+                                <Video size={12} />
+                                Gravação disponível
+                              </span>
+                            )}
+                          </div>
+                        </div>
+                        
+                        <div className="flex flex-col gap-2">
+                          {hasTranscription && (
+                            <>
+                              <button
+                                onClick={() => handleDownloadTranscription(meeting)}
+                                className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-sm whitespace-nowrap ${
+                                  darkMode 
+                                    ? 'bg-purple-600/20 text-purple-400 hover:bg-purple-600/30' 
+                                    : 'bg-purple-100 text-purple-700 hover:bg-purple-200'
+                                }`}
+                                title="Baixar Transcrição"
+                              >
+                                <FileText size={14} />
+                                Transcrição
+                              </button>
+                              
+                              <button
+                                onClick={() => handleGenerateReport(meeting)}
+                                disabled={generatingReport === meeting.id}
+                                className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-sm whitespace-nowrap ${
+                                  darkMode 
+                                    ? 'bg-indigo-600/20 text-indigo-400 hover:bg-indigo-600/30' 
+                                    : 'bg-indigo-100 text-indigo-700 hover:bg-indigo-200'
+                                } ${generatingReport === meeting.id ? 'opacity-50' : ''}`}
+                                title="Gerar Relatório"
+                              >
+                                {generatingReport === meeting.id ? (
+                                  <RefreshCw size={14} className="animate-spin" />
+                                ) : (
+                                  <Brain size={14} />
+                                )}
+                                Relatório
+                              </button>
+                            </>
+                          )}
+                          
+                          {hasRecording && recording && (
+                            <>
+                              <button
+                                onClick={() => handlePlayRecording(recording)}
+                                disabled={actionLoading === recording.recordingId}
+                                className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-sm whitespace-nowrap ${
+                                  darkMode 
+                                    ? 'bg-green-600/20 text-green-400 hover:bg-green-600/30' 
+                                    : 'bg-green-100 text-green-700 hover:bg-green-200'
+                                } ${actionLoading === recording.recordingId ? 'opacity-50' : ''}`}
+                                title="Reproduzir"
+                              >
+                                <Play size={14} />
+                                Reproduzir
+                              </button>
+                              <button
+                                onClick={() => handleDownloadRecording(recording)}
+                                disabled={actionLoading === recording.recordingId}
+                                className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-sm whitespace-nowrap ${
+                                  darkMode 
+                                    ? 'bg-blue-600/20 text-blue-400 hover:bg-blue-600/30' 
+                                    : 'bg-blue-100 text-blue-700 hover:bg-blue-200'
+                                } ${actionLoading === recording.recordingId ? 'opacity-50' : ''}`}
+                                title="Baixar Gravação"
+                              >
+                                <Download size={14} />
+                                Gravação
+                              </button>
+                            </>
+                          )}
+                        </div>
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+            )}
+
+            {/* Info */}
+            <div className={`px-6 py-4 ${darkMode ? 'bg-gray-700/30 border-t border-gray-700' : 'bg-gray-50 border-t border-gray-200'}`}>
+              <div className="flex items-center justify-between">
+                <p className={`text-sm ${darkMode ? 'text-gray-400' : 'text-gray-600'}`}>
+                  <strong>ℹ️ Histórico:</strong> Aqui você pode ver todas as reuniões realizadas na plataforma com suas transcrições e gravações.
+                  Use os botões para baixar transcrições, reproduzir/baixar gravações ou gerar relatórios com IA.
+                </p>
+                <button
+                  onClick={migrateLocalStorageToBackend}
+                  disabled={historyLoading}
+                  className={`ml-4 flex items-center gap-2 px-3 py-1.5 rounded-lg text-sm whitespace-nowrap ${
+                    darkMode ? 'bg-orange-600 hover:bg-orange-700' : 'bg-orange-500 hover:bg-orange-600'
+                  } text-white ${historyLoading ? 'opacity-50' : ''}`}
+                  title="Migrar dados do localStorage para o servidor"
+                >
+                  <RefreshCw size={14} className={historyLoading ? 'animate-spin' : ''} />
+                  Migrar Dados Locais
+                </button>
+              </div>
+            </div>
+          </div>
         )}
 
         {/* Server Info */}

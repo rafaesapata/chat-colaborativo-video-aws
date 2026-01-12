@@ -1,7 +1,9 @@
 import { useState, useEffect } from 'react';
-import { X, Clock, Users, FileText, Trash2, Download, ChevronDown, ChevronUp, Play, Video } from 'lucide-react';
-import { meetingHistoryService, MeetingRecord } from '../services/meetingHistoryService';
+import { X, Clock, Users, FileText, Trash2, Download, ChevronDown, ChevronUp, Play, Video, Brain } from 'lucide-react';
+import { meetingHistoryService, MeetingRecord, RecordingFragment } from '../services/meetingHistoryService';
 import { getRecordingPlaybackUrl } from '../hooks/useRecording';
+import { interviewAIService, InterviewContext, InterviewReport } from '../services/interviewAIService';
+import InterviewReportModal from './InterviewReportModal';
 
 interface MeetingHistoryProps {
   isOpen: boolean;
@@ -16,6 +18,11 @@ export default function MeetingHistory({ isOpen, onClose, userLogin, darkMode }:
   const [playingVideo, setPlayingVideo] = useState<string | null>(null);
   const [videoUrl, setVideoUrl] = useState<string | null>(null);
   const [loadingVideo, setLoadingVideo] = useState(false);
+  const [currentFragmentIndex, setCurrentFragmentIndex] = useState(0);
+  const [currentFragments, setCurrentFragments] = useState<RecordingFragment[]>([]);
+  const [generatingReport, setGeneratingReport] = useState<string | null>(null);
+  const [showReportModal, setShowReportModal] = useState(false);
+  const [currentReport, setCurrentReport] = useState<InterviewReport | null>(null);
 
   useEffect(() => {
     if (isOpen && userLogin) {
@@ -44,12 +51,21 @@ export default function MeetingHistory({ isOpen, onClose, userLogin, darkMode }:
     URL.revokeObjectURL(url);
   };
 
-  const handlePlayRecording = async (meeting: MeetingRecord) => {
-    if (!meeting.recordingKey) return;
+  const handlePlayRecording = async (meeting: MeetingRecord, fragmentIndex: number = 0) => {
+    // Obter todos os fragmentos da reunião
+    const fragments = meetingHistoryService.getRecordingFragments(userLogin, meeting.id);
+    
+    if (fragments.length === 0) return;
+    
+    const fragment = fragments[fragmentIndex];
+    if (!fragment) return;
     
     setLoadingVideo(true);
+    setCurrentFragments(fragments);
+    setCurrentFragmentIndex(fragmentIndex);
+    
     try {
-      const url = await getRecordingPlaybackUrl(meeting.recordingKey, userLogin);
+      const url = await getRecordingPlaybackUrl(fragment.recordingKey, userLogin);
       if (url) {
         setVideoUrl(url);
         setPlayingVideo(meeting.id);
@@ -61,9 +77,95 @@ export default function MeetingHistory({ isOpen, onClose, userLogin, darkMode }:
     }
   };
 
+  const handlePlayNextFragment = async () => {
+    if (currentFragmentIndex < currentFragments.length - 1) {
+      const nextIndex = currentFragmentIndex + 1;
+      const fragment = currentFragments[nextIndex];
+      
+      setLoadingVideo(true);
+      setCurrentFragmentIndex(nextIndex);
+      
+      try {
+        const url = await getRecordingPlaybackUrl(fragment.recordingKey, userLogin);
+        if (url) {
+          setVideoUrl(url);
+        }
+      } catch (error) {
+        console.error('Erro ao carregar próximo fragmento:', error);
+      } finally {
+        setLoadingVideo(false);
+      }
+    }
+  };
+
+  const handlePlayPrevFragment = async () => {
+    if (currentFragmentIndex > 0) {
+      const prevIndex = currentFragmentIndex - 1;
+      const fragment = currentFragments[prevIndex];
+      
+      setLoadingVideo(true);
+      setCurrentFragmentIndex(prevIndex);
+      
+      try {
+        const url = await getRecordingPlaybackUrl(fragment.recordingKey, userLogin);
+        if (url) {
+          setVideoUrl(url);
+        }
+      } catch (error) {
+        console.error('Erro ao carregar fragmento anterior:', error);
+      } finally {
+        setLoadingVideo(false);
+      }
+    }
+  };
+
   const handleCloseVideo = () => {
     setPlayingVideo(null);
     setVideoUrl(null);
+    setCurrentFragments([]);
+    setCurrentFragmentIndex(0);
+  };
+
+  const handleGenerateReport = async (meeting: MeetingRecord) => {
+    if (meeting.transcriptions.length === 0) {
+      alert('Esta reunião não possui transcrições para gerar relatório.');
+      return;
+    }
+
+    setGeneratingReport(meeting.id);
+    try {
+      // Extrair informações da reunião
+      const context: InterviewContext = {
+        meetingType: 'ENTREVISTA',
+        topic: meeting.meetingTopic || 'Entrevista',
+        jobDescription: meeting.jobDescription || '',
+        transcriptionHistory: meeting.transcriptions.map(t => t.text),
+        questionsAsked: (meeting.questionsAsked || []).map((q, idx) => ({
+          questionId: `q_${idx}`,
+          question: q,
+          answer: '', // Não temos as respostas separadas no histórico
+          timestamp: Date.now(),
+          category: 'general',
+          answerQuality: 'good' as const,
+          keyTopics: []
+        })),
+        candidateName: meeting.participants.find(p => p !== userLogin) || 'Candidato'
+      };
+
+      const report = await interviewAIService.generateInterviewReport(context);
+      setCurrentReport(report);
+      setShowReportModal(true);
+    } catch (error) {
+      console.error('Erro ao gerar relatório:', error);
+      alert('Erro ao gerar relatório. Por favor, tente novamente.');
+    } finally {
+      setGeneratingReport(null);
+    }
+  };
+
+  const handleCloseReport = () => {
+    setShowReportModal(false);
+    setCurrentReport(null);
   };
 
   const formatRecordingDuration = (seconds?: number) => {
@@ -97,7 +199,7 @@ export default function MeetingHistory({ isOpen, onClose, userLogin, darkMode }:
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 backdrop-blur-sm p-4">
-      <div className={`relative w-full max-w-2xl max-h-[80vh] rounded-2xl shadow-2xl overflow-hidden ${
+      <div className={`relative w-full max-w-4xl max-h-[85vh] rounded-2xl shadow-2xl overflow-hidden ${
         darkMode ? 'bg-gray-800 text-white' : 'bg-white text-gray-900'
       }`}>
         {/* Header */}
@@ -119,7 +221,7 @@ export default function MeetingHistory({ isOpen, onClose, userLogin, darkMode }:
         </div>
 
         {/* Content */}
-        <div className="overflow-y-auto max-h-[calc(80vh-80px)] p-4">
+        <div className="overflow-y-auto max-h-[calc(85vh-80px)] p-4">
           {meetings.length === 0 ? (
             <div className={`text-center py-12 ${darkMode ? 'text-gray-400' : 'text-gray-500'}`}>
               <Clock size={48} className="mx-auto mb-4 opacity-50" />
@@ -157,7 +259,14 @@ export default function MeetingHistory({ isOpen, onClose, userLogin, darkMode }:
                               darkMode ? 'bg-red-900/50 text-red-300' : 'bg-red-100 text-red-700'
                             }`}>
                               <Video size={12} />
-                              {meeting.recordingDuration ? formatRecordingDuration(meeting.recordingDuration) : 'Gravado'}
+                              {(() => {
+                                const fragments = meetingHistoryService.getRecordingFragments(userLogin, meeting.id);
+                                const totalDuration = meetingHistoryService.getTotalRecordingDuration(userLogin, meeting.id);
+                                if (fragments.length > 1) {
+                                  return `${fragments.length} partes (${formatRecordingDuration(totalDuration)})`;
+                                }
+                                return totalDuration ? formatRecordingDuration(totalDuration) : 'Gravado';
+                              })()}
                             </span>
                           )}
                           {meeting.transcriptions.length > 0 && (
@@ -206,20 +315,37 @@ export default function MeetingHistory({ isOpen, onClose, userLogin, darkMode }:
                           </button>
                         )}
                         {meeting.transcriptions.length > 0 && (
-                          <button
-                            onClick={(e) => {
-                              e.stopPropagation();
-                              handleExport(meeting);
-                            }}
-                            className={`p-2 rounded-lg transition ${
-                              darkMode 
-                                ? 'hover:bg-gray-600 text-gray-400 hover:text-white' 
-                                : 'hover:bg-gray-200 text-gray-500 hover:text-gray-700'
-                            }`}
-                            title="Exportar transcrições"
-                          >
-                            <Download size={16} />
-                          </button>
+                          <>
+                            <button
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                handleGenerateReport(meeting);
+                              }}
+                              disabled={generatingReport === meeting.id}
+                              className={`p-2 rounded-lg transition ${
+                                darkMode 
+                                  ? 'hover:bg-purple-900/50 text-purple-400 hover:text-purple-300' 
+                                  : 'hover:bg-purple-100 text-purple-500 hover:text-purple-600'
+                              } ${generatingReport === meeting.id ? 'opacity-50 animate-pulse' : ''}`}
+                              title="Gerar relatório com IA"
+                            >
+                              <Brain size={16} />
+                            </button>
+                            <button
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                handleExport(meeting);
+                              }}
+                              className={`p-2 rounded-lg transition ${
+                                darkMode 
+                                  ? 'hover:bg-gray-600 text-gray-400 hover:text-white' 
+                                  : 'hover:bg-gray-200 text-gray-500 hover:text-gray-700'
+                              }`}
+                              title="Exportar transcrições"
+                            >
+                              <Download size={16} />
+                            </button>
+                          </>
                         )}
                         <button
                           onClick={(e) => {
@@ -298,16 +424,70 @@ export default function MeetingHistory({ isOpen, onClose, userLogin, darkMode }:
               >
                 <X size={20} />
               </button>
-              <video
-                src={videoUrl}
-                controls
-                autoPlay
-                className="w-full max-h-[80vh]"
-              >
-                Seu navegador não suporta reprodução de vídeo.
-              </video>
+              
+              {/* Fragment Navigation */}
+              {currentFragments.length > 1 && (
+                <div className="absolute top-4 left-4 z-10 flex items-center gap-2 bg-black/50 rounded-lg px-3 py-2">
+                  <button
+                    onClick={handlePlayPrevFragment}
+                    disabled={currentFragmentIndex === 0 || loadingVideo}
+                    className={`p-1 rounded transition ${
+                      currentFragmentIndex === 0 || loadingVideo
+                        ? 'opacity-30 cursor-not-allowed'
+                        : 'hover:bg-white/20'
+                    }`}
+                  >
+                    <ChevronUp size={16} className="text-white rotate-[-90deg]" />
+                  </button>
+                  <span className="text-white text-sm font-medium">
+                    Parte {currentFragmentIndex + 1} de {currentFragments.length}
+                  </span>
+                  <button
+                    onClick={handlePlayNextFragment}
+                    disabled={currentFragmentIndex === currentFragments.length - 1 || loadingVideo}
+                    className={`p-1 rounded transition ${
+                      currentFragmentIndex === currentFragments.length - 1 || loadingVideo
+                        ? 'opacity-30 cursor-not-allowed'
+                        : 'hover:bg-white/20'
+                    }`}
+                  >
+                    <ChevronDown size={16} className="text-white rotate-[-90deg]" />
+                  </button>
+                </div>
+              )}
+              
+              {loadingVideo ? (
+                <div className="flex items-center justify-center h-64">
+                  <div className="w-8 h-8 border-2 border-white border-t-transparent rounded-full animate-spin" />
+                </div>
+              ) : (
+                <video
+                  src={videoUrl}
+                  controls
+                  autoPlay
+                  className="w-full max-h-[80vh]"
+                  onEnded={() => {
+                    // Auto-play próximo fragmento quando terminar
+                    if (currentFragmentIndex < currentFragments.length - 1) {
+                      handlePlayNextFragment();
+                    }
+                  }}
+                >
+                  Seu navegador não suporta reprodução de vídeo.
+                </video>
+              )}
             </div>
           </div>
+        )}
+
+        {/* Report Modal */}
+        {showReportModal && currentReport && (
+          <InterviewReportModal
+            isOpen={showReportModal}
+            onClose={handleCloseReport}
+            report={currentReport}
+            darkMode={darkMode}
+          />
         )}
       </div>
     </div>
