@@ -223,6 +223,17 @@ export default function InterviewAIConfigPanel({ darkMode, userLogin }: Intervie
               description="Frequência de novas perguntas técnicas"
               onChange={(v) => updateConfig('generateNewQuestionsEveryN', v)}
             />
+            <ConfigSlider
+              darkMode={darkMode}
+              label="Delay de detecção automática"
+              value={config.autoDetectionDelayMs}
+              min={1000}
+              max={10000}
+              step={500}
+              unit="ms"
+              description="Tempo antes de marcar pergunta como detectada"
+              onChange={(v) => updateConfig('autoDetectionDelayMs', v)}
+            />
           </div>
         </section>
 

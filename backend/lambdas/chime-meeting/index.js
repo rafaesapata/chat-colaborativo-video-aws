@@ -44,6 +44,9 @@ const {
   GetObjectCommand 
 } = require('@aws-sdk/client-s3');
 
+const { ApiGatewayManagementApiClient, PostToConnectionCommand } = require('@aws-sdk/client-apigatewaymanagementapi');
+const { DynamoDBDocumentClient, QueryCommand: DocQueryCommand } = require('@aws-sdk/lib-dynamodb');
+
 const { getSignedUrl } = require('@aws-sdk/s3-request-presigner');
 
 const crypto = require('crypto');
@@ -89,6 +92,8 @@ const dynamoClient = new DynamoDBClient({
   region: CONFIG.REGION,
   maxAttempts: 3,
 });
+
+const docClient = DynamoDBDocumentClient.from(dynamoClient);
 
 const s3Client = new S3Client({ 
   region: CONFIG.REGION,
@@ -1277,6 +1282,76 @@ async function handleAdminListRooms(body) {
   }
 }
 
+// ============ NOTIFICAR ENCERRAMENTO DE SALA VIA WEBSOCKET ============
+async function notifyRoomEnded(roomId, adminLogin) {
+  try {
+    const CONNECTIONS_TABLE = process.env.CONNECTIONS_TABLE;
+    if (!CONNECTIONS_TABLE) {
+      log(LOG_LEVELS.WARN, 'CONNECTIONS_TABLE não configurada, pulando notificação');
+      return;
+    }
+
+    // Buscar todas as conexões da sala
+    const result = await docClient.send(new DocQueryCommand({
+      TableName: CONNECTIONS_TABLE,
+      IndexName: 'RoomConnectionsIndex',
+      KeyConditionExpression: 'roomId = :roomId',
+      ExpressionAttributeValues: { ':roomId': roomId }
+    }));
+
+    const connections = result.Items || [];
+    log(LOG_LEVELS.INFO, 'Conexões encontradas para notificar', { roomId, count: connections.length });
+
+    if (connections.length === 0) {
+      return;
+    }
+
+    // Criar cliente API Gateway
+    const apiGateway = new ApiGatewayManagementApiClient({
+      endpoint: `https://${process.env.API_GATEWAY_DOMAIN_NAME}/${process.env.STAGE || 'prod'}`
+    });
+
+    // Mensagem de encerramento
+    const message = {
+      type: 'room_event',
+      data: {
+        eventType: 'room_ended',
+        roomId,
+        message: 'A sala foi encerrada pelo administrador',
+        adminLogin,
+        timestamp: Date.now()
+      }
+    };
+
+    // Enviar para todas as conexões
+    const promises = connections.map(async (connection) => {
+      try {
+        await apiGateway.send(new PostToConnectionCommand({
+          ConnectionId: connection.connectionId,
+          Data: JSON.stringify(message)
+        }));
+        log(LOG_LEVELS.INFO, 'Notificação enviada', { connectionId: connection.connectionId });
+      } catch (error) {
+        if (error.statusCode === 410) {
+          log(LOG_LEVELS.INFO, 'Conexão obsoleta', { connectionId: connection.connectionId });
+        } else {
+          log(LOG_LEVELS.WARN, 'Erro ao enviar notificação', { 
+            connectionId: connection.connectionId, 
+            error: error.message 
+          });
+        }
+      }
+    });
+
+    await Promise.allSettled(promises);
+    log(LOG_LEVELS.INFO, 'Notificações de encerramento enviadas', { roomId, count: connections.length });
+
+  } catch (error) {
+    log(LOG_LEVELS.ERROR, 'Erro ao notificar encerramento de sala', { error: error.message });
+    throw error;
+  }
+}
+
 // ============ ADMIN: ENCERRAR SALA ============
 async function handleAdminEndRoom(body) {
   const { userLogin, roomId, meetingId } = body;
@@ -1299,6 +1374,17 @@ async function handleAdminEndRoom(body) {
     
     if (!meetingIdToDelete) {
       return errorResponse(404, 'Sala não encontrada');
+    }
+
+    // Notificar todos os usuários via WebSocket ANTES de deletar a reunião
+    if (roomId) {
+      try {
+        await notifyRoomEnded(roomId, userLogin);
+        log(LOG_LEVELS.INFO, 'Notificação de encerramento enviada', { roomId });
+      } catch (notifyError) {
+        log(LOG_LEVELS.WARN, 'Erro ao notificar usuários', { error: notifyError.message });
+        // Continuar mesmo se a notificação falhar
+      }
     }
 
     // Deletar reunião no Chime
@@ -2919,13 +3005,14 @@ const INTERVIEW_CONFIG_KEY = 'interview_ai_config_global';
 // Configuração padrão da IA de entrevista
 const DEFAULT_INTERVIEW_CONFIG = {
   minAnswerLength: 50,
-  minTimeBetweenSuggestionsMs: 5000,
+  minTimeBetweenSuggestionsMs: 8000, // Aumentado de 5s para 8s
   minTranscriptionsForFollowup: 1,
   maxUnreadSuggestions: 5,
   initialSuggestionsCount: 3,
-  cooldownAfterSuggestionMs: 8000,
+  cooldownAfterSuggestionMs: 10000, // Aumentado de 8s para 10s
   saveDebounceMs: 2000,
-  processDelayMs: 500,
+  processDelayMs: 1000, // Aumentado de 500ms para 1s
+  autoDetectionDelayMs: 3000, // Delay antes de marcar pergunta como detectada automaticamente
   keywordMatchWeight: 60,
   lengthBonusMax: 20,
   exampleBonus: 15,
@@ -3002,13 +3089,14 @@ async function handleSaveInterviewConfig(body) {
   // Validar e sanitizar configuração
   const sanitizedConfig = {
     minAnswerLength: Math.max(10, Math.min(500, Number(config.minAnswerLength) || 50)),
-    minTimeBetweenSuggestionsMs: Math.max(1000, Math.min(60000, Number(config.minTimeBetweenSuggestionsMs) || 5000)),
+    minTimeBetweenSuggestionsMs: Math.max(1000, Math.min(60000, Number(config.minTimeBetweenSuggestionsMs) || 8000)),
     minTranscriptionsForFollowup: Math.max(1, Math.min(10, Number(config.minTranscriptionsForFollowup) || 1)),
     maxUnreadSuggestions: Math.max(1, Math.min(20, Number(config.maxUnreadSuggestions) || 5)),
     initialSuggestionsCount: Math.max(1, Math.min(10, Number(config.initialSuggestionsCount) || 3)),
-    cooldownAfterSuggestionMs: Math.max(1000, Math.min(60000, Number(config.cooldownAfterSuggestionMs) || 8000)),
+    cooldownAfterSuggestionMs: Math.max(1000, Math.min(60000, Number(config.cooldownAfterSuggestionMs) || 10000)),
     saveDebounceMs: Math.max(500, Math.min(10000, Number(config.saveDebounceMs) || 2000)),
-    processDelayMs: Math.max(100, Math.min(5000, Number(config.processDelayMs) || 500)),
+    processDelayMs: Math.max(100, Math.min(5000, Number(config.processDelayMs) || 1000)),
+    autoDetectionDelayMs: Math.max(1000, Math.min(10000, Number(config.autoDetectionDelayMs) || 3000)),
     keywordMatchWeight: Math.max(0, Math.min(100, Number(config.keywordMatchWeight) || 60)),
     lengthBonusMax: Math.max(0, Math.min(50, Number(config.lengthBonusMax) || 20)),
     exampleBonus: Math.max(0, Math.min(50, Number(config.exampleBonus) || 15)),
@@ -3069,7 +3157,7 @@ async function handleInterviewAI(body) {
     return errorResponse(400, 'context é obrigatório');
   }
   
-  const validActions = ['generateInitialQuestions', 'generateFollowUp', 'evaluateAnswer', 'generateNewQuestions'];
+  const validActions = ['generateInitialQuestions', 'generateFollowUp', 'evaluateAnswer', 'generateNewQuestions', 'generateReport', 'evaluateCompleteness'];
   if (!validActions.includes(action)) {
     return errorResponse(400, `action inválido. Valores permitidos: ${validActions.join(', ')}`);
   }
