@@ -49,6 +49,39 @@ const HISTORY_STORAGE_KEY = 'videochat_meeting_history';
 
 export const meetingHistoryService = {
   // Obter todo o histórico de um usuário
+  // Obter histórico do backend (async) - FONTE PRINCIPAL
+  async getHistoryAsync(userLogin: string, _forceRefresh = false): Promise<MeetingRecord[]> {
+    if (!userLogin) return [];
+    if (!CHIME_API_URL) {
+      console.warn('[MeetingHistory] CHIME_API_URL não configurada');
+      return this.getHistory(userLogin);
+    }
+    try {
+      console.log('[MeetingHistory] Buscando histórico do backend para:', userLogin);
+      const response = await fetch(`${CHIME_API_URL}/admin/history/list`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ userLogin, filters: { userLogin } }),
+      });
+      if (response.ok) {
+        const data = await response.json();
+        const history = (data.history || []).map((h: MeetingRecord & { meetingId?: string }) => ({
+          ...h,
+          id: h.meetingId || h.id,
+          transcriptions: h.transcriptions || [],
+        }));
+        console.log('[MeetingHistory] Histórico carregado:', history.length, 'reuniões');
+        return history;
+      }
+      console.warn('[MeetingHistory] Erro ao buscar histórico, usando localStorage');
+      return this.getHistory(userLogin);
+    } catch (error) {
+      console.error('[MeetingHistory] Erro ao buscar histórico:', error);
+      return this.getHistory(userLogin);
+    }
+  },
+
+  // Obter todo o histórico de um usuário
   getHistory(userLogin: string): MeetingRecord[] {
     const stored = localStorage.getItem(`${HISTORY_STORAGE_KEY}_${userLogin}`);
     if (stored) {

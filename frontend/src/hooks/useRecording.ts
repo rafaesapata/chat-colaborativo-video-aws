@@ -365,7 +365,30 @@ export function useRecording({ roomId, userLogin, meetingId }: UseRecordingProps
         throw new Error('Falha no upload para S3');
       }
 
-      console.log('[Recording] Upload concluído:', recordingKey);
+      console.log('[Recording] Upload para S3 concluído, confirmando...');
+      
+      // IMPORTANTE: Confirmar upload no backend para atualizar status para "completed"
+      try {
+        const confirmResponse = await fetch(`${RECORDING_API_URL}/recording/confirm-upload`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            recordingId,
+            userLogin: safeUserLogin,
+            fileSize: blob.size,
+            duration,
+          }),
+        });
+        
+        if (confirmResponse.ok) {
+          console.log('[Recording] Upload confirmado com sucesso');
+        } else {
+          console.warn('[Recording] Falha ao confirmar upload, mas arquivo foi enviado');
+        }
+      } catch (confirmError) {
+        console.warn('[Recording] Erro ao confirmar upload:', confirmError);
+        // Não falhar o upload por causa disso - o job de correção vai resolver
+      }
       
       // Salvar referência no histórico local
       saveRecordingToHistory(recordingKey, duration, recordingId);

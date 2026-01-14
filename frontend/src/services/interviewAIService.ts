@@ -4,6 +4,8 @@
  * SEM HARDCODING - Todas as perguntas são geradas pela IA
  */
 
+import { getCurrentConfig, getInterviewConfig } from './interviewConfigService';
+
 const API_URL = import.meta.env.VITE_CHIME_API_URL || import.meta.env.VITE_API_URL || '';
 
 export interface InterviewSuggestion {
@@ -175,12 +177,17 @@ async function callInterviewAI(action: string, context: InterviewContext, params
 /**
  * Detectar se uma pergunta sugerida foi feita na transcrição
  * MELHORADO: Mais sensível e inteligente para detectar variações
+ * Usa threshold configurável via painel de configurações
  */
 export function detectAskedQuestion(
   transcriptionText: string,
   suggestions: InterviewSuggestion[]
 ): InterviewSuggestion | null {
   const textLower = transcriptionText.toLowerCase().trim();
+  
+  // Obter threshold configurável (padrão 25%)
+  const config = getCurrentConfig();
+  const similarityThreshold = (config.questionSimilarityThreshold || 25) / 100;
   
   // Palavras-chave que indicam uma pergunta (expandido)
   const questionIndicators = [
@@ -200,17 +207,18 @@ export function detectAskedQuestion(
   for (const suggestion of suggestions) {
     if (suggestion.isRead) continue;
     
-    // 1. SIMILARIDADE GERAL (threshold reduzido de 35% para 25%)
+    // 1. SIMILARIDADE GERAL (usa threshold configurável)
     const similarity = calculateSimilarity(transcriptionText, suggestion.question);
     
-    if (similarity > 0.25) {
+    if (similarity > similarityThreshold) {
       const score = similarity;
       if (!bestMatch || score > bestMatch.score) {
         bestMatch = { suggestion, score };
       }
     }
     
-    // 2. KEYWORDS MATCH (threshold reduzido de 45% para 30%)
+    // 2. KEYWORDS MATCH (threshold = similarityThreshold + 5%)
+    const keywordThreshold = similarityThreshold + 0.05;
     const questionKeywords = suggestion.question
       .toLowerCase()
       .split(/\s+/)
@@ -219,14 +227,14 @@ export function detectAskedQuestion(
     const matchedKeywords = questionKeywords.filter(kw => textLower.includes(kw));
     const keywordMatch = matchedKeywords.length / Math.max(questionKeywords.length, 1);
     
-    if (keywordMatch > 0.30) {
+    if (keywordMatch > keywordThreshold) {
       const score = keywordMatch * 0.9; // Peso um pouco menor que similaridade
       if (!bestMatch || score > bestMatch.score) {
         bestMatch = { suggestion, score };
       }
     }
     
-    // 3. CONCEITOS-CHAVE (novo: detectar conceitos técnicos importantes)
+    // 3. CONCEITOS-CHAVE (detectar conceitos técnicos importantes)
     const technicalTerms = extractTechnicalTerms(suggestion.question);
     if (technicalTerms.length > 0) {
       const matchedTerms = technicalTerms.filter(term => textLower.includes(term.toLowerCase()));
@@ -241,7 +249,7 @@ export function detectAskedQuestion(
       }
     }
     
-    // 4. INTENÇÃO DA PERGUNTA (novo: detectar intenção similar)
+    // 4. INTENÇÃO DA PERGUNTA (detectar intenção similar)
     const intentMatch = calculateIntentSimilarity(transcriptionText, suggestion.question);
     if (intentMatch > 0.4) {
       const score = intentMatch * 0.85;
@@ -251,9 +259,9 @@ export function detectAskedQuestion(
     }
   }
   
-  // Retornar melhor match se score >= 25%
-  if (bestMatch && bestMatch.score >= 0.25) {
-    console.log(`[InterviewAI] 🎯 Pergunta detectada! Score: ${(bestMatch.score * 100).toFixed(0)}%`);
+  // Retornar melhor match se score >= threshold configurado
+  if (bestMatch && bestMatch.score >= similarityThreshold) {
+    console.log(`[InterviewAI] 🎯 Pergunta detectada! Score: ${(bestMatch.score * 100).toFixed(0)}% (threshold: ${(similarityThreshold * 100).toFixed(0)}%)`);
     console.log(`  Transcrição: "${transcriptionText.substring(0, 80)}..."`);
     console.log(`  Sugestão: "${bestMatch.suggestion.question.substring(0, 80)}..."`);
     return bestMatch.suggestion;
@@ -431,7 +439,7 @@ export const interviewAIService = {
 
   /**
    * Processa transcrição e avalia resposta do candidato
-   * Usa IA para avaliação semântica
+   * Usa IA para avaliação semântica com configurações customizáveis
    */
   async processTranscription(
     transcription: string,
@@ -443,8 +451,24 @@ export const interviewAIService = {
     }
 
     try {
+      // Buscar configurações de avaliação do painel de admin
+      const config = getCurrentConfig();
+      
+      const evaluationConfig = {
+        // Pesos de avaliação
+        keywordMatchWeight: config.keywordMatchWeight,
+        lengthBonusMax: config.lengthBonusMax,
+        exampleBonus: config.exampleBonus,
+        structureBonus: config.structureBonus,
+        // Thresholds de qualidade
+        excellentThreshold: config.excellentThreshold,
+        goodThreshold: config.goodThreshold,
+        basicThreshold: config.basicThreshold,
+      };
+      
       const result = await callInterviewAI('evaluateAnswer', context, { 
-        lastAnswer: transcription 
+        lastAnswer: transcription,
+        evaluationConfig // Passar configurações para a IA
       });
       
       console.log('[InterviewAI] Resposta avaliada pela IA:', result);
@@ -504,6 +528,7 @@ export const interviewAIService = {
 
   /**
    * Gera relatório completo da entrevista usando IA
+   * Busca configurações customizáveis do painel de admin
    */
   async generateInterviewReport(context: InterviewContext): Promise<InterviewReport> {
     if (context.meetingType !== 'ENTREVISTA') {
@@ -514,7 +539,32 @@ export const interviewAIService = {
     try {
       console.log('[InterviewAI] Gerando relatório completo com IA...');
       
-      const result = await callInterviewAI('generateReport', context);
+      // Buscar configurações atualizadas do servidor
+      const config = await getInterviewConfig(true);
+      
+      // Extrair apenas as configurações de relatório para enviar
+      const reportConfig = {
+        reportApprovedThreshold: config.reportApprovedThreshold,
+        reportApprovedWithReservationsThreshold: config.reportApprovedWithReservationsThreshold,
+        reportNeedsSecondInterviewThreshold: config.reportNeedsSecondInterviewThreshold,
+        reportTechnicalWeight: config.reportTechnicalWeight,
+        reportSoftSkillsWeight: config.reportSoftSkillsWeight,
+        reportExperienceWeight: config.reportExperienceWeight,
+        reportCommunicationWeight: config.reportCommunicationWeight,
+        reportSystemInstructions: config.reportSystemInstructions,
+        reportEvaluationCriteria: config.reportEvaluationCriteria,
+        reportSoftSkillsCriteria: config.reportSoftSkillsCriteria,
+        reportSeniorityGuidelines: config.reportSeniorityGuidelines,
+        reportRecommendationGuidelines: config.reportRecommendationGuidelines,
+      };
+      
+      console.log('[InterviewAI] Usando configurações customizáveis:', {
+        approvedThreshold: reportConfig.reportApprovedThreshold,
+        technicalWeight: reportConfig.reportTechnicalWeight,
+        hasCustomInstructions: !!reportConfig.reportSystemInstructions
+      });
+      
+      const result = await callInterviewAI('generateReport', context, { reportConfig });
       
       if (!result.report) {
         console.error('[InterviewAI] Resposta inválida:', result);

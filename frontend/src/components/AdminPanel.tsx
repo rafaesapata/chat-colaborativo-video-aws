@@ -639,32 +639,10 @@ export default function AdminPanel({ darkMode }: AdminPanelProps) {
     }
   }, [user?.login, historyFilters]);
 
-  // Migrar dados do localStorage para o backend
+  // Migrar dados do localStorage para o backend (deprecated - localStorage não é mais usado)
   const migrateLocalStorageToBackend = useCallback(async () => {
-    if (!user?.login) return;
-    
-    setHistoryLoading(true);
-    try {
-      const localHistory = meetingHistoryService.getAllUsersHistory();
-      console.log('[AdminPanel] Migrando', localHistory.length, 'reuniões do localStorage para o backend');
-      
-      let migrated = 0;
-      for (const meeting of localHistory) {
-        const success = await meetingHistoryService.saveToBackend(meeting);
-        if (success) migrated++;
-      }
-      
-      alert(`Migração concluída! ${migrated} de ${localHistory.length} reuniões migradas.`);
-      
-      // Recarregar dados
-      await fetchAllRecordings();
-    } catch (err) {
-      console.error('Erro na migração:', err);
-      alert('Erro ao migrar dados');
-    } finally {
-      setHistoryLoading(false);
-    }
-  }, [user?.login, fetchAllRecordings]);
+    alert('Migração não é mais necessária. O sistema agora usa apenas o backend.');
+  }, []);
 
   // Carregar gravações quando a aba de histórico é selecionada
   useEffect(() => {
@@ -2249,29 +2227,60 @@ export default function AdminPanel({ darkMode }: AdminPanelProps) {
                             </>
                           )}
                           
-                          {hasRecording && recording && (
+                          {hasRecording && (recording || meeting.recordingKey) && (
                             <>
                               <button
-                                onClick={() => handlePlayRecording(recording)}
-                                disabled={actionLoading === recording.recordingId}
+                                onClick={() => {
+                                  if (recording) {
+                                    handlePlayRecording(recording);
+                                  } else if (meeting.recordingId) {
+                                    // Criar objeto recording a partir dos dados do meeting
+                                    handlePlayRecording({
+                                      recordingId: meeting.recordingId,
+                                      userLogin: meeting.userLogin,
+                                      roomId: meeting.roomId,
+                                      meetingId: meeting.id,
+                                      recordingKey: meeting.recordingKey || '',
+                                      duration: meeting.recordingDuration || 0,
+                                      createdAt: meeting.startTime,
+                                      status: 'completed'
+                                    });
+                                  }
+                                }}
+                                disabled={actionLoading === (recording?.recordingId || meeting.recordingId)}
                                 className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-sm whitespace-nowrap ${
                                   darkMode 
                                     ? 'bg-green-600/20 text-green-400 hover:bg-green-600/30' 
                                     : 'bg-green-100 text-green-700 hover:bg-green-200'
-                                } ${actionLoading === recording.recordingId ? 'opacity-50' : ''}`}
+                                } ${actionLoading === (recording?.recordingId || meeting.recordingId) ? 'opacity-50' : ''}`}
                                 title="Reproduzir"
                               >
                                 <Play size={14} />
                                 Reproduzir
                               </button>
                               <button
-                                onClick={() => handleDownloadRecording(recording)}
-                                disabled={actionLoading === recording.recordingId}
+                                onClick={() => {
+                                  if (recording) {
+                                    handleDownloadRecording(recording);
+                                  } else if (meeting.recordingId) {
+                                    handleDownloadRecording({
+                                      recordingId: meeting.recordingId,
+                                      userLogin: meeting.userLogin,
+                                      roomId: meeting.roomId,
+                                      meetingId: meeting.id,
+                                      recordingKey: meeting.recordingKey || '',
+                                      duration: meeting.recordingDuration || 0,
+                                      createdAt: meeting.startTime,
+                                      status: 'completed'
+                                    });
+                                  }
+                                }}
+                                disabled={actionLoading === (recording?.recordingId || meeting.recordingId)}
                                 className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-sm whitespace-nowrap ${
                                   darkMode 
                                     ? 'bg-blue-600/20 text-blue-400 hover:bg-blue-600/30' 
                                     : 'bg-blue-100 text-blue-700 hover:bg-blue-200'
-                                } ${actionLoading === recording.recordingId ? 'opacity-50' : ''}`}
+                                } ${actionLoading === (recording?.recordingId || meeting.recordingId) ? 'opacity-50' : ''}`}
                                 title="Baixar Gravação"
                               >
                                 <Download size={14} />

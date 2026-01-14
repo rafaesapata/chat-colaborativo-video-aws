@@ -6,6 +6,7 @@ import ControlBar from './ControlBar';
 import ChatSidebar from './ChatSidebar';
 import TranscriptionPanel from './TranscriptionPanel';
 import MeetingSetupModal from './MeetingSetupModal';
+import JobPositionsManager from './JobPositionsManager';
 import InterviewSuggestions from './InterviewSuggestions';
 import EndMeetingModal from './EndMeetingModal';
 import InterviewReportModal from './InterviewReportModal';
@@ -73,6 +74,7 @@ export default function MeetingRoom({ darkMode }: { darkMode: boolean }) {
   const [showVersionInfo, setShowVersionInfo] = useState(false);
   const [currentMeetingId, setCurrentMeetingId] = useState<string | null>(null);
   const [showMeetingSetup, setShowMeetingSetup] = useState(false);
+  const [showJobsManager, setShowJobsManager] = useState(false);
   const [meetingType, setMeetingType] = useState<string>('REUNIAO');
   const [meetingTopic, setMeetingTopic] = useState<string>('');
   const [jobDescription, setJobDescription] = useState<string>('');
@@ -616,7 +618,7 @@ export default function MeetingRoom({ darkMode }: { darkMode: boolean }) {
         
         // Gerar relatório com contexto completo
         const context: InterviewContext = {
-          meetingType: 'ENTREVISTA',
+          meetingType: (meetingType || 'ENTREVISTA') as InterviewContext['meetingType'],
           topic: meetingTopic,
           jobDescription,
           transcriptionHistory: transcriptions.map(t => t.transcribedText),
@@ -915,8 +917,29 @@ export default function MeetingRoom({ darkMode }: { darkMode: boolean }) {
             onClose={() => { setShowMeetingSetup(false); setHasSetupCompleted(true); }}
             onConfirm={handleMeetingSetup}
             darkMode={darkMode}
+            userLogin={user?.login}
+            onManageJobs={() => {
+              setShowMeetingSetup(false);
+              setShowJobsManager(true);
+            }}
           />
         </FeatureErrorBoundary>
+      )}
+
+      {/* Job Positions Manager Modal */}
+      {isAuthenticated && showJobsManager && user?.login && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 backdrop-blur-sm p-4">
+          <div className="w-full max-w-3xl max-h-[85vh] overflow-y-auto">
+            <JobPositionsManager
+              darkMode={darkMode}
+              userLogin={user.login}
+              onClose={() => {
+                setShowJobsManager(false);
+                setShowMeetingSetup(true);
+              }}
+            />
+          </div>
+        </div>
       )}
 
       {/* Interview Suggestions */}

@@ -12,6 +12,7 @@ const PreviewScreen = lazy(() => import('./components/PreviewScreen'));
 const LoginScreen = lazy(() => import('./components/LoginScreen'));
 const MeetingHistory = lazy(() => import('./components/MeetingHistory'));
 const AdminPanel = lazy(() => import('./components/AdminPanel'));
+const JobPositionsManager = lazy(() => import('./components/JobPositionsManager'));
 
 // Loading fallback
 const LoadingFallback = () => (
@@ -50,6 +51,7 @@ function HomePage({ darkMode, onToggleDarkMode }: HomePageProps) {
   const [showCreateModal, setShowCreateModal] = useState(false);
   const [showScheduleForm, setShowScheduleForm] = useState(false);
   const [showScheduleSuccess, setShowScheduleSuccess] = useState(false);
+  const [showJobsManager, setShowJobsManager] = useState(false);
   const [scheduledMeetingInfo, setScheduledMeetingInfo] = useState<{
     title: string;
     meetingUrl: string;
@@ -564,6 +566,19 @@ function HomePage({ darkMode, onToggleDarkMode }: HomePageProps) {
                   </svg>
                   Histórico de Reuniões
                 </button>
+                <button 
+                  onClick={() => setShowJobsManager(true)}
+                  className={`w-full py-2 px-3 rounded-lg text-sm font-medium transition-all flex items-center gap-2 ${
+                    darkMode 
+                      ? 'bg-green-800/50 hover:bg-green-800 text-green-200' 
+                      : 'bg-green-100 hover:bg-green-200 text-green-700'
+                  }`}
+                >
+                  <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 13.255A23.931 23.931 0 0112 15c-3.183 0-6.22-.62-9-1.745M16 6V4a2 2 0 00-2-2h-4a2 2 0 00-2 2v2m4 6h.01M5 20h14a2 2 0 002-2V8a2 2 0 00-2-2H5a2 2 0 00-2 2v10a2 2 0 002 2z" />
+                  </svg>
+                  Gerenciar Vagas
+                </button>
               </div>
             </div>
           )}
@@ -576,6 +591,19 @@ function HomePage({ darkMode, onToggleDarkMode }: HomePageProps) {
               userLogin={user.login}
               darkMode={darkMode}
             />
+          )}
+
+          {/* Modal de Gerenciar Vagas */}
+          {isAuthenticated && user?.login && showJobsManager && (
+            <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 backdrop-blur-sm p-4">
+              <div className="w-full max-w-3xl max-h-[85vh] overflow-y-auto">
+                <JobPositionsManager
+                  darkMode={darkMode}
+                  userLogin={user.login}
+                  onClose={() => setShowJobsManager(false)}
+                />
+              </div>
+            </div>
           )}
 
           {/* Botão de logout ou login */}

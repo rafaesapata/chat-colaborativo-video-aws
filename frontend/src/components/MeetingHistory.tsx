@@ -26,8 +26,16 @@ export default function MeetingHistory({ isOpen, onClose, userLogin, darkMode }:
 
   useEffect(() => {
     if (isOpen && userLogin) {
-      const history = meetingHistoryService.getHistory(userLogin);
-      setMeetings(history);
+      console.log('[MeetingHistory] Carregando histórico do backend para:', userLogin);
+      setMeetings([]); // Limpar enquanto carrega
+      meetingHistoryService.getHistoryAsync(userLogin, true)
+        .then((history: MeetingRecord[]) => {
+          console.log('[MeetingHistory] Reuniões carregadas do backend:', history.length);
+          setMeetings(history);
+        })
+        .catch((err: Error) => {
+          console.error('[MeetingHistory] Erro ao carregar histórico:', err);
+        });
     }
   }, [isOpen, userLogin]);
 
@@ -136,7 +144,7 @@ export default function MeetingHistory({ isOpen, onClose, userLogin, darkMode }:
     try {
       // Extrair informações da reunião
       const context: InterviewContext = {
-        meetingType: 'ENTREVISTA',
+        meetingType: (meeting.meetingType || 'ENTREVISTA') as InterviewContext['meetingType'],
         topic: meeting.meetingTopic || 'Entrevista',
         jobDescription: meeting.jobDescription || '',
         transcriptionHistory: meeting.transcriptions.map(t => t.text),

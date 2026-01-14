@@ -104,9 +104,12 @@ const s3Client = new S3Client({
 const BACKGROUNDS_BUCKET = process.env.AUDIO_BUCKET || 'chat-colaborativo-serverless-audio-383234048592';
 const BACKGROUNDS_PREFIX = 'backgrounds/';
 
-// Headers de resposta (imutável)
+// Headers de resposta (imutável) - inclui CORS
 const RESPONSE_HEADERS = Object.freeze({
   'Content-Type': 'application/json',
+  'Access-Control-Allow-Origin': '*',
+  'Access-Control-Allow-Methods': 'GET, POST, PUT, DELETE, OPTIONS',
+  'Access-Control-Allow-Headers': 'Content-Type, Authorization, X-Api-Key, x-api-key',
 });
 
 // ============ LOGGING ESTRUTURADO (THREAD-SAFE) ============
@@ -173,6 +176,23 @@ function sanitizeUserName(name) {
     .replace(/\s+/g, ' ')                        // Múltiplos espaços → um espaço
     .trim()
     .substring(0, VALIDATION.MAX_NAME_LENGTH) || 'Participante';
+}
+
+/**
+ * Sanitiza strings de configuração (instruções para IA)
+ * Permite mais caracteres que sanitizeUserName, mas remove código malicioso
+ */
+function sanitizeConfigString(str, maxLength = 2000) {
+  if (!str || typeof str !== 'string') return '';
+  
+  return str
+    .normalize('NFKC')
+    .replace(/[\x00-\x1F\x7F-\x9F]/g, '')       // Remover caracteres de controle
+    .replace(/[\u200B-\u200D\uFEFF]/g, '')      // Remover zero-width chars
+    .replace(/<script[^>]*>.*?<\/script>/gi, '') // Remover scripts
+    .replace(/<[^>]+>/g, '')                     // Remover tags HTML
+    .trim()
+    .substring(0, maxLength);
 }
 
 function getClientIp(event) {
@@ -570,6 +590,12 @@ const routes = Object.freeze({
   // Meeting History (histórico de reuniões para admin)
   'POST:/admin/history/list': handleAdminListHistory,
   'POST:/admin/history/save': handleSaveMeetingHistory,
+  // Job Positions (vagas por usuário)
+  'POST:/jobs/list': handleListJobPositions,
+  'POST:/jobs/create': handleCreateJobPosition,
+  'POST:/jobs/update': handleUpdateJobPosition,
+  'POST:/jobs/delete': handleDeleteJobPosition,
+  'POST:/jobs/get': handleGetJobPosition,
   // Documentação
   'GET:/docs': handleDocsPage,
   'GET:/docs/swagger.json': handleSwaggerJson,
@@ -3048,27 +3074,82 @@ async function handleClearInterviewData(body) {
 // ============ INTERVIEW AI CONFIG HANDLERS ============
 const INTERVIEW_CONFIG_KEY = 'interview_ai_config_global';
 
-// Configuração padrão da IA de entrevista
+// Configuração padrão da IA de entrevista (sincronizada com frontend)
 const DEFAULT_INTERVIEW_CONFIG = {
+  // Timing
   minAnswerLength: 50,
-  minTimeBetweenSuggestionsMs: 8000, // Aumentado de 5s para 8s
+  minTimeBetweenSuggestionsMs: 8000,
   minTranscriptionsForFollowup: 1,
   maxUnreadSuggestions: 5,
   initialSuggestionsCount: 3,
-  cooldownAfterSuggestionMs: 10000, // Aumentado de 8s para 10s
+  cooldownAfterSuggestionMs: 10000,
   saveDebounceMs: 2000,
-  processDelayMs: 1000, // Aumentado de 500ms para 1s
-  autoDetectionDelayMs: 3000, // Delay antes de marcar pergunta como detectada automaticamente
+  processDelayMs: 1000,
+  autoDetectionDelayMs: 3000,
+  
+  // Avaliação
   keywordMatchWeight: 60,
   lengthBonusMax: 20,
   exampleBonus: 15,
   structureBonus: 5,
+  
+  // Thresholds de qualidade
   excellentThreshold: 80,
   goodThreshold: 60,
   basicThreshold: 40,
+  
+  // Detecção de perguntas
+  questionSimilarityThreshold: 25,
+  
+  // Comportamento
   enableAutoFollowUp: true,
   enableTechnicalEvaluation: true,
   generateNewQuestionsEveryN: 3,
+  
+  // ============ CONFIGURAÇÕES DE RELATÓRIO ============
+  // Thresholds de recomendação
+  reportApprovedThreshold: 75,
+  reportApprovedWithReservationsThreshold: 55,
+  reportNeedsSecondInterviewThreshold: 40,
+  
+  // Pesos de avaliação
+  reportTechnicalWeight: 40,
+  reportSoftSkillsWeight: 25,
+  reportExperienceWeight: 20,
+  reportCommunicationWeight: 15,
+  
+  // Instruções customizáveis para a IA
+  reportSystemInstructions: `Você é um especialista em recrutamento técnico com vasta experiência em avaliação de candidatos.
+Sua análise deve ser:
+- Objetiva e baseada em evidências das respostas
+- Construtiva, destacando pontos fortes e áreas de melhoria
+- Alinhada com os requisitos específicos da vaga
+- Justa e imparcial, considerando o contexto das respostas`,
+
+  reportEvaluationCriteria: `Critérios de Avaliação Técnica:
+1. Correção conceitual: O candidato demonstra conhecimento correto dos conceitos?
+2. Profundidade: As respostas são superficiais ou demonstram domínio do assunto?
+3. Aplicação prática: O candidato consegue relacionar teoria com prática?
+4. Atualização: O conhecimento está atualizado com as práticas do mercado?
+5. Resolução de problemas: Demonstra capacidade de análise e solução?`,
+
+  reportSoftSkillsCriteria: `Critérios de Avaliação de Soft Skills:
+1. Comunicação: Clareza, objetividade e articulação das ideias
+2. Trabalho em equipe: Menções a colaboração e experiências em grupo
+3. Adaptabilidade: Capacidade de lidar com mudanças e novos desafios
+4. Proatividade: Iniciativa e autonomia demonstradas
+5. Pensamento crítico: Capacidade de análise e questionamento`,
+
+  reportSeniorityGuidelines: `Diretrizes para Determinar Senioridade:
+- JÚNIOR: Conhecimento básico, necessita supervisão, foco em aprendizado
+- PLENO: Conhecimento sólido, autonomia moderada, resolve problemas comuns
+- SÊNIOR: Conhecimento avançado, alta autonomia, mentoria, decisões arquiteturais`,
+
+  reportRecommendationGuidelines: `Diretrizes para Recomendação:
+- APROVADO (75%+): Atende ou supera os requisitos, pronto para contribuir
+- APROVADO COM RESSALVAS (55-74%): Potencial, mas precisa de desenvolvimento em áreas específicas
+- SEGUNDA ENTREVISTA (40-54%): Inconclusivo, necessita avaliação adicional
+- NÃO APROVADO (<40%): Não atende aos requisitos mínimos da vaga`,
 };
 
 /**
@@ -3123,8 +3204,8 @@ async function handleSaveInterviewConfig(body) {
   }
   
   // Verificar se é admin
-  const isAdmin = await checkIsAdmin(userLogin);
-  if (!isAdmin) {
+  const userIsAdmin = await isAdmin(userLogin);
+  if (!userIsAdmin) {
     return errorResponse(403, 'Apenas administradores podem alterar configurações');
   }
   
@@ -3134,6 +3215,7 @@ async function handleSaveInterviewConfig(body) {
   
   // Validar e sanitizar configuração
   const sanitizedConfig = {
+    // Timing
     minAnswerLength: Math.max(10, Math.min(500, Number(config.minAnswerLength) || 50)),
     minTimeBetweenSuggestionsMs: Math.max(1000, Math.min(60000, Number(config.minTimeBetweenSuggestionsMs) || 8000)),
     minTranscriptionsForFollowup: Math.max(1, Math.min(10, Number(config.minTranscriptionsForFollowup) || 1)),
@@ -3143,16 +3225,44 @@ async function handleSaveInterviewConfig(body) {
     saveDebounceMs: Math.max(500, Math.min(10000, Number(config.saveDebounceMs) || 2000)),
     processDelayMs: Math.max(100, Math.min(5000, Number(config.processDelayMs) || 1000)),
     autoDetectionDelayMs: Math.max(1000, Math.min(10000, Number(config.autoDetectionDelayMs) || 3000)),
+    
+    // Avaliação
     keywordMatchWeight: Math.max(0, Math.min(100, Number(config.keywordMatchWeight) || 60)),
     lengthBonusMax: Math.max(0, Math.min(50, Number(config.lengthBonusMax) || 20)),
     exampleBonus: Math.max(0, Math.min(50, Number(config.exampleBonus) || 15)),
     structureBonus: Math.max(0, Math.min(50, Number(config.structureBonus) || 5)),
+    
+    // Thresholds de qualidade
     excellentThreshold: Math.max(50, Math.min(100, Number(config.excellentThreshold) || 80)),
     goodThreshold: Math.max(30, Math.min(90, Number(config.goodThreshold) || 60)),
     basicThreshold: Math.max(10, Math.min(70, Number(config.basicThreshold) || 40)),
+    
+    // Detecção de perguntas
+    questionSimilarityThreshold: Math.max(10, Math.min(80, Number(config.questionSimilarityThreshold) || 25)),
+    
+    // Comportamento
     enableAutoFollowUp: Boolean(config.enableAutoFollowUp !== false),
     enableTechnicalEvaluation: Boolean(config.enableTechnicalEvaluation !== false),
     generateNewQuestionsEveryN: Math.max(1, Math.min(20, Number(config.generateNewQuestionsEveryN) || 3)),
+    
+    // ============ CONFIGURAÇÕES DE RELATÓRIO ============
+    // Thresholds de recomendação
+    reportApprovedThreshold: Math.max(50, Math.min(100, Number(config.reportApprovedThreshold) || 75)),
+    reportApprovedWithReservationsThreshold: Math.max(30, Math.min(80, Number(config.reportApprovedWithReservationsThreshold) || 55)),
+    reportNeedsSecondInterviewThreshold: Math.max(20, Math.min(60, Number(config.reportNeedsSecondInterviewThreshold) || 40)),
+    
+    // Pesos de avaliação
+    reportTechnicalWeight: Math.max(0, Math.min(100, Number(config.reportTechnicalWeight) || 40)),
+    reportSoftSkillsWeight: Math.max(0, Math.min(100, Number(config.reportSoftSkillsWeight) || 25)),
+    reportExperienceWeight: Math.max(0, Math.min(100, Number(config.reportExperienceWeight) || 20)),
+    reportCommunicationWeight: Math.max(0, Math.min(100, Number(config.reportCommunicationWeight) || 15)),
+    
+    // Instruções customizáveis (strings - sanitizar para evitar injection)
+    reportSystemInstructions: sanitizeConfigString(config.reportSystemInstructions, 2000),
+    reportEvaluationCriteria: sanitizeConfigString(config.reportEvaluationCriteria, 2000),
+    reportSoftSkillsCriteria: sanitizeConfigString(config.reportSoftSkillsCriteria, 2000),
+    reportSeniorityGuidelines: sanitizeConfigString(config.reportSeniorityGuidelines, 2000),
+    reportRecommendationGuidelines: sanitizeConfigString(config.reportRecommendationGuidelines, 2000),
   };
   
   const now = Math.floor(Date.now() / 1000);
@@ -3193,7 +3303,7 @@ const lambdaClient = new LambdaClient({ region: CONFIG.REGION });
  * Faz proxy para o Lambda especializado em IA
  */
 async function handleInterviewAI(body) {
-  const { action, context, count, lastAnswer } = body;
+  const { action, context, count, lastAnswer, reportConfig, evaluationConfig } = body;
   
   if (!action) {
     return errorResponse(400, 'action é obrigatório');
@@ -3209,15 +3319,22 @@ async function handleInterviewAI(body) {
   }
   
   try {
-    log(LOG_LEVELS.INFO, 'Chamando Lambda de IA para entrevista', { action, topic: context.topic });
+    log(LOG_LEVELS.INFO, 'Chamando Lambda de IA para entrevista', { 
+      action, 
+      topic: context.topic,
+      hasReportConfig: !!reportConfig,
+      hasEvaluationConfig: !!evaluationConfig
+    });
     
-    // Invocar Lambda de IA
+    // Invocar Lambda de IA - incluindo configs customizáveis do painel de admin
     const lambdaPayload = {
       body: JSON.stringify({
         action,
         context,
         count,
-        lastAnswer
+        lastAnswer,
+        reportConfig,      // Configurações de relatório
+        evaluationConfig   // Configurações de avaliação de respostas
       })
     };
     
@@ -3433,5 +3550,370 @@ async function handleAdminListHistory(body) {
     }
     
     return errorResponse(500, 'Erro ao listar histórico');
+  }
+}
+
+
+// ============ JOB POSITIONS (VAGAS POR USUÁRIO) ============
+const JOB_POSITIONS_PREFIX = 'job_position_';
+const USER_JOBS_PREFIX = 'user_jobs_';
+
+/**
+ * Lista todas as vagas de um usuário
+ */
+async function handleListJobPositions(body) {
+  const { userLogin } = body;
+  
+  if (!userLogin) {
+    return errorResponse(400, 'userLogin é obrigatório');
+  }
+  
+  const sanitizedLogin = userLogin.toLowerCase().replace(/[^a-z0-9@._-]/g, '');
+  const userJobsKey = `${USER_JOBS_PREFIX}${sanitizedLogin}`;
+  
+  try {
+    // Buscar índice de vagas do usuário
+    const indexResult = await dynamoClient.send(new GetItemCommand({
+      TableName: CONFIG.MEETINGS_TABLE,
+      Key: { roomId: { S: userJobsKey } }
+    }));
+    
+    if (!indexResult.Item?.jobIds?.SS) {
+      return successResponse({ positions: [] });
+    }
+    
+    const jobIds = indexResult.Item.jobIds.SS;
+    
+    // Buscar cada vaga
+    const positions = [];
+    for (const jobId of jobIds) {
+      const jobKey = `${JOB_POSITIONS_PREFIX}${jobId}`;
+      const jobResult = await dynamoClient.send(new GetItemCommand({
+        TableName: CONFIG.MEETINGS_TABLE,
+        Key: { roomId: { S: jobKey } }
+      }));
+      
+      if (jobResult.Item) {
+        positions.push({
+          id: jobResult.Item.jobId?.S || jobId,
+          title: jobResult.Item.title?.S || '',
+          description: jobResult.Item.description?.S || '',
+          requirements: jobResult.Item.requirements?.S || '',
+          level: jobResult.Item.level?.S || 'pleno',
+          department: jobResult.Item.department?.S || '',
+          createdAt: parseInt(jobResult.Item.createdAt?.N || '0'),
+          updatedAt: parseInt(jobResult.Item.updatedAt?.N || '0'),
+        });
+      }
+    }
+    
+    // Ordenar por data de criação (mais recentes primeiro)
+    positions.sort((a, b) => b.createdAt - a.createdAt);
+    
+    log(LOG_LEVELS.INFO, 'Vagas listadas', { userLogin: sanitizedLogin, count: positions.length });
+    
+    return successResponse({ positions });
+    
+  } catch (error) {
+    log(LOG_LEVELS.ERROR, 'Erro ao listar vagas', { userLogin: sanitizedLogin, error: error.message });
+    return errorResponse(500, 'Erro ao listar vagas');
+  }
+}
+
+/**
+ * Cria uma nova vaga para o usuário
+ */
+async function handleCreateJobPosition(body) {
+  const { userLogin, position } = body;
+  
+  if (!userLogin) {
+    return errorResponse(400, 'userLogin é obrigatório');
+  }
+  
+  if (!position || typeof position !== 'object') {
+    return errorResponse(400, 'position é obrigatório');
+  }
+  
+  if (!position.title?.trim()) {
+    return errorResponse(400, 'Título da vaga é obrigatório');
+  }
+  
+  if (!position.description?.trim()) {
+    return errorResponse(400, 'Descrição da vaga é obrigatória');
+  }
+  
+  const sanitizedLogin = userLogin.toLowerCase().replace(/[^a-z0-9@._-]/g, '');
+  const jobId = `${sanitizedLogin}_${Date.now()}_${crypto.randomBytes(4).toString('hex')}`;
+  const jobKey = `${JOB_POSITIONS_PREFIX}${jobId}`;
+  const userJobsKey = `${USER_JOBS_PREFIX}${sanitizedLogin}`;
+  const now = Math.floor(Date.now() / 1000);
+  
+  // Sanitizar campos
+  const title = position.title.replace(/<[^>]*>/g, '').substring(0, 200).trim();
+  const description = position.description.replace(/<[^>]*>/g, '').substring(0, 5000).trim();
+  const requirements = (position.requirements || '').replace(/<[^>]*>/g, '').substring(0, 3000).trim();
+  const level = ['junior', 'pleno', 'senior', 'especialista', 'lead'].includes(position.level) 
+    ? position.level 
+    : 'pleno';
+  const department = (position.department || '').replace(/<[^>]*>/g, '').substring(0, 100).trim();
+  
+  try {
+    // Salvar a vaga
+    await dynamoClient.send(new PutItemCommand({
+      TableName: CONFIG.MEETINGS_TABLE,
+      Item: {
+        roomId: { S: jobKey },
+        jobId: { S: jobId },
+        userLogin: { S: sanitizedLogin },
+        title: { S: title },
+        description: { S: description },
+        requirements: { S: requirements },
+        level: { S: level },
+        department: { S: department },
+        createdAt: { N: String(now) },
+        updatedAt: { N: String(now) },
+        ttl: { N: String(now + 86400 * 365) } // 1 ano de TTL
+      }
+    }));
+    
+    // Adicionar ao índice do usuário
+    await dynamoClient.send(new UpdateItemCommand({
+      TableName: CONFIG.MEETINGS_TABLE,
+      Key: { roomId: { S: userJobsKey } },
+      UpdateExpression: 'ADD jobIds :jobId SET updatedAt = :now',
+      ExpressionAttributeValues: {
+        ':jobId': { SS: [jobId] },
+        ':now': { N: String(now) }
+      }
+    }));
+    
+    log(LOG_LEVELS.INFO, 'Vaga criada', { userLogin: sanitizedLogin, jobId, title });
+    
+    return successResponse({
+      success: true,
+      position: {
+        id: jobId,
+        title,
+        description,
+        requirements,
+        level,
+        department,
+        createdAt: now * 1000,
+        updatedAt: now * 1000,
+      }
+    });
+    
+  } catch (error) {
+    log(LOG_LEVELS.ERROR, 'Erro ao criar vaga', { userLogin: sanitizedLogin, error: error.message });
+    return errorResponse(500, 'Erro ao criar vaga');
+  }
+}
+
+/**
+ * Atualiza uma vaga existente
+ */
+async function handleUpdateJobPosition(body) {
+  const { userLogin, positionId, updates } = body;
+  
+  if (!userLogin || !positionId) {
+    return errorResponse(400, 'userLogin e positionId são obrigatórios');
+  }
+  
+  if (!updates || typeof updates !== 'object') {
+    return errorResponse(400, 'updates é obrigatório');
+  }
+  
+  const sanitizedLogin = userLogin.toLowerCase().replace(/[^a-z0-9@._-]/g, '');
+  const jobKey = `${JOB_POSITIONS_PREFIX}${positionId}`;
+  const now = Math.floor(Date.now() / 1000);
+  
+  try {
+    // Verificar se a vaga existe e pertence ao usuário
+    const existingResult = await dynamoClient.send(new GetItemCommand({
+      TableName: CONFIG.MEETINGS_TABLE,
+      Key: { roomId: { S: jobKey } }
+    }));
+    
+    if (!existingResult.Item) {
+      return errorResponse(404, 'Vaga não encontrada');
+    }
+    
+    if (existingResult.Item.userLogin?.S !== sanitizedLogin) {
+      return errorResponse(403, 'Você não tem permissão para editar esta vaga');
+    }
+    
+    // Construir expressão de atualização
+    const updateExpressions = ['updatedAt = :now'];
+    const expressionValues = { ':now': { N: String(now) } };
+    
+    if (updates.title !== undefined) {
+      const title = updates.title.replace(/<[^>]*>/g, '').substring(0, 200).trim();
+      if (!title) return errorResponse(400, 'Título não pode ser vazio');
+      updateExpressions.push('title = :title');
+      expressionValues[':title'] = { S: title };
+    }
+    
+    if (updates.description !== undefined) {
+      const description = updates.description.replace(/<[^>]*>/g, '').substring(0, 5000).trim();
+      if (!description) return errorResponse(400, 'Descrição não pode ser vazia');
+      updateExpressions.push('description = :description');
+      expressionValues[':description'] = { S: description };
+    }
+    
+    if (updates.requirements !== undefined) {
+      const requirements = updates.requirements.replace(/<[^>]*>/g, '').substring(0, 3000).trim();
+      updateExpressions.push('requirements = :requirements');
+      expressionValues[':requirements'] = { S: requirements };
+    }
+    
+    if (updates.level !== undefined) {
+      const level = ['junior', 'pleno', 'senior', 'especialista', 'lead'].includes(updates.level) 
+        ? updates.level 
+        : 'pleno';
+      updateExpressions.push('#level = :level');
+      expressionValues[':level'] = { S: level };
+    }
+    
+    if (updates.department !== undefined) {
+      const department = updates.department.replace(/<[^>]*>/g, '').substring(0, 100).trim();
+      updateExpressions.push('department = :department');
+      expressionValues[':department'] = { S: department };
+    }
+    
+    // Executar atualização
+    const updateResult = await dynamoClient.send(new UpdateItemCommand({
+      TableName: CONFIG.MEETINGS_TABLE,
+      Key: { roomId: { S: jobKey } },
+      UpdateExpression: `SET ${updateExpressions.join(', ')}`,
+      ExpressionAttributeValues: expressionValues,
+      ExpressionAttributeNames: updates.level !== undefined ? { '#level': 'level' } : undefined,
+      ReturnValues: 'ALL_NEW'
+    }));
+    
+    const item = updateResult.Attributes;
+    
+    log(LOG_LEVELS.INFO, 'Vaga atualizada', { userLogin: sanitizedLogin, positionId });
+    
+    return successResponse({
+      success: true,
+      position: {
+        id: item.jobId?.S || positionId,
+        title: item.title?.S || '',
+        description: item.description?.S || '',
+        requirements: item.requirements?.S || '',
+        level: item.level?.S || 'pleno',
+        department: item.department?.S || '',
+        createdAt: parseInt(item.createdAt?.N || '0') * 1000,
+        updatedAt: parseInt(item.updatedAt?.N || '0') * 1000,
+      }
+    });
+    
+  } catch (error) {
+    log(LOG_LEVELS.ERROR, 'Erro ao atualizar vaga', { userLogin: sanitizedLogin, positionId, error: error.message });
+    return errorResponse(500, 'Erro ao atualizar vaga');
+  }
+}
+
+/**
+ * Remove uma vaga
+ */
+async function handleDeleteJobPosition(body) {
+  const { userLogin, positionId } = body;
+  
+  if (!userLogin || !positionId) {
+    return errorResponse(400, 'userLogin e positionId são obrigatórios');
+  }
+  
+  const sanitizedLogin = userLogin.toLowerCase().replace(/[^a-z0-9@._-]/g, '');
+  const jobKey = `${JOB_POSITIONS_PREFIX}${positionId}`;
+  const userJobsKey = `${USER_JOBS_PREFIX}${sanitizedLogin}`;
+  
+  try {
+    // Verificar se a vaga existe e pertence ao usuário
+    const existingResult = await dynamoClient.send(new GetItemCommand({
+      TableName: CONFIG.MEETINGS_TABLE,
+      Key: { roomId: { S: jobKey } }
+    }));
+    
+    if (!existingResult.Item) {
+      return errorResponse(404, 'Vaga não encontrada');
+    }
+    
+    if (existingResult.Item.userLogin?.S !== sanitizedLogin) {
+      return errorResponse(403, 'Você não tem permissão para excluir esta vaga');
+    }
+    
+    // Remover a vaga
+    await dynamoClient.send(new DeleteItemCommand({
+      TableName: CONFIG.MEETINGS_TABLE,
+      Key: { roomId: { S: jobKey } }
+    }));
+    
+    // Remover do índice do usuário
+    await dynamoClient.send(new UpdateItemCommand({
+      TableName: CONFIG.MEETINGS_TABLE,
+      Key: { roomId: { S: userJobsKey } },
+      UpdateExpression: 'DELETE jobIds :jobId',
+      ExpressionAttributeValues: {
+        ':jobId': { SS: [positionId] }
+      }
+    }));
+    
+    log(LOG_LEVELS.INFO, 'Vaga excluída', { userLogin: sanitizedLogin, positionId });
+    
+    return successResponse({ success: true });
+    
+  } catch (error) {
+    log(LOG_LEVELS.ERROR, 'Erro ao excluir vaga', { userLogin: sanitizedLogin, positionId, error: error.message });
+    return errorResponse(500, 'Erro ao excluir vaga');
+  }
+}
+
+/**
+ * Obtém uma vaga específica
+ */
+async function handleGetJobPosition(body) {
+  const { userLogin, positionId } = body;
+  
+  if (!userLogin || !positionId) {
+    return errorResponse(400, 'userLogin e positionId são obrigatórios');
+  }
+  
+  const sanitizedLogin = userLogin.toLowerCase().replace(/[^a-z0-9@._-]/g, '');
+  const jobKey = `${JOB_POSITIONS_PREFIX}${positionId}`;
+  
+  try {
+    const result = await dynamoClient.send(new GetItemCommand({
+      TableName: CONFIG.MEETINGS_TABLE,
+      Key: { roomId: { S: jobKey } }
+    }));
+    
+    if (!result.Item) {
+      return errorResponse(404, 'Vaga não encontrada');
+    }
+    
+    // Verificar se pertence ao usuário
+    if (result.Item.userLogin?.S !== sanitizedLogin) {
+      return errorResponse(403, 'Você não tem permissão para ver esta vaga');
+    }
+    
+    const item = result.Item;
+    
+    return successResponse({
+      position: {
+        id: item.jobId?.S || positionId,
+        title: item.title?.S || '',
+        description: item.description?.S || '',
+        requirements: item.requirements?.S || '',
+        level: item.level?.S || 'pleno',
+        department: item.department?.S || '',
+        createdAt: parseInt(item.createdAt?.N || '0') * 1000,
+        updatedAt: parseInt(item.updatedAt?.N || '0') * 1000,
+      }
+    });
+    
+  } catch (error) {
+    log(LOG_LEVELS.ERROR, 'Erro ao obter vaga', { userLogin: sanitizedLogin, positionId, error: error.message });
+    return errorResponse(500, 'Erro ao obter vaga');
   }
 }

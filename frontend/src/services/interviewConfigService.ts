@@ -28,10 +28,32 @@ export interface InterviewAIConfig {
   goodThreshold: number;
   basicThreshold: number;
   
+  // Detecção de perguntas
+  questionSimilarityThreshold: number; // % de similaridade para considerar pergunta como lida (0-100)
+  
   // Comportamento
   enableAutoFollowUp: boolean;
   enableTechnicalEvaluation: boolean;
   generateNewQuestionsEveryN: number; // A cada N respostas, gerar novas perguntas
+  
+  // ============ CONFIGURAÇÕES DE RELATÓRIO ============
+  // Thresholds de recomendação
+  reportApprovedThreshold: number; // Score mínimo para "Aprovado" (0-100)
+  reportApprovedWithReservationsThreshold: number; // Score mínimo para "Aprovado com ressalvas" (0-100)
+  reportNeedsSecondInterviewThreshold: number; // Score mínimo para "Necessita segunda entrevista" (0-100)
+  
+  // Pesos de avaliação do relatório
+  reportTechnicalWeight: number; // Peso da avaliação técnica (0-100)
+  reportSoftSkillsWeight: number; // Peso das soft skills (0-100)
+  reportExperienceWeight: number; // Peso da experiência (0-100)
+  reportCommunicationWeight: number; // Peso da comunicação (0-100)
+  
+  // Instruções customizáveis para a IA
+  reportSystemInstructions: string; // Instruções gerais para geração do relatório
+  reportEvaluationCriteria: string; // Critérios de avaliação técnica
+  reportSoftSkillsCriteria: string; // Critérios de avaliação de soft skills
+  reportSeniorityGuidelines: string; // Diretrizes para determinar senioridade
+  reportRecommendationGuidelines: string; // Diretrizes para recomendação final
   
   // Metadata
   lastUpdated?: number;
@@ -59,9 +81,53 @@ export const DEFAULT_CONFIG: InterviewAIConfig = {
   goodThreshold: 60,
   basicThreshold: 40,
   
+  questionSimilarityThreshold: 25, // 25% de similaridade para detectar pergunta como lida
+  
   enableAutoFollowUp: true,
   enableTechnicalEvaluation: true,
   generateNewQuestionsEveryN: 3,
+  
+  // ============ CONFIGURAÇÕES DE RELATÓRIO ============
+  reportApprovedThreshold: 75,
+  reportApprovedWithReservationsThreshold: 55,
+  reportNeedsSecondInterviewThreshold: 40,
+  
+  reportTechnicalWeight: 40,
+  reportSoftSkillsWeight: 25,
+  reportExperienceWeight: 20,
+  reportCommunicationWeight: 15,
+  
+  reportSystemInstructions: `Você é um especialista em recrutamento técnico com vasta experiência em avaliação de candidatos.
+Sua análise deve ser:
+- Objetiva e baseada em evidências das respostas
+- Construtiva, destacando pontos fortes e áreas de melhoria
+- Alinhada com os requisitos específicos da vaga
+- Justa e imparcial, considerando o contexto das respostas`,
+
+  reportEvaluationCriteria: `Critérios de Avaliação Técnica:
+1. Correção conceitual: O candidato demonstra conhecimento correto dos conceitos?
+2. Profundidade: As respostas são superficiais ou demonstram domínio do assunto?
+3. Aplicação prática: O candidato consegue relacionar teoria com prática?
+4. Atualização: O conhecimento está atualizado com as práticas do mercado?
+5. Resolução de problemas: Demonstra capacidade de análise e solução?`,
+
+  reportSoftSkillsCriteria: `Critérios de Avaliação de Soft Skills:
+1. Comunicação: Clareza, objetividade e articulação das ideias
+2. Trabalho em equipe: Menções a colaboração e experiências em grupo
+3. Adaptabilidade: Capacidade de lidar com mudanças e novos desafios
+4. Proatividade: Iniciativa e autonomia demonstradas
+5. Pensamento crítico: Capacidade de análise e questionamento`,
+
+  reportSeniorityGuidelines: `Diretrizes para Determinar Senioridade:
+- JÚNIOR: Conhecimento básico, necessita supervisão, foco em aprendizado
+- PLENO: Conhecimento sólido, autonomia moderada, resolve problemas comuns
+- SÊNIOR: Conhecimento avançado, alta autonomia, mentoria, decisões arquiteturais`,
+
+  reportRecommendationGuidelines: `Diretrizes para Recomendação:
+- APROVADO (75%+): Atende ou supera os requisitos, pronto para contribuir
+- APROVADO COM RESSALVAS (55-74%): Potencial, mas precisa de desenvolvimento em áreas específicas
+- SEGUNDA ENTREVISTA (40-54%): Inconclusivo, necessita avaliação adicional
+- NÃO APROVADO (<40%): Não atende aos requisitos mínimos da vaga`,
 };
 
 

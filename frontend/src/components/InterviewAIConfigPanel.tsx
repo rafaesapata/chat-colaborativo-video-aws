@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react';
-import { Settings, Save, RotateCcw, Clock, Brain, Gauge, AlertTriangle } from 'lucide-react';
+import { Settings, Save, RotateCcw, Clock, Brain, Gauge, AlertTriangle, FileText, Scale, MessageSquare } from 'lucide-react';
 import {
   InterviewAIConfig,
   DEFAULT_CONFIG,
@@ -78,7 +78,7 @@ export default function InterviewAIConfigPanel({ darkMode, userLogin }: Intervie
   };
 
 
-  const updateConfig = (key: keyof InterviewAIConfig, value: number | boolean) => {
+  const updateConfig = (key: keyof InterviewAIConfig, value: number | boolean | string) => {
     setConfig(prev => ({ ...prev, [key]: value }));
   };
 
@@ -335,6 +335,31 @@ export default function InterviewAIConfigPanel({ darkMode, userLogin }: Intervie
           </div>
         </section>
 
+        {/* Detecção de Perguntas Section */}
+        <section>
+          <h3 className={`text-sm font-semibold mb-4 flex items-center gap-2 ${darkMode ? 'text-gray-300' : 'text-gray-700'}`}>
+            <Brain size={16} className="text-cyan-500" />
+            Detecção de Perguntas
+          </h3>
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+            <ConfigSlider
+              darkMode={darkMode}
+              label="Similaridade para detecção"
+              value={config.questionSimilarityThreshold}
+              min={10}
+              max={80}
+              step={5}
+              unit="%"
+              description="% mínimo de similaridade para marcar pergunta como lida"
+              onChange={(v) => updateConfig('questionSimilarityThreshold', v)}
+            />
+          </div>
+          <p className={`text-xs mt-3 ${darkMode ? 'text-gray-500' : 'text-gray-400'}`}>
+            💡 Valores mais baixos detectam perguntas com mais facilidade (mais sensível). 
+            Valores mais altos exigem maior correspondência entre a fala e a pergunta sugerida.
+          </p>
+        </section>
+
         {/* Toggles Section */}
         <section>
           <h3 className={`text-sm font-semibold mb-4 flex items-center gap-2 ${darkMode ? 'text-gray-300' : 'text-gray-700'}`}>
@@ -355,6 +380,178 @@ export default function InterviewAIConfigPanel({ darkMode, userLogin }: Intervie
               description="Avaliar respostas comparando com respostas esperadas e keywords"
               checked={config.enableTechnicalEvaluation}
               onChange={(v) => updateConfig('enableTechnicalEvaluation', v)}
+            />
+          </div>
+        </section>
+
+        {/* ============ CONFIGURAÇÕES DE RELATÓRIO ============ */}
+        <div className={`border-t ${darkMode ? 'border-gray-700' : 'border-gray-200'} pt-6 mt-6`}>
+          <h2 className={`text-lg font-semibold mb-6 flex items-center gap-2 ${darkMode ? 'text-gray-200' : 'text-gray-800'}`}>
+            <FileText size={20} className="text-indigo-500" />
+            Configurações de Relatório de Entrevista
+          </h2>
+        </div>
+
+        {/* Thresholds de Recomendação */}
+        <section>
+          <h3 className={`text-sm font-semibold mb-4 flex items-center gap-2 ${darkMode ? 'text-gray-300' : 'text-gray-700'}`}>
+            <Scale size={16} className="text-indigo-500" />
+            Thresholds de Recomendação
+          </h3>
+          <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+            <ConfigSlider
+              darkMode={darkMode}
+              label="Aprovado"
+              value={config.reportApprovedThreshold}
+              min={50}
+              max={100}
+              step={5}
+              unit="%"
+              description="Score mínimo para 'Aprovado'"
+              onChange={(v) => updateConfig('reportApprovedThreshold', v)}
+            />
+            <ConfigSlider
+              darkMode={darkMode}
+              label="Aprovado c/ Ressalvas"
+              value={config.reportApprovedWithReservationsThreshold}
+              min={30}
+              max={80}
+              step={5}
+              unit="%"
+              description="Score mínimo para 'Aprovado com ressalvas'"
+              onChange={(v) => updateConfig('reportApprovedWithReservationsThreshold', v)}
+            />
+            <ConfigSlider
+              darkMode={darkMode}
+              label="Segunda Entrevista"
+              value={config.reportNeedsSecondInterviewThreshold}
+              min={20}
+              max={60}
+              step={5}
+              unit="%"
+              description="Score mínimo para 'Necessita segunda entrevista'"
+              onChange={(v) => updateConfig('reportNeedsSecondInterviewThreshold', v)}
+            />
+          </div>
+          <p className={`text-xs mt-3 ${darkMode ? 'text-gray-500' : 'text-gray-400'}`}>
+            💡 Candidatos abaixo do threshold de "Segunda Entrevista" serão marcados como "Não Aprovado"
+          </p>
+        </section>
+
+        {/* Pesos de Avaliação */}
+        <section>
+          <h3 className={`text-sm font-semibold mb-4 flex items-center gap-2 ${darkMode ? 'text-gray-300' : 'text-gray-700'}`}>
+            <Gauge size={16} className="text-amber-500" />
+            Pesos de Avaliação (devem somar 100%)
+          </h3>
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+            <ConfigSlider
+              darkMode={darkMode}
+              label="Habilidades Técnicas"
+              value={config.reportTechnicalWeight}
+              min={0}
+              max={100}
+              step={5}
+              unit="%"
+              description="Peso da avaliação técnica no score final"
+              onChange={(v) => updateConfig('reportTechnicalWeight', v)}
+            />
+            <ConfigSlider
+              darkMode={darkMode}
+              label="Soft Skills"
+              value={config.reportSoftSkillsWeight}
+              min={0}
+              max={100}
+              step={5}
+              unit="%"
+              description="Peso das habilidades interpessoais"
+              onChange={(v) => updateConfig('reportSoftSkillsWeight', v)}
+            />
+            <ConfigSlider
+              darkMode={darkMode}
+              label="Experiência"
+              value={config.reportExperienceWeight}
+              min={0}
+              max={100}
+              step={5}
+              unit="%"
+              description="Peso da experiência profissional"
+              onChange={(v) => updateConfig('reportExperienceWeight', v)}
+            />
+            <ConfigSlider
+              darkMode={darkMode}
+              label="Comunicação"
+              value={config.reportCommunicationWeight}
+              min={0}
+              max={100}
+              step={5}
+              unit="%"
+              description="Peso da clareza e articulação"
+              onChange={(v) => updateConfig('reportCommunicationWeight', v)}
+            />
+          </div>
+          {(() => {
+            const total = config.reportTechnicalWeight + config.reportSoftSkillsWeight + 
+                         config.reportExperienceWeight + config.reportCommunicationWeight;
+            const isValid = total === 100;
+            return (
+              <div className={`mt-3 p-2 rounded-lg text-sm ${
+                isValid 
+                  ? darkMode ? 'bg-green-900/20 text-green-400' : 'bg-green-50 text-green-700'
+                  : darkMode ? 'bg-red-900/20 text-red-400' : 'bg-red-50 text-red-700'
+              }`}>
+                {isValid ? '✓' : '⚠️'} Total: {total}% {!isValid && '(deve ser 100%)'}
+              </div>
+            );
+          })()}
+        </section>
+
+        {/* Instruções Customizáveis */}
+        <section>
+          <h3 className={`text-sm font-semibold mb-4 flex items-center gap-2 ${darkMode ? 'text-gray-300' : 'text-gray-700'}`}>
+            <MessageSquare size={16} className="text-cyan-500" />
+            Instruções para a IA (Prompts Customizáveis)
+          </h3>
+          <div className="space-y-4">
+            <ConfigTextArea
+              darkMode={darkMode}
+              label="Instruções Gerais do Sistema"
+              value={config.reportSystemInstructions}
+              placeholder="Instruções gerais para a IA ao gerar relatórios..."
+              description="Define o tom e abordagem geral da IA na avaliação"
+              onChange={(v) => updateConfig('reportSystemInstructions', v)}
+            />
+            <ConfigTextArea
+              darkMode={darkMode}
+              label="Critérios de Avaliação Técnica"
+              value={config.reportEvaluationCriteria}
+              placeholder="Critérios para avaliar conhecimento técnico..."
+              description="Como a IA deve avaliar as competências técnicas"
+              onChange={(v) => updateConfig('reportEvaluationCriteria', v)}
+            />
+            <ConfigTextArea
+              darkMode={darkMode}
+              label="Critérios de Soft Skills"
+              value={config.reportSoftSkillsCriteria}
+              placeholder="Critérios para avaliar habilidades interpessoais..."
+              description="Como a IA deve avaliar soft skills"
+              onChange={(v) => updateConfig('reportSoftSkillsCriteria', v)}
+            />
+            <ConfigTextArea
+              darkMode={darkMode}
+              label="Diretrizes de Senioridade"
+              value={config.reportSeniorityGuidelines}
+              placeholder="Como determinar o nível de senioridade..."
+              description="Critérios para classificar júnior, pleno ou sênior"
+              onChange={(v) => updateConfig('reportSeniorityGuidelines', v)}
+            />
+            <ConfigTextArea
+              darkMode={darkMode}
+              label="Diretrizes de Recomendação"
+              value={config.reportRecommendationGuidelines}
+              placeholder="Como formular a recomendação final..."
+              description="Critérios para a decisão final de aprovação"
+              onChange={(v) => updateConfig('reportRecommendationGuidelines', v)}
             />
           </div>
         </section>
@@ -446,6 +643,53 @@ function ConfigToggle({ darkMode, label, description, checked, onChange }: Confi
           checked ? 'translate-x-5' : 'translate-x-0'
         }`} />
       </div>
+    </div>
+  );
+}
+
+// Componente de TextArea para instruções customizáveis
+interface ConfigTextAreaProps {
+  darkMode: boolean;
+  label: string;
+  value: string;
+  placeholder: string;
+  description: string;
+  onChange: (value: string) => void;
+}
+
+function ConfigTextArea({ darkMode, label, value, placeholder, description, onChange }: ConfigTextAreaProps) {
+  const [isExpanded, setIsExpanded] = useState(false);
+  
+  return (
+    <div className={`p-3 rounded-lg ${darkMode ? 'bg-gray-700/50' : 'bg-gray-50'}`}>
+      <div className="flex items-center justify-between mb-2">
+        <label className={`text-sm font-medium ${darkMode ? 'text-gray-200' : 'text-gray-700'}`}>
+          {label}
+        </label>
+        <button
+          type="button"
+          onClick={() => setIsExpanded(!isExpanded)}
+          className={`text-xs px-2 py-1 rounded ${
+            darkMode ? 'bg-gray-600 hover:bg-gray-500 text-gray-300' : 'bg-gray-200 hover:bg-gray-300 text-gray-600'
+          }`}
+        >
+          {isExpanded ? 'Recolher' : 'Expandir'}
+        </button>
+      </div>
+      <textarea
+        value={value}
+        onChange={(e) => onChange(e.target.value)}
+        placeholder={placeholder}
+        rows={isExpanded ? 8 : 3}
+        className={`w-full px-3 py-2 rounded-lg text-sm resize-none transition-all ${
+          darkMode 
+            ? 'bg-gray-800 border-gray-600 text-gray-200 placeholder-gray-500' 
+            : 'bg-white border-gray-300 text-gray-800 placeholder-gray-400'
+        } border focus:outline-none focus:ring-2 focus:ring-blue-500`}
+      />
+      <p className={`text-xs mt-1 ${darkMode ? 'text-gray-500' : 'text-gray-400'}`}>
+        {description}
+      </p>
     </div>
   );
 }

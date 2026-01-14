@@ -68,7 +68,7 @@ exports.handler = async (event) => {
       return errorResponse(400, error.message);
     }
 
-    const { action, context, count, lastAnswer } = validatedInput;
+    const { action, context, count, lastAnswer, reportConfig, evaluationConfig } = validatedInput;
 
     // 4. EXECUTAR AÇÃO
     let result;
@@ -84,7 +84,7 @@ exports.handler = async (event) => {
         break;
       
       case 'evaluateAnswer':
-        result = await evaluateAnswer(context, lastAnswer);
+        result = await evaluateAnswer(context, lastAnswer, evaluationConfig);
         break;
       
       case 'generateNewQuestions':
@@ -92,7 +92,7 @@ exports.handler = async (event) => {
         break;
       
       case 'generateReport':
-        result = await generateInterviewReport(context);
+        result = await generateInterviewReport(context, reportConfig);
         break;
       
       case 'evaluateCompleteness':
@@ -132,7 +132,7 @@ exports.handler = async (event) => {
  * VALIDAÇÃO E SANITIZAÇÃO DE ENTRADA
  */
 function validateAndSanitizeInput(body) {
-  const { action, context, count, lastAnswer } = body;
+  const { action, context, count, lastAnswer, reportConfig, evaluationConfig } = body;
   
   // Validar action
   const validActions = [
@@ -188,11 +188,47 @@ function validateAndSanitizeInput(body) {
     ? sanitizePII(sanitizeString(lastAnswer, 5000))
     : '';
   
+  // Validar e sanitizar reportConfig (configurações customizáveis de relatório)
+  const validatedReportConfig = reportConfig ? {
+    // Thresholds de recomendação
+    reportApprovedThreshold: Math.max(50, Math.min(100, Number(reportConfig.reportApprovedThreshold) || 75)),
+    reportApprovedWithReservationsThreshold: Math.max(30, Math.min(80, Number(reportConfig.reportApprovedWithReservationsThreshold) || 55)),
+    reportNeedsSecondInterviewThreshold: Math.max(20, Math.min(60, Number(reportConfig.reportNeedsSecondInterviewThreshold) || 40)),
+    
+    // Pesos de avaliação
+    reportTechnicalWeight: Math.max(0, Math.min(100, Number(reportConfig.reportTechnicalWeight) || 40)),
+    reportSoftSkillsWeight: Math.max(0, Math.min(100, Number(reportConfig.reportSoftSkillsWeight) || 25)),
+    reportExperienceWeight: Math.max(0, Math.min(100, Number(reportConfig.reportExperienceWeight) || 20)),
+    reportCommunicationWeight: Math.max(0, Math.min(100, Number(reportConfig.reportCommunicationWeight) || 15)),
+    
+    // Instruções customizáveis (sanitizar para evitar injection)
+    reportSystemInstructions: sanitizeString(reportConfig.reportSystemInstructions || '', 2000),
+    reportEvaluationCriteria: sanitizeString(reportConfig.reportEvaluationCriteria || '', 2000),
+    reportSoftSkillsCriteria: sanitizeString(reportConfig.reportSoftSkillsCriteria || '', 2000),
+    reportSeniorityGuidelines: sanitizeString(reportConfig.reportSeniorityGuidelines || '', 2000),
+    reportRecommendationGuidelines: sanitizeString(reportConfig.reportRecommendationGuidelines || '', 2000),
+  } : null;
+  
+  // Validar e sanitizar evaluationConfig (configurações de avaliação de respostas)
+  const validatedEvaluationConfig = evaluationConfig ? {
+    // Pesos de avaliação
+    keywordMatchWeight: Math.max(0, Math.min(100, Number(evaluationConfig.keywordMatchWeight) || 60)),
+    lengthBonusMax: Math.max(0, Math.min(50, Number(evaluationConfig.lengthBonusMax) || 20)),
+    exampleBonus: Math.max(0, Math.min(50, Number(evaluationConfig.exampleBonus) || 15)),
+    structureBonus: Math.max(0, Math.min(50, Number(evaluationConfig.structureBonus) || 5)),
+    // Thresholds de qualidade
+    excellentThreshold: Math.max(50, Math.min(100, Number(evaluationConfig.excellentThreshold) || 80)),
+    goodThreshold: Math.max(30, Math.min(90, Number(evaluationConfig.goodThreshold) || 60)),
+    basicThreshold: Math.max(10, Math.min(70, Number(evaluationConfig.basicThreshold) || 40)),
+  } : null;
+  
   return {
     action,
     context: sanitizedContext,
     count: validatedCount,
-    lastAnswer: validatedLastAnswer
+    lastAnswer: validatedLastAnswer,
+    reportConfig: validatedReportConfig,
+    evaluationConfig: validatedEvaluationConfig
   };
 }
 
@@ -353,8 +389,9 @@ async function generateFollowUpQuestion(context, lastAnswer) {
 
 /**
  * Avalia a resposta do candidato
+ * Usa configurações customizáveis do painel de admin
  */
-async function evaluateAnswer(context, answer) {
+async function evaluateAnswer(context, answer, evaluationConfig = null) {
   const { questionsAsked } = context;
   
   // Validar se há perguntas feitas
@@ -387,10 +424,24 @@ async function evaluateAnswer(context, answer) {
     };
   }
   
-  const prompt = buildEvaluationPrompt(lastQuestion, answer);
+  // Configurações padrão de avaliação
+  const defaultEvalConfig = {
+    keywordMatchWeight: 60,
+    lengthBonusMax: 20,
+    exampleBonus: 15,
+    structureBonus: 5,
+    excellentThreshold: 80,
+    goodThreshold: 60,
+    basicThreshold: 40,
+  };
+  
+  // Mesclar configurações (evaluationConfig sobrescreve defaults)
+  const config = { ...defaultEvalConfig, ...evaluationConfig };
+  
+  const prompt = buildEvaluationPrompt(lastQuestion, answer, config);
   const response = await invokeBedrockModel(prompt);
   
-  return parseEvaluationResponse(response);
+  return parseEvaluationResponse(response, config);
 }
 
 /**
@@ -509,9 +560,10 @@ Responda APENAS com o JSON, sem texto adicional.`;
 
 /**
  * Constrói prompt para avaliação de resposta
+ * Usa configurações customizáveis do painel de admin
  */
-function buildEvaluationPrompt(question, answer) {
-  return `Você é um especialista em avaliação de entrevistas técnicas. Avalie a resposta do candidato.
+function buildEvaluationPrompt(question, answer, config) {
+  return `Você é um especialista em avaliação de entrevistas técnicas. Avalie a resposta do candidato usando os critérios e pesos configurados.
 
 **PERGUNTA:**
 ${question.question}
@@ -519,13 +571,24 @@ ${question.question}
 **RESPOSTA DO CANDIDATO:**
 ${answer}
 
+**CRITÉRIOS DE AVALIAÇÃO E PESOS:**
+1. Palavras-chave técnicas relevantes: ${config.keywordMatchWeight}% do score
+2. Elaboração e profundidade da resposta: até +${config.lengthBonusMax} pontos bônus
+3. Exemplos práticos e experiências reais: até +${config.exampleBonus} pontos bônus
+4. Estrutura e organização da resposta: até +${config.structureBonus} pontos bônus
+
+**THRESHOLDS DE QUALIDADE:**
+- EXCELENTE: score >= ${config.excellentThreshold}
+- BOM: score >= ${config.goodThreshold} e < ${config.excellentThreshold}
+- BÁSICO: score >= ${config.basicThreshold} e < ${config.goodThreshold}
+- INCOMPLETO: score < ${config.basicThreshold}
+- INCORRETO: resposta com erros conceituais graves
+
 **INSTRUÇÕES:**
-Avalie a resposta considerando:
-1. Correção técnica (conceitos corretos?)
-2. Profundidade (superficial ou detalhada?)
-3. Exemplos práticos (mencionou experiências reais?)
-4. Clareza de comunicação
-5. Completude (abordou os pontos principais?)
+1. Calcule o score base (0-100) considerando os pesos acima
+2. Adicione bônus por elaboração, exemplos e estrutura
+3. Determine a qualidade usando os thresholds configurados
+4. Forneça feedback construtivo e específico
 
 **FORMATO DE RESPOSTA (JSON):**
 {
@@ -535,7 +598,13 @@ Avalie a resposta considerando:
   "strengths": ["ponto forte 1", "ponto forte 2"],
   "improvements": ["área de melhoria 1", "área de melhoria 2"],
   "keyTopics": ["tópico mencionado 1", "tópico mencionado 2"],
-  "missingTopics": ["tópico não mencionado 1", "tópico não mencionado 2"]
+  "missingTopics": ["tópico não mencionado 1", "tópico não mencionado 2"],
+  "scoreBreakdown": {
+    "keywordScore": 0-100,
+    "lengthBonus": 0-${config.lengthBonusMax},
+    "exampleBonus": 0-${config.exampleBonus},
+    "structureBonus": 0-${config.structureBonus}
+  }
 }
 
 Responda APENAS com o JSON, sem texto adicional.`;
@@ -746,8 +815,19 @@ function parseQuestionsResponse(response, type, maxQuestions = 10) {
 
 /**
  * Parse resposta de avaliação
+ * Usa configurações customizáveis para determinar qualidade se a IA não retornar corretamente
  */
-function parseEvaluationResponse(response) {
+function parseEvaluationResponse(response, config = null) {
+  // Configurações padrão de thresholds
+  const defaultConfig = {
+    excellentThreshold: 80,
+    goodThreshold: 60,
+    basicThreshold: 40,
+  };
+  
+  // Mesclar configurações
+  const thresholds = { ...defaultConfig, ...config };
+  
   try {
     const jsonMatch = response.match(/\{[\s\S]*\}/);
     if (!jsonMatch) {
@@ -756,14 +836,37 @@ function parseEvaluationResponse(response) {
     
     const parsed = JSON.parse(jsonMatch[0]);
     
+    // Obter score (garantir que é número)
+    const score = typeof parsed.score === 'number' ? parsed.score : parseInt(parsed.score) || 0;
+    
+    // Determinar qualidade usando thresholds configuráveis
+    // Se a IA retornou quality, usar; senão, calcular baseado no score
+    let quality = parsed.quality;
+    
+    if (!quality || !['excellent', 'good', 'basic', 'incomplete', 'incorrect'].includes(quality)) {
+      // Calcular qualidade baseado no score e thresholds configuráveis
+      if (score >= thresholds.excellentThreshold) {
+        quality = 'excellent';
+      } else if (score >= thresholds.goodThreshold) {
+        quality = 'good';
+      } else if (score >= thresholds.basicThreshold) {
+        quality = 'basic';
+      } else {
+        quality = 'incomplete';
+      }
+      
+      console.log(`[parseEvaluationResponse] Qualidade calculada: ${quality} (score: ${score}, thresholds: excellent=${thresholds.excellentThreshold}, good=${thresholds.goodThreshold}, basic=${thresholds.basicThreshold})`);
+    }
+    
     return {
-      score: parsed.score || 0,
-      quality: parsed.quality || 'incomplete',
+      score,
+      quality,
       feedback: parsed.feedback || '',
       strengths: parsed.strengths || [],
       improvements: parsed.improvements || [],
       keyTopics: parsed.keyTopics || [],
-      missingTopics: parsed.missingTopics || []
+      missingTopics: parsed.missingTopics || [],
+      scoreBreakdown: parsed.scoreBreakdown || null
     };
     
   } catch (error) {
@@ -884,11 +987,55 @@ Retorne APENAS o JSON, sem texto adicional.`;
 
 /**
  * Gera relatório completo da entrevista
+ * Usa configurações customizáveis do painel de admin
  */
-async function generateInterviewReport(context) {
+async function generateInterviewReport(context, reportConfig = null) {
   const { topic, jobDescription, questionsAsked, transcriptionHistory, candidateName } = context;
 
-  const prompt = `Você é um especialista em recrutamento técnico. Analise esta entrevista completa e gere um relatório detalhado.
+  // Configurações padrão (usadas se reportConfig não for fornecido)
+  const defaultConfig = {
+    reportApprovedThreshold: 75,
+    reportApprovedWithReservationsThreshold: 55,
+    reportNeedsSecondInterviewThreshold: 40,
+    reportTechnicalWeight: 40,
+    reportSoftSkillsWeight: 25,
+    reportExperienceWeight: 20,
+    reportCommunicationWeight: 15,
+    reportSystemInstructions: `Você é um especialista em recrutamento técnico com vasta experiência em avaliação de candidatos.
+Sua análise deve ser:
+- Objetiva e baseada em evidências das respostas
+- Construtiva, destacando pontos fortes e áreas de melhoria
+- Alinhada com os requisitos específicos da vaga
+- Justa e imparcial, considerando o contexto das respostas`,
+    reportEvaluationCriteria: `Critérios de Avaliação Técnica:
+1. Correção conceitual: O candidato demonstra conhecimento correto dos conceitos?
+2. Profundidade: As respostas são superficiais ou demonstram domínio do assunto?
+3. Aplicação prática: O candidato consegue relacionar teoria com prática?
+4. Atualização: O conhecimento está atualizado com as práticas do mercado?
+5. Resolução de problemas: Demonstra capacidade de análise e solução?`,
+    reportSoftSkillsCriteria: `Critérios de Avaliação de Soft Skills:
+1. Comunicação: Clareza, objetividade e articulação das ideias
+2. Trabalho em equipe: Menções a colaboração e experiências em grupo
+3. Adaptabilidade: Capacidade de lidar com mudanças e novos desafios
+4. Proatividade: Iniciativa e autonomia demonstradas
+5. Pensamento crítico: Capacidade de análise e questionamento`,
+    reportSeniorityGuidelines: `Diretrizes para Determinar Senioridade:
+- JÚNIOR: Conhecimento básico, necessita supervisão, foco em aprendizado
+- PLENO: Conhecimento sólido, autonomia moderada, resolve problemas comuns
+- SÊNIOR: Conhecimento avançado, alta autonomia, mentoria, decisões arquiteturais`,
+    reportRecommendationGuidelines: `Diretrizes para Recomendação:
+- APROVADO (75%+): Atende ou supera os requisitos, pronto para contribuir
+- APROVADO COM RESSALVAS (55-74%): Potencial, mas precisa de desenvolvimento em áreas específicas
+- SEGUNDA ENTREVISTA (40-54%): Inconclusivo, necessita avaliação adicional
+- NÃO APROVADO (<40%): Não atende aos requisitos mínimos da vaga`
+  };
+
+  // Mesclar configurações (reportConfig sobrescreve defaults)
+  const config = { ...defaultConfig, ...reportConfig };
+
+  const prompt = `${config.reportSystemInstructions}
+
+Analise esta entrevista completa e gere um relatório detalhado.
 
 **CONTEXTO DA VAGA:**
 - Cargo: ${topic}
@@ -904,12 +1051,36 @@ ${i + 1}. Pergunta (${qa.category}): ${qa.question}
 **TRANSCRIÇÃO COMPLETA:**
 ${transcriptionHistory.join('\n')}
 
+**CRITÉRIOS DE AVALIAÇÃO TÉCNICA:**
+${config.reportEvaluationCriteria}
+
+**CRITÉRIOS DE SOFT SKILLS:**
+${config.reportSoftSkillsCriteria}
+
+**DIRETRIZES DE SENIORIDADE:**
+${config.reportSeniorityGuidelines}
+
+**DIRETRIZES DE RECOMENDAÇÃO:**
+${config.reportRecommendationGuidelines}
+
+**PESOS DE AVALIAÇÃO:**
+- Habilidades Técnicas: ${config.reportTechnicalWeight}%
+- Soft Skills: ${config.reportSoftSkillsWeight}%
+- Experiência: ${config.reportExperienceWeight}%
+- Comunicação: ${config.reportCommunicationWeight}%
+
+**THRESHOLDS DE DECISÃO:**
+- Aprovado: >= ${config.reportApprovedThreshold}%
+- Aprovado com Ressalvas: >= ${config.reportApprovedWithReservationsThreshold}%
+- Segunda Entrevista: >= ${config.reportNeedsSecondInterviewThreshold}%
+- Não Aprovado: < ${config.reportNeedsSecondInterviewThreshold}%
+
 **INSTRUÇÕES:**
 Gere um relatório JSON completo com:
 
-1. **overallScore** (0-100): Pontuação geral do candidato
+1. **overallScore** (0-100): Pontuação geral calculada usando os pesos acima
 2. **recommendation**: 
-   - decision: "Aprovado", "Aprovado com ressalvas", "Não aprovado", ou "Necessita segunda entrevista"
+   - decision: Use os thresholds acima para determinar: "Aprovado", "Aprovado com ressalvas", "Não aprovado", ou "Necessita segunda entrevista"
    - status: "approved", "approved_with_reservations", "rejected", ou "needs_second_interview"
    - title: Título da recomendação
    - description: Descrição detalhada (2-3 frases)
@@ -944,6 +1115,7 @@ Gere um relatório JSON completo com:
 - Seja específico e cite exemplos das respostas
 - Compare com os requisitos da vaga
 - Seja honesto e construtivo
+- Use os pesos e thresholds fornecidos para calcular scores e decisões
 
 Retorne APENAS o JSON, sem texto adicional.`;
 
