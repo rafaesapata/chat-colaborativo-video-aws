@@ -1,12 +1,14 @@
-import { useRef } from 'react';
-import { X, Download, User, Briefcase, Brain, Target, TrendingUp, AlertCircle, CheckCircle, XCircle } from 'lucide-react';
-import { InterviewReport } from '../services/interviewAIService';
+import { useRef, useState, useCallback } from 'react';
+import { X, Download, User, Briefcase, Brain, Target, TrendingUp, AlertCircle, CheckCircle, XCircle, Quote, MessageSquare, Shield } from 'lucide-react';
+import { InterviewReport, CalibrationFeedback, interviewAIService } from '../services/interviewAIService';
 
 interface InterviewReportModalProps {
   isOpen: boolean;
   onClose: () => void;
   report: InterviewReport | null;
   darkMode: boolean;
+  meetingId?: string;
+  userLogin?: string;
 }
 
 export default function InterviewReportModal({
@@ -14,8 +16,23 @@ export default function InterviewReportModal({
   onClose,
   report,
   darkMode,
+  meetingId,
+  userLogin,
 }: InterviewReportModalProps) {
   const reportRef = useRef<HTMLDivElement>(null);
+  const [showCalibration, setShowCalibration] = useState(false);
+  const [calibrationSent, setCalibrationSent] = useState(false);
+  const [calibration, setCalibration] = useState<CalibrationFeedback>({
+    agreedWithScore: true,
+    agreedWithDecision: true,
+    comments: ''
+  });
+
+  const handleSubmitCalibration = useCallback(async () => {
+    if (!meetingId || !userLogin) return;
+    const ok = await interviewAIService.submitCalibration(meetingId, userLogin, calibration);
+    if (ok) setCalibrationSent(true);
+  }, [meetingId, userLogin, calibration]);
 
   if (!isOpen || !report) return null;
 
@@ -441,6 +458,54 @@ export default function InterviewReportModal({
             </div>
           )}
 
+          {/* Evidence Section */}
+          {report.evidence && (report.evidence.technical || report.evidence.experience || report.evidence.communication) && (
+            <div className={`p-4 rounded-xl ${darkMode ? 'bg-cyan-900/20' : 'bg-cyan-50'}`}>
+              <h4 className={`font-semibold mb-3 flex items-center gap-2 text-sm ${darkMode ? 'text-cyan-300' : 'text-cyan-700'}`}>
+                <Quote size={18} />
+                Evidências (Citações do Candidato)
+              </h4>
+              <div className="space-y-3">
+                {report.evidence.technical && (
+                  <div>
+                    <p className={`text-xs font-medium ${darkMode ? 'text-gray-400' : 'text-gray-500'}`}>Técnico:</p>
+                    <p className={`text-sm italic ${darkMode ? 'text-cyan-200' : 'text-cyan-800'}`}>"{report.evidence.technical}"</p>
+                  </div>
+                )}
+                {report.evidence.experience && (
+                  <div>
+                    <p className={`text-xs font-medium ${darkMode ? 'text-gray-400' : 'text-gray-500'}`}>Experiência:</p>
+                    <p className={`text-sm italic ${darkMode ? 'text-cyan-200' : 'text-cyan-800'}`}>"{report.evidence.experience}"</p>
+                  </div>
+                )}
+                {report.evidence.communication && (
+                  <div>
+                    <p className={`text-xs font-medium ${darkMode ? 'text-gray-400' : 'text-gray-500'}`}>Comunicação:</p>
+                    <p className={`text-sm italic ${darkMode ? 'text-cyan-200' : 'text-cyan-800'}`}>"{report.evidence.communication}"</p>
+                  </div>
+                )}
+              </div>
+            </div>
+          )}
+
+          {/* Soft Skills Evidence */}
+          {report.softSkills.some(s => s.evidence) && (
+            <div className={`p-4 rounded-xl ${darkMode ? 'bg-purple-900/20' : 'bg-purple-50'}`}>
+              <h4 className={`font-semibold mb-3 flex items-center gap-2 text-sm ${darkMode ? 'text-purple-300' : 'text-purple-700'}`}>
+                <MessageSquare size={18} />
+                Evidências por Soft Skill
+              </h4>
+              <div className="space-y-2">
+                {report.softSkills.filter(s => s.evidence).map((skill, i) => (
+                  <div key={i}>
+                    <p className={`text-xs font-medium ${darkMode ? 'text-gray-400' : 'text-gray-500'}`}>{skill.name}:</p>
+                    <p className={`text-sm italic ${darkMode ? 'text-purple-200' : 'text-purple-800'}`}>"{skill.evidence}"</p>
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
+
           {/* Recommendation Details */}
           {report.recommendation.details && report.recommendation.details.length > 0 && (
             <div className={`p-3 rounded-lg ${darkMode ? 'bg-gray-700/30' : 'bg-gray-50'}`}>
@@ -457,6 +522,59 @@ export default function InterviewReportModal({
             </div>
           )}
 
+          {/* Calibration Section */}
+          {meetingId && userLogin && (
+            <div className={`p-4 rounded-xl border ${darkMode ? 'bg-gray-700/30 border-gray-600' : 'bg-gray-50 border-gray-200'}`}>
+              {!showCalibration && !calibrationSent ? (
+                <button
+                  onClick={() => setShowCalibration(true)}
+                  className={`flex items-center gap-2 text-sm font-medium ${darkMode ? 'text-blue-400 hover:text-blue-300' : 'text-blue-600 hover:text-blue-700'}`}
+                >
+                  <Shield size={16} />
+                  Dar feedback sobre esta avaliação (calibração)
+                </button>
+              ) : calibrationSent ? (
+                <p className={`text-sm flex items-center gap-2 ${darkMode ? 'text-green-400' : 'text-green-600'}`}>
+                  <CheckCircle size={16} /> Feedback de calibração enviado
+                </p>
+              ) : (
+                <div className="space-y-3">
+                  <h4 className={`font-semibold text-sm flex items-center gap-2 ${darkMode ? 'text-gray-300' : 'text-gray-700'}`}>
+                    <Shield size={16} /> Calibração do Entrevistador
+                  </h4>
+                  <label className="flex items-center gap-2">
+                    <input type="checkbox" checked={calibration.agreedWithScore}
+                      onChange={e => setCalibration(c => ({ ...c, agreedWithScore: e.target.checked }))} />
+                    <span className={`text-sm ${darkMode ? 'text-gray-300' : 'text-gray-600'}`}>Concordo com o score ({report.overallScore})</span>
+                  </label>
+                  {!calibration.agreedWithScore && (
+                    <input type="number" min={0} max={100} placeholder="Score sugerido (0-100)"
+                      className={`w-full px-3 py-1.5 rounded text-sm ${darkMode ? 'bg-gray-600 text-white' : 'bg-white border'}`}
+                      onChange={e => setCalibration(c => ({ ...c, suggestedScore: Number(e.target.value) }))} />
+                  )}
+                  <label className="flex items-center gap-2">
+                    <input type="checkbox" checked={calibration.agreedWithDecision}
+                      onChange={e => setCalibration(c => ({ ...c, agreedWithDecision: e.target.checked }))} />
+                    <span className={`text-sm ${darkMode ? 'text-gray-300' : 'text-gray-600'}`}>Concordo com a decisão ({report.recommendation.decision})</span>
+                  </label>
+                  <textarea placeholder="Comentários adicionais..." rows={2}
+                    className={`w-full px-3 py-1.5 rounded text-sm ${darkMode ? 'bg-gray-600 text-white' : 'bg-white border'}`}
+                    onChange={e => setCalibration(c => ({ ...c, comments: e.target.value }))} />
+                  <div className="flex gap-2">
+                    <button onClick={handleSubmitCalibration}
+                      className="px-4 py-1.5 bg-blue-600 text-white rounded text-sm hover:bg-blue-700">
+                      Enviar
+                    </button>
+                    <button onClick={() => setShowCalibration(false)}
+                      className={`px-4 py-1.5 rounded text-sm ${darkMode ? 'bg-gray-600 text-gray-300' : 'bg-gray-200 text-gray-600'}`}>
+                      Cancelar
+                    </button>
+                  </div>
+                </div>
+              )}
+            </div>
+          )}
+
           {/* Footer */}
           <div className={`text-center text-xs pt-4 border-t ${darkMode ? 'border-gray-700 text-gray-500' : 'border-gray-200 text-gray-400'}`}>
             <p>Relatório gerado em {new Date(report.generatedAt).toLocaleString('pt-BR')}</p>
@@ -466,6 +584,7 @@ export default function InterviewReportModal({
                 : `${report.transcriptionCount} transcrições analisadas`
               }
               {report.questionsAskedCount !== undefined && ` • ${report.questionsAskedCount} perguntas feitas`}
+              {report.doubleEvaluated && ' • Dupla avaliação ✓'}
             </p>
           </div>
         </div>

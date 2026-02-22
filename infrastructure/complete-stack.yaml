@@ -845,9 +845,14 @@ Resources:
       FunctionName: !Sub '${AWS::StackName}-InterviewAIFunction'
       CodeUri: ../backend/lambdas/interview-ai/
       Handler: index.handler
-      Timeout: 90
+      Timeout: 120
       MemorySize: 2048
+      Environment:
+        Variables:
+          MEETING_HISTORY_TABLE: !Ref MeetingHistoryTable
       Policies:
+        - DynamoDBCrudPolicy:
+            TableName: !Ref MeetingHistoryTable
         - Statement:
             - Effect: Allow
               Action:

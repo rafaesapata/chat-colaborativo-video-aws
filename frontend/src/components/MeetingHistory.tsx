@@ -23,6 +23,7 @@ export default function MeetingHistory({ isOpen, onClose, userLogin, darkMode }:
   const [generatingReport, setGeneratingReport] = useState<string | null>(null);
   const [showReportModal, setShowReportModal] = useState(false);
   const [currentReport, setCurrentReport] = useState<InterviewReport | null>(null);
+  const [currentReportMeetingId, setCurrentReportMeetingId] = useState<string | null>(null);
 
   useEffect(() => {
     if (isOpen && userLogin) {
@@ -162,7 +163,12 @@ export default function MeetingHistory({ isOpen, onClose, userLogin, darkMode }:
 
       const report = await interviewAIService.generateInterviewReport(context);
       setCurrentReport(report);
+      setCurrentReportMeetingId(meeting.id);
       setShowReportModal(true);
+
+      // Persistir relatório no DynamoDB
+      interviewAIService.saveReport(meeting.id, report, userLogin)
+        .catch(err => console.error('[MeetingHistory] Erro ao persistir relatório:', err));
     } catch (error) {
       console.error('Erro ao gerar relatório:', error);
       alert('Erro ao gerar relatório. Por favor, tente novamente.');
@@ -174,6 +180,7 @@ export default function MeetingHistory({ isOpen, onClose, userLogin, darkMode }:
   const handleCloseReport = () => {
     setShowReportModal(false);
     setCurrentReport(null);
+    setCurrentReportMeetingId(null);
   };
 
   const formatRecordingDuration = (seconds?: number) => {
@@ -495,6 +502,8 @@ export default function MeetingHistory({ isOpen, onClose, userLogin, darkMode }:
             onClose={handleCloseReport}
             report={currentReport}
             darkMode={darkMode}
+            meetingId={currentReportMeetingId || undefined}
+            userLogin={userLogin}
           />
         )}
       </div>

@@ -595,6 +595,11 @@ const routes = Object.freeze({
   'POST:/interview/config/save': handleSaveInterviewConfig,
   // Interview AI (geração de perguntas com Bedrock)
   'POST:/interview/ai': handleInterviewAI,
+  // Interview AI - Report persistence & comparison
+  'POST:/interview/report/save': handleInterviewReportAction,
+  'POST:/interview/report/get': handleInterviewReportAction,
+  'POST:/interview/report/compare': handleInterviewReportAction,
+  'POST:/interview/calibration/submit': handleInterviewReportAction,
   // Meeting History (histórico de reuniões para admin)
   'POST:/admin/history/list': handleAdminListHistory,
   'POST:/admin/history/save': handleSaveMeetingHistory,
@@ -3372,7 +3377,7 @@ async function handleInterviewAI(body, event) {
     return errorResponse(400, 'context é obrigatório');
   }
   
-  const validActions = ['generateInitialQuestions', 'generateFollowUp', 'evaluateAnswer', 'generateNewQuestions', 'generateReport', 'evaluateCompleteness'];
+  const validActions = ['generateInitialQuestions', 'generateFollowUp', 'evaluateAnswer', 'generateNewQuestions', 'generateReport', 'evaluateCompleteness', 'saveReport', 'getReport', 'compareReports', 'submitCalibration'];
   if (!validActions.includes(action)) {
     return errorResponse(400, `action inválido. Valores permitidos: ${validActions.join(', ')}`);
   }
@@ -3420,6 +3425,56 @@ async function handleInterviewAI(body, event) {
   } catch (error) {
     log(LOG_LEVELS.ERROR, 'Erro ao chamar Lambda de IA', { error: error.message, stack: error.stack });
     return errorResponse(500, 'Erro ao processar requisição de IA');
+  }
+}
+
+/**
+ * Proxy para ações de relatório/calibração no Lambda de IA
+ * Mapeia a rota para a action correspondente
+ */
+async function handleInterviewReportAction(body, event) {
+  const authHeader = event?.headers?.authorization || event?.headers?.Authorization;
+  if (!authHeader) {
+    return errorResponse(401, 'Autenticação necessária');
+  }
+
+  // Mapear rota para action
+  const path = event.rawPath || event.path || '';
+  const actionMap = {
+    '/interview/report/save': 'saveReport',
+    '/interview/report/get': 'getReport',
+    '/interview/report/compare': 'compareReports',
+    '/interview/calibration/submit': 'submitCalibration'
+  };
+  
+  const action = actionMap[path];
+  if (!action) {
+    return errorResponse(400, 'Rota inválida');
+  }
+
+  try {
+    const lambdaPayload = {
+      body: JSON.stringify({ action, ...body })
+    };
+
+    const command = new InvokeCommand({
+      FunctionName: process.env.INTERVIEW_AI_LAMBDA || 'chat-colaborativo-serverless-InterviewAIFunction',
+      InvocationType: 'RequestResponse',
+      Payload: JSON.stringify(lambdaPayload)
+    });
+
+    const response = await lambdaClient.send(command);
+    const responsePayload = JSON.parse(new TextDecoder().decode(response.Payload));
+
+    if (responsePayload.statusCode !== 200) {
+      const errorBody = JSON.parse(responsePayload.body);
+      return errorResponse(responsePayload.statusCode, errorBody.error || 'Erro ao processar');
+    }
+
+    return successResponse(JSON.parse(responsePayload.body));
+  } catch (error) {
+    log(LOG_LEVELS.ERROR, 'Erro ao chamar Lambda de IA (report)', { error: error.message });
+    return errorResponse(500, 'Erro ao processar requisição');
   }
 }
 

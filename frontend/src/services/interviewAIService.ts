@@ -71,6 +71,7 @@ export interface InterviewReport {
     name: string;
     score: number;
     description: string;
+    evidence?: string;
   }>;
   jobTechnologies: string[];
   seniorityLevel: {
@@ -84,6 +85,12 @@ export interface InterviewReport {
   candidateResponseCount?: number;
   questionsAskedCount?: number;
   summary?: string;
+  doubleEvaluated?: boolean;
+  evidence?: {
+    technical: string;
+    experience: string;
+    communication: string;
+  };
   scoreBreakdown?: {
     technicalScore: number;
     softSkillsAvg: number;
@@ -96,6 +103,28 @@ export interface InterviewReport {
       communication: number;
     };
   };
+}
+
+export interface CalibrationFeedback {
+  agreedWithScore: boolean;
+  suggestedScore?: number;
+  agreedWithDecision: boolean;
+  suggestedDecision?: string;
+  comments: string;
+}
+
+export interface CandidateRanking {
+  meetingId: string;
+  candidateName: string;
+  overallScore: number;
+  technicalScore: number;
+  softSkillsAvg: number;
+  experienceScore: number;
+  communicationScore: number;
+  recommendation: string;
+  seniorityLevel: string;
+  generatedAt: string;
+  calibration?: CalibrationFeedback | null;
 }
 
 // Cache para evitar chamadas duplicadas
@@ -645,5 +674,93 @@ export const interviewAIService = {
       questionsAsked: context.questionsAsked.length,
       totalQuestions: 10
     };
+  },
+
+  /**
+   * Salva relatório no DynamoDB
+   */
+  async saveReport(meetingId: string, report: InterviewReport, userLogin: string): Promise<void> {
+    try {
+      const auth = authService.getStoredAuth();
+      const headers: Record<string, string> = { 'Content-Type': 'application/json' };
+      if (auth?.token) headers['Authorization'] = `Bearer ${auth.token}`;
+
+      const response = await fetch(`${API_URL}/interview/report/save`, {
+        method: 'POST',
+        headers,
+        body: JSON.stringify({ meetingId, report, userLogin })
+      });
+      if (!response.ok) throw new Error(`Erro ${response.status}`);
+      console.log('[InterviewAI] Relatório salvo no DynamoDB:', meetingId);
+    } catch (error) {
+      console.error('[InterviewAI] Erro ao salvar relatório:', error);
+    }
+  },
+
+  /**
+   * Busca relatório do DynamoDB
+   */
+  async getReport(meetingId: string): Promise<{ report: InterviewReport | null; calibration?: CalibrationFeedback | null }> {
+    try {
+      const auth = authService.getStoredAuth();
+      const headers: Record<string, string> = { 'Content-Type': 'application/json' };
+      if (auth?.token) headers['Authorization'] = `Bearer ${auth.token}`;
+
+      const response = await fetch(`${API_URL}/interview/report/get`, {
+        method: 'POST',
+        headers,
+        body: JSON.stringify({ meetingId })
+      });
+      if (!response.ok) throw new Error(`Erro ${response.status}`);
+      return await response.json();
+    } catch (error) {
+      console.error('[InterviewAI] Erro ao buscar relatório:', error);
+      return { report: null };
+    }
+  },
+
+  /**
+   * Compara candidatos da mesma vaga
+   */
+  async compareReports(meetingTopic: string, userLogin: string): Promise<{ topic: string; totalCandidates: number; ranking: CandidateRanking[] }> {
+    try {
+      const auth = authService.getStoredAuth();
+      const headers: Record<string, string> = { 'Content-Type': 'application/json' };
+      if (auth?.token) headers['Authorization'] = `Bearer ${auth.token}`;
+
+      const response = await fetch(`${API_URL}/interview/report/compare`, {
+        method: 'POST',
+        headers,
+        body: JSON.stringify({ meetingTopic, userLogin })
+      });
+      if (!response.ok) throw new Error(`Erro ${response.status}`);
+      return await response.json();
+    } catch (error) {
+      console.error('[InterviewAI] Erro ao comparar relatórios:', error);
+      return { topic: meetingTopic, totalCandidates: 0, ranking: [] };
+    }
+  },
+
+  /**
+   * Envia feedback de calibração
+   */
+  async submitCalibration(meetingId: string, userLogin: string, feedback: CalibrationFeedback): Promise<boolean> {
+    try {
+      const auth = authService.getStoredAuth();
+      const headers: Record<string, string> = { 'Content-Type': 'application/json' };
+      if (auth?.token) headers['Authorization'] = `Bearer ${auth.token}`;
+
+      const response = await fetch(`${API_URL}/interview/calibration/submit`, {
+        method: 'POST',
+        headers,
+        body: JSON.stringify({ meetingId, userLogin, feedback })
+      });
+      if (!response.ok) throw new Error(`Erro ${response.status}`);
+      console.log('[InterviewAI] Calibração salva:', meetingId);
+      return true;
+    } catch (error) {
+      console.error('[InterviewAI] Erro ao salvar calibração:', error);
+      return false;
+    }
   }
 };

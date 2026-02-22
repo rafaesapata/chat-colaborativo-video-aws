@@ -633,6 +633,12 @@ export default function MeetingRoom({ darkMode }: { darkMode: boolean }) {
         setIsGeneratingReport(false);
         setShowEndModal(false);
         setShowReportModal(true);
+
+        // Persistir relatório no DynamoDB (fire-and-forget)
+        if (currentMeetingId && user?.login) {
+          interviewAIService.saveReport(currentMeetingId, report, user.login)
+            .catch(err => console.error('[MeetingRoom] Erro ao persistir relatório:', err));
+        }
       } catch (error) {
         console.error('[MeetingRoom] Erro ao gerar relatório:', error);
         setIsGeneratingReport(false);
@@ -1004,6 +1010,8 @@ export default function MeetingRoom({ darkMode }: { darkMode: boolean }) {
           onClose={handleCloseReport}
           report={interviewReport}
           darkMode={darkMode}
+          meetingId={currentMeetingId || undefined}
+          userLogin={user?.login}
         />
       </FeatureErrorBoundary>
 
