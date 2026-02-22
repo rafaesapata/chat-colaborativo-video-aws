@@ -77,13 +77,16 @@ async function deleteRoom(roomId, userId) {
   return { statusCode: 200, body: 'Room deleted' };
 }
 
+// L-004: Corrigido - DynamoDBDocumentClient v3 não tem createSet()
+// Usar lista simples com list_append ou SET com SS type
 async function joinRoom(roomId, userId) {
   await ddb.send(new UpdateCommand({
     TableName: CHATROOMS_TABLE,
     Key: { roomId },
-    UpdateExpression: 'ADD participants :userId',
+    UpdateExpression: 'SET participants = list_append(if_not_exists(participants, :empty), :userId)',
     ExpressionAttributeValues: {
-      ':userId': ddb.createSet([userId])
+      ':userId': [userId],
+      ':empty': []
     }
   }));
 
@@ -91,13 +94,25 @@ async function joinRoom(roomId, userId) {
 }
 
 async function leaveRoom(roomId, userId) {
+  // Buscar sala para encontrar o índice do participante
+  const room = await ddb.send(new GetCommand({
+    TableName: CHATROOMS_TABLE,
+    Key: { roomId }
+  }));
+
+  if (!room.Item || !room.Item.participants) {
+    return { statusCode: 404, body: 'Room not found' };
+  }
+
+  const index = room.Item.participants.indexOf(userId);
+  if (index === -1) {
+    return { statusCode: 200, body: 'User not in room' };
+  }
+
   await ddb.send(new UpdateCommand({
     TableName: CHATROOMS_TABLE,
     Key: { roomId },
-    UpdateExpression: 'DELETE participants :userId',
-    ExpressionAttributeValues: {
-      ':userId': ddb.createSet([userId])
-    }
+    UpdateExpression: `REMOVE participants[${index}]`,
   }));
 
   return { statusCode: 200, body: 'Left room' };

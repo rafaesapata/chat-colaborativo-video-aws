@@ -31,6 +31,12 @@ exports.handler = async (event) => {
       return { statusCode: 400, body: 'Missing required fields' };
     }
 
+    // L-005: Validar tamanho do audioData para prevenir alocação excessiva de memória
+    const MAX_AUDIO_CHUNK_SIZE = 2 * 1024 * 1024; // 2MB em base64 (~1.5MB binário)
+    if (audioData.length > MAX_AUDIO_CHUNK_SIZE) {
+      return { statusCode: 413, body: 'Audio chunk too large (max 2MB)' };
+    }
+
     // Decodificar audio base64
     const audioBuffer = Buffer.from(audioData, 'base64');
 

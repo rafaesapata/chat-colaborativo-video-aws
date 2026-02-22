@@ -4,9 +4,10 @@ Description: Chat Colaborativo Serverless com Transcrição em Tempo Real
 
 Globals:
   Function:
-    Runtime: nodejs18.x
+    Runtime: nodejs22.x
     Timeout: 30
     MemorySize: 512
+    Tracing: Active
     Environment:
       Variables:
         USERS_TABLE: !Ref UsersTable
@@ -43,6 +44,8 @@ Resources:
   
   UsersTable:
     Type: AWS::DynamoDB::Table
+    DeletionPolicy: Retain
+    UpdateReplacePolicy: Retain
     Properties:
       TableName: !Sub '${AWS::StackName}-Users'
       BillingMode: PAY_PER_REQUEST
@@ -68,6 +71,8 @@ Resources:
 
   ChatRoomsTable:
     Type: AWS::DynamoDB::Table
+    DeletionPolicy: Retain
+    UpdateReplacePolicy: Retain
     Properties:
       TableName: !Sub '${AWS::StackName}-ChatRooms'
       BillingMode: PAY_PER_REQUEST
@@ -93,6 +98,8 @@ Resources:
 
   MessagesTable:
     Type: AWS::DynamoDB::Table
+    DeletionPolicy: Retain
+    UpdateReplacePolicy: Retain
     Properties:
       TableName: !Sub '${AWS::StackName}-Messages'
       BillingMode: PAY_PER_REQUEST
@@ -122,6 +129,8 @@ Resources:
 
   TranscriptionsTable:
     Type: AWS::DynamoDB::Table
+    DeletionPolicy: Retain
+    UpdateReplacePolicy: Retain
     Properties:
       TableName: !Sub '${AWS::StackName}-Transcriptions'
       BillingMode: PAY_PER_REQUEST
@@ -151,6 +160,8 @@ Resources:
 
   ConnectionsTable:
     Type: AWS::DynamoDB::Table
+    DeletionPolicy: Retain
+    UpdateReplacePolicy: Retain
     Properties:
       TableName: !Sub '${AWS::StackName}-Connections'
       BillingMode: PAY_PER_REQUEST
@@ -193,6 +204,8 @@ Resources:
   
   AudioBucket:
     Type: AWS::S3::Bucket
+    DeletionPolicy: Retain
+    UpdateReplacePolicy: Retain
     Properties:
       BucketName: !Sub '${AWS::StackName}-audio-${AWS::AccountId}'
       BucketEncryption:

@@ -51,31 +51,46 @@ function getPublicIceServers() {
       credential: 'openrelayproject'
     },
     
-    // Metered TURN (público, limitado)
-    {
-      urls: 'turn:a.relay.metered.ca:80',
-      username: 'e8dd65c92eb0c9e6e3c6e8f0',
-      credential: 'uWdWNmkhvyqTmhD0'
-    },
-    {
-      urls: 'turn:a.relay.metered.ca:443',
-      username: 'e8dd65c92eb0c9e6e3c6e8f0',
-      credential: 'uWdWNmkhvyqTmhD0'
-    },
-    {
-      urls: 'turn:a.relay.metered.ca:443?transport=tcp',
-      username: 'e8dd65c92eb0c9e6e3c6e8f0',
-      credential: 'uWdWNmkhvyqTmhD0'
-    }
+    // C-002: Credenciais Metered carregadas de variáveis de ambiente (não hardcoded)
+    ...(process.env.METERED_USERNAME && process.env.METERED_CREDENTIAL ? [
+      {
+        urls: 'turn:a.relay.metered.ca:80',
+        username: process.env.METERED_USERNAME,
+        credential: process.env.METERED_CREDENTIAL
+      },
+      {
+        urls: 'turn:a.relay.metered.ca:443',
+        username: process.env.METERED_USERNAME,
+        credential: process.env.METERED_CREDENTIAL
+      },
+      {
+        urls: 'turn:a.relay.metered.ca:443?transport=tcp',
+        username: process.env.METERED_USERNAME,
+        credential: process.env.METERED_CREDENTIAL
+      }
+    ] : [])
   ];
 }
 
 exports.handler = async (event) => {
-  console.log('[TURN] Request:', JSON.stringify(event));
+  // M-002: Log seguro - não logar evento completo (contém headers/tokens)
+  console.log('[TURN] Request:', JSON.stringify({ 
+    path: event.rawPath || event.path, 
+    method: event.requestContext?.http?.method,
+    requestId: event.requestContext?.requestId 
+  }));
+  
+  // H-003: CORS restrito - não usar wildcard
+  const allowedOrigins = ['https://livechat.ai.udstec.io', 'https://dmz2oaky7xb1w.cloudfront.net'];
+  if (process.env.NODE_ENV !== 'production') {
+    allowedOrigins.push('http://localhost:5173', 'http://localhost:3000');
+  }
+  const requestOrigin = event.headers?.origin || event.headers?.Origin || '';
+  const corsOrigin = allowedOrigins.includes(requestOrigin) ? requestOrigin : allowedOrigins[0];
   
   const headers = {
     'Content-Type': 'application/json',
-    'Access-Control-Allow-Origin': '*',
+    'Access-Control-Allow-Origin': corsOrigin,
     'Access-Control-Allow-Headers': 'Content-Type,Authorization',
     'Access-Control-Allow-Methods': 'GET,POST,OPTIONS'
   };

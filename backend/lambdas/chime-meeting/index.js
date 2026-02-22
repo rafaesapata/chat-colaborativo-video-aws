@@ -104,12 +104,24 @@ const s3Client = new S3Client({
 const BACKGROUNDS_BUCKET = process.env.AUDIO_BUCKET || 'chat-colaborativo-serverless-audio-383234048592';
 const BACKGROUNDS_PREFIX = 'backgrounds/';
 
-// Headers de resposta (imutável) - inclui CORS
-const RESPONSE_HEADERS = Object.freeze({
+// H-003: CORS dinâmico - não usar wildcard
+function getCorsOrigin(event) {
+  const requestOrigin = event?.headers?.origin || event?.headers?.Origin || '';
+  const allOrigins = CONFIG.IS_PRODUCTION ? ALLOWED_ORIGINS : [...ALLOWED_ORIGINS, ...DEV_ORIGINS];
+  return allOrigins.includes(requestOrigin) ? requestOrigin : ALLOWED_ORIGINS[0];
+}
+
+// Headers de resposta base (CORS será adicionado dinamicamente)
+const RESPONSE_HEADERS_BASE = Object.freeze({
   'Content-Type': 'application/json',
-  'Access-Control-Allow-Origin': '*',
   'Access-Control-Allow-Methods': 'GET, POST, PUT, DELETE, OPTIONS',
   'Access-Control-Allow-Headers': 'Content-Type, Authorization, X-Api-Key, x-api-key',
+});
+
+// Mantido para compatibilidade - será sobrescrito no handler
+const RESPONSE_HEADERS = Object.freeze({
+  ...RESPONSE_HEADERS_BASE,
+  'Access-Control-Allow-Origin': ALLOWED_ORIGINS[0],
 });
 
 // ============ LOGGING ESTRUTURADO (THREAD-SAFE) ============
@@ -442,20 +454,15 @@ function successResponse(data, extraHeaders = {}) {
   return createResponse(200, data, extraHeaders);
 }
 
-// Super admins (podem adicionar/remover outros admins)
-const SUPER_ADMINS = Object.freeze([
-  'rafael@uds.com.br',
-  'rafael.sapata',
-  'rsapata'
-]);
+// C-003: Super admins carregados de variável de ambiente (sem PII no código)
+const SUPER_ADMINS = Object.freeze(
+  (process.env.SUPER_ADMIN_LOGINS || 'admin').split(',').filter(Boolean).map(s => s.trim().toLowerCase())
+);
 
-// Admins estáticos (fallback se DynamoDB falhar)
-const STATIC_ADMINS = Object.freeze([
-  'admin',
-  'rafael.sapata',
-  'rsapata',
-  'rafael@uds.com.br'
-]);
+// C-003: Admins estáticos sem PII - fallback fechado (deny all exceto 'admin')
+const STATIC_ADMINS = Object.freeze(
+  (process.env.STATIC_ADMIN_LOGINS || 'admin').split(',').filter(Boolean).map(s => s.trim().toLowerCase())
+);
 
 // ============ GERENCIAMENTO DE ADMINS ============
 async function getAdminList() {
@@ -1238,7 +1245,7 @@ function normalizeLogin(userLogin) {
   if (!userLogin) return '';
   let normalized = userLogin.toLowerCase().trim();
   // Cognito usa underscore no lugar de @ em alguns casos
-  // Ex: rafael_uds.com.br -> rafael@uds.com.br
+  // Ex: user_domain.com.br -> user@domain.com.br
   if (normalized.includes('_') && !normalized.includes('@') && normalized.includes('.')) {
     normalized = normalized.replace('_', '@');
   }
@@ -1951,7 +1958,7 @@ async function handleScheduleCreate(body) {
     Item: item,
   }));
   
-  const meetingUrl = `https://livechat.ai.udstec.io/meeting/${roomId}`;
+  const meetingUrl = `${process.env.APP_BASE_URL || 'https://livechat.ai.udstec.io'}/meeting/${roomId}`;
   
   log(LOG_LEVELS.INFO, 'Reunião agendada', { scheduleId, userLogin, scheduledAt });
   
@@ -1990,7 +1997,7 @@ async function handleScheduleList(body) {
     duration: parseInt(item.duration?.N || '60'),
     createdBy: item.createdBy?.S,
     roomId: item.meetingRoomId?.S,
-    meetingUrl: `https://livechat.ai.udstec.io/meeting/${item.meetingRoomId?.S}`,
+    meetingUrl: `${process.env.APP_BASE_URL || 'https://livechat.ai.udstec.io'}/meeting/${item.meetingRoomId?.S}`,
     participants: JSON.parse(item.participants?.S || '[]'),
     status: item.status?.S || 'scheduled',
     createdAt: item.createdAt?.N ? new Date(parseInt(item.createdAt.N)).toISOString() : null,
@@ -2101,7 +2108,7 @@ async function handleScheduleGet(body, event) {
     duration: parseInt(item.duration?.N || '60'),
     createdBy: item.createdBy?.S,
     roomId: item.meetingRoomId?.S,
-    meetingUrl: `https://livechat.ai.udstec.io/meeting/${item.meetingRoomId?.S}`,
+    meetingUrl: `${process.env.APP_BASE_URL || 'https://livechat.ai.udstec.io'}/meeting/${item.meetingRoomId?.S}`,
     participants: JSON.parse(item.participants?.S || '[]'),
     status: item.status?.S || 'scheduled',
   });
@@ -2261,7 +2268,7 @@ async function handleApiScheduleMeeting(body, event) {
   return successResponse({
     scheduleId,
     roomId,
-    meetingUrl: `https://livechat.ai.udstec.io/meeting/${roomId}`,
+    meetingUrl: `${process.env.APP_BASE_URL || 'https://livechat.ai.udstec.io'}/meeting/${roomId}`,
     title,
     scheduledAt: new Date(scheduledTime).toISOString(),
     duration: duration || 60,
@@ -2290,7 +2297,7 @@ async function handleApiListScheduled(body, event) {
     scheduledAt: item.scheduledAt?.N ? new Date(parseInt(item.scheduledAt.N)).toISOString() : null,
     duration: parseInt(item.duration?.N || '60'),
     roomId: item.meetingRoomId?.S,
-    meetingUrl: `https://livechat.ai.udstec.io/meeting/${item.meetingRoomId?.S}`,
+    meetingUrl: `${process.env.APP_BASE_URL || 'https://livechat.ai.udstec.io'}/meeting/${item.meetingRoomId?.S}`,
     status: item.status?.S || 'scheduled',
   }));
   

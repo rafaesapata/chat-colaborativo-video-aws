@@ -11,7 +11,12 @@ const RECORDINGS_BUCKET = process.env.RECORDINGS_BUCKET;
 const RECORDINGS_TABLE = process.env.RECORDINGS_TABLE;
 
 exports.handler = async (event) => {
-  console.log('Recording Manager Event:', JSON.stringify(event, null, 2));
+  // LOG SEGURO: Não logar evento completo (contém headers/tokens sensíveis)
+  console.log('Recording Manager Event:', JSON.stringify({ 
+    path: event.path || event.rawPath, 
+    method: event.httpMethod || event.requestContext?.http?.method,
+    requestId: event.requestContext?.requestId 
+  }));
 
   // NOTA: NÃO adicionar headers CORS aqui se a Lambda Function URL já está configurada com CORS
   // Headers CORS duplicados causam erro: "multiple values '*, https://...'"
@@ -50,8 +55,15 @@ exports.handler = async (event) => {
       return await handleConfirmUpload(body, headers);
     }
 
-    // Rota: Verificar e corrigir gravações órfãs (admin/cron)
+    // Rota: Verificar e corrigir gravações órfãs (admin/cron) - M-001: requer autenticação
     if (path.includes('/fix-orphaned')) {
+      if (!body.userLogin || !isAdminUser(body.userLogin)) {
+        return {
+          statusCode: 403,
+          headers,
+          body: JSON.stringify({ error: 'Acesso negado - apenas administradores' }),
+        };
+      }
       return await handleFixOrphanedRecordings(body, headers);
     }
 
@@ -65,7 +77,7 @@ exports.handler = async (event) => {
     return {
       statusCode: 500,
       headers,
-      body: JSON.stringify({ error: error.message }),
+      body: JSON.stringify({ error: 'Erro interno do servidor' }),
     };
   }
 };
@@ -129,9 +141,19 @@ async function handleUploadUrl(body, headers) {
   };
 }
 
+// Lista de admins verificados (carregar de env var ou DynamoDB em produção)
+const ADMIN_LOGINS = (process.env.ADMIN_LOGINS || '').split(',').filter(Boolean).map(s => s.trim().toLowerCase());
+
+function isAdminUser(userLogin) {
+  if (!userLogin || ADMIN_LOGINS.length === 0) return false;
+  return ADMIN_LOGINS.includes(userLogin.toLowerCase());
+}
+
 // Gerar URL pré-assinada para playback
 async function handlePlaybackUrl(body, headers) {
-  const { recordingKey, userLogin, recordingId, isAdmin } = body;
+  const { recordingKey, userLogin, recordingId } = body;
+  // C-001: NUNCA aceitar isAdmin do body - verificar via lista de admins do servidor
+  const isAdmin = isAdminUser(userLogin);
 
   if (!userLogin) {
     return {
@@ -255,7 +277,9 @@ async function handlePlaybackUrl(body, headers) {
 
 // Listar gravações do usuário
 async function handleListRecordings(body, headers) {
-  const { userLogin, isAdmin } = body;
+  const { userLogin } = body;
+  // C-001: NUNCA aceitar isAdmin do body - verificar via lista de admins do servidor
+  const isAdmin = isAdminUser(userLogin);
 
   if (!userLogin) {
     return {
@@ -394,11 +418,12 @@ async function handleConfirmUpload(body, headers) {
       }),
     };
   } catch (error) {
+    // H-007: Não expor error.message ao cliente
     console.error('Erro ao confirmar upload:', error);
     return {
       statusCode: 500,
       headers,
-      body: JSON.stringify({ error: error.message }),
+      body: JSON.stringify({ error: 'Erro interno ao confirmar upload' }),
     };
   }
 }
@@ -537,11 +562,12 @@ async function handleFixOrphanedRecordings(body, headers) {
       }),
     };
   } catch (error) {
+    // H-007: Não expor error.message ao cliente
     console.error('Erro ao verificar gravações órfãs:', error);
     return {
       statusCode: 500,
       headers,
-      body: JSON.stringify({ error: error.message }),
+      body: JSON.stringify({ error: 'Erro interno ao verificar gravações' }),
     };
   }
 }

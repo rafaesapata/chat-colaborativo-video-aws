@@ -7,6 +7,8 @@ export default defineConfig({
     port: 3000
   },
   build: {
+    // L-001: Desabilitar source maps em produção explicitamente
+    sourcemap: false,
     rollupOptions: {
       output: {
         manualChunks: {

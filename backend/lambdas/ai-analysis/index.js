@@ -64,7 +64,9 @@ exports.handler = async (event) => {
     };
   } catch (error) {
     console.error('Error in AI analysis:', error);
-    return { statusCode: 500, body: 'Internal Server Error' };
+    // M-008: Retornar HTTP 503 quando Bedrock falha (não 200 com dados falsos)
+    const statusCode = error.message?.includes('indisponível') ? 503 : 500;
+    return { statusCode, body: JSON.stringify({ error: 'Erro interno na análise' }) };
   }
 };
 
@@ -120,8 +122,8 @@ Responda em formato JSON com array de action items.`;
 
 async function invokeBedrockModel(prompt) {
   try {
-    // Usar Claude 3 Sonnet
-    const modelId = 'anthropic.claude-3-sonnet-20240229-v1:0';
+    // M-006: Model ID via variável de ambiente (não hardcoded)
+    const modelId = process.env.BEDROCK_MODEL_ID || 'anthropic.claude-3-sonnet-20240229-v1:0';
 
     const payload = {
       anthropic_version: 'bedrock-2023-05-31',
@@ -149,10 +151,7 @@ async function invokeBedrockModel(prompt) {
   } catch (error) {
     console.error('Bedrock invocation error:', error);
     
-    // Fallback para resposta simples se Bedrock falhar
-    return {
-      summary: 'Análise não disponível no momento',
-      error: error.message
-    };
+    // M-008: Retornar erro real (não HTTP 200 com dados falsos)
+    throw new Error('Análise de IA indisponível no momento');
   }
 }

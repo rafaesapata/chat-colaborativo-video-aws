@@ -26,7 +26,9 @@ const CHIME_API_URL = import.meta.env.VITE_CHIME_API_URL || import.meta.env.VITE
 export const authService = {
   async login(credentials: LoginCredentials): Promise<LoginResponse> {
     try {
-      const response = await fetch('https://backoffice.udstec.io/Account/Login', {
+      // H-002: URL do backoffice via variável de ambiente
+      const backofficeUrl = import.meta.env.VITE_BACKOFFICE_URL || 'https://backoffice.udstec.io';
+      const response = await fetch(`${backofficeUrl}/Account/Login`, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',

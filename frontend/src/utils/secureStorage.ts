@@ -1,4 +1,5 @@
-// SEC-006: Utilitário para armazenamento seguro com ofuscação
+// H-006: Renomeado de secureStorage para storage (Base64 não é criptografia)
+// Para segurança real, usar HttpOnly cookies ou Web Crypto API
 const STORAGE_PREFIX = 'vcsec_';
 
 const encode = (data: string): string => {

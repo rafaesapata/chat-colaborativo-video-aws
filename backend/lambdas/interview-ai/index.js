@@ -124,7 +124,7 @@ exports.handler = async (event) => {
     });
     
     await recordMetric('RequestError', 1);
-    return errorResponse(500, error.message);
+    return errorResponse(500, 'Erro interno do servidor');
   }
 };
 
@@ -761,7 +761,7 @@ async function invokeBedrockModel(prompt, maxTokens = 2000, retryCount = 0) {
       await recordMetric('BedrockMaxRetriesExceeded', 1);
     }
     
-    throw new Error(`Erro ao invocar Bedrock: ${error.message}`);
+    throw new Error('Erro ao invocar modelo de IA');
   }
 }
 
@@ -809,7 +809,7 @@ function parseQuestionsResponse(response, type, maxQuestions = 10) {
   } catch (error) {
     console.error('Error parsing questions response:', error);
     console.error('Raw response:', response);
-    throw new Error(`Erro ao processar resposta da IA: ${error.message}`);
+    throw new Error('Erro ao processar resposta da IA');
   }
 }
 
@@ -872,7 +872,7 @@ function parseEvaluationResponse(response, config = null) {
   } catch (error) {
     console.error('Error parsing evaluation response:', error);
     console.error('Raw response:', response);
-    throw new Error(`Erro ao processar avaliação: ${error.message}`);
+    throw new Error('Erro ao processar avaliação');
   }
 }
 
@@ -1161,7 +1161,7 @@ Retorne APENAS o JSON, sem texto adicional.`;
   } catch (error) {
     console.error('Error parsing report response:', error);
     console.error('Raw response:', response);
-    throw new Error(`Erro ao processar relatório: ${error.message}`);
+    throw new Error('Erro ao processar relatório');
   }
 }
 
@@ -1173,7 +1173,7 @@ function successResponse(data) {
     statusCode: 200,
     headers: {
       'Content-Type': 'application/json',
-      'Access-Control-Allow-Origin': '*',
+      'Access-Control-Allow-Origin': 'https://livechat.ai.udstec.io',
       'Access-Control-Allow-Headers': 'Content-Type',
       'Access-Control-Allow-Methods': 'POST, OPTIONS'
     },
@@ -1192,7 +1192,7 @@ function errorResponse(statusCode, message) {
     statusCode,
     headers: {
       'Content-Type': 'application/json',
-      'Access-Control-Allow-Origin': '*',
+      'Access-Control-Allow-Origin': 'https://livechat.ai.udstec.io',
       'Access-Control-Allow-Headers': 'Content-Type',
       'Access-Control-Allow-Methods': 'POST, OPTIONS'
     },

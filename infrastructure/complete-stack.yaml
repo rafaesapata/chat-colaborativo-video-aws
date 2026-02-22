@@ -29,9 +29,10 @@ Conditions:
 
 Globals:
   Function:
-    Runtime: nodejs18.x
+    Runtime: nodejs22.x
     Timeout: 30
     MemorySize: 512
+    Tracing: Active
     Environment:
       Variables:
         USERS_TABLE: !Ref UsersTable
@@ -49,6 +50,8 @@ Resources:
   
   UsersTable:
     Type: AWS::DynamoDB::Table
+    DeletionPolicy: Retain
+    UpdateReplacePolicy: Retain
     Properties:
       TableName: !Sub '${AWS::StackName}-Users'
       BillingMode: PAY_PER_REQUEST
@@ -77,6 +80,8 @@ Resources:
 
   ChatRoomsTable:
     Type: AWS::DynamoDB::Table
+    DeletionPolicy: Retain
+    UpdateReplacePolicy: Retain
     Properties:
       TableName: !Sub '${AWS::StackName}-ChatRooms'
       BillingMode: PAY_PER_REQUEST
@@ -105,6 +110,8 @@ Resources:
 
   MessagesTable:
     Type: AWS::DynamoDB::Table
+    DeletionPolicy: Retain
+    UpdateReplacePolicy: Retain
     Properties:
       TableName: !Sub '${AWS::StackName}-Messages'
       BillingMode: PAY_PER_REQUEST
@@ -137,6 +144,8 @@ Resources:
 
   TranscriptionsTable:
     Type: AWS::DynamoDB::Table
+    DeletionPolicy: Retain
+    UpdateReplacePolicy: Retain
     Properties:
       TableName: !Sub '${AWS::StackName}-Transcriptions'
       BillingMode: PAY_PER_REQUEST
@@ -172,6 +181,8 @@ Resources:
 
   RoomEventsTable:
     Type: AWS::DynamoDB::Table
+    DeletionPolicy: Retain
+    UpdateReplacePolicy: Retain
     Properties:
       TableName: !Sub '${AWS::StackName}-RoomEvents'
       BillingMode: PAY_PER_REQUEST
@@ -205,6 +216,8 @@ Resources:
 
   ConnectionsTable:
     Type: AWS::DynamoDB::Table
+    DeletionPolicy: Retain
+    UpdateReplacePolicy: Retain
     Properties:
       TableName: !Sub '${AWS::StackName}-Connections'
       BillingMode: PAY_PER_REQUEST
@@ -249,6 +262,8 @@ Resources:
   # Tabela para metadados de gravações
   RecordingsTable:
     Type: AWS::DynamoDB::Table
+    DeletionPolicy: Retain
+    UpdateReplacePolicy: Retain
     Properties:
       TableName: !Sub '${AWS::StackName}-Recordings'
       BillingMode: PAY_PER_REQUEST
@@ -282,9 +297,13 @@ Resources:
 
   # ==================== S3 Buckets ====================
   
+  # S3 Buckets with DeletionPolicy
+  
   # Bucket para gravações de reuniões
   RecordingsBucket:
     Type: AWS::S3::Bucket
+    DeletionPolicy: Retain
+    UpdateReplacePolicy: Retain
     Properties:
       BucketName: !Sub '${AWS::StackName}-recordings-${AWS::AccountId}'
       BucketEncryption:
@@ -318,6 +337,8 @@ Resources:
   
   AudioBucket:
     Type: AWS::S3::Bucket
+    DeletionPolicy: Retain
+    UpdateReplacePolicy: Retain
     Properties:
       BucketName: !Sub '${AWS::StackName}-audio-${AWS::AccountId}'
       BucketEncryption:
@@ -379,6 +400,31 @@ Resources:
 
   # ==================== CloudFront ====================
   
+  # M-005: Security Headers Policy
+  SecurityHeadersPolicy:
+    Type: AWS::CloudFront::ResponseHeadersPolicy
+    Properties:
+      ResponseHeadersPolicyConfig:
+        Name: !Sub '${AWS::StackName}-security-headers'
+        SecurityHeadersConfig:
+          ContentSecurityPolicy:
+            ContentSecurityPolicy: "default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src 'self' https://fonts.gstatic.com; connect-src 'self' https://*.execute-api.us-east-1.amazonaws.com wss://*.execute-api.us-east-1.amazonaws.com https://*.lambda-url.us-east-1.on.aws https://*.amazonaws.com; img-src 'self' data: blob:; media-src 'self' blob:; worker-src 'self' blob:;"
+            Override: true
+          ContentTypeOptions:
+            Override: true
+          FrameOptions:
+            FrameOption: DENY
+            Override: true
+          StrictTransportSecurity:
+            AccessControlMaxAgeSec: 31536000
+            IncludeSubdomains: true
+            Preload: true
+            Override: true
+          XSSProtection:
+            ModeBlock: true
+            Override: true
+            Protection: true
+
   CloudFrontOriginAccessControl:
     Type: AWS::CloudFront::OriginAccessControl
     Properties:
@@ -408,6 +454,7 @@ Resources:
           AllowedMethods: [GET, HEAD, OPTIONS]
           CachedMethods: [GET, HEAD]
           Compress: true
+          ResponseHeadersPolicyId: !Ref SecurityHeadersPolicy
           ForwardedValues:
             QueryString: false
             Cookies:
@@ -657,6 +704,9 @@ Resources:
       Handler: index.handler
       Timeout: 60
       MemorySize: 1024
+      Environment:
+        Variables:
+          BEDROCK_MODEL_ID: 'anthropic.claude-3-sonnet-20240229-v1:0'
       Policies:
         - DynamoDBCrudPolicy:
             TableName: !Ref TranscriptionsTable
@@ -699,6 +749,7 @@ Resources:
         Variables:
           MEETINGS_TABLE: !Ref ChatRoomsTable
           INTERVIEW_AI_LAMBDA: !GetAtt InterviewAIFunction.Arn
+          APP_BASE_URL: !Sub 'https://${DomainName}'
       Policies:
         - DynamoDBCrudPolicy:
             TableName: !Ref ChatRoomsTable
