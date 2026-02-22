@@ -71,9 +71,16 @@ export const authService = {
 
   async checkUserRole(userLogin: string): Promise<'user' | 'admin' | 'superadmin'> {
     try {
+      // §12 FIX: Include auth header for role check endpoint
+      const stored = this.getStoredAuth();
+      const headers: Record<string, string> = { 'Content-Type': 'application/json' };
+      if (stored?.token) {
+        headers['Authorization'] = `Bearer ${stored.token}`;
+      }
+
       const response = await fetch(`${CHIME_API_URL}/admin/check-role`, {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers,
         body: JSON.stringify({ userLogin }),
       });
       

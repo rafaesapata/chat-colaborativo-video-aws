@@ -39,8 +39,8 @@ function calculateInterviewCompleteness(questionsAsked: QuestionAnswer[]): numbe
   answered.forEach(q => { qualitySum += qualityWeights[q.answerQuality] || 50; });
   const qualityScore = answered.length > 0 ? qualitySum / answered.length : 0;
   
-  // 3. Profundidade (25%) - 5 mínimo, 8 ideal
-  const depthScore = questionsAsked.length >= 8 ? 100 : Math.min((questionsAsked.length / 5) * 100, 100);
+  // 3. Profundidade (25%) - §7.3 FIX: require 8 questions for 100% (was 5)
+  const depthScore = Math.min((questionsAsked.length / 8) * 100, 100);
   
   return (categoryScore * 0.40) + (qualityScore * 0.35) + (depthScore * 0.25);
 }
@@ -72,6 +72,8 @@ function isSimilarQuestion(q1: string, q2: string): boolean {
 
 /**
  * Filtra perguntas que já foram feitas ou já existem nas sugestões
+ * §19 NOTE: O(m × (n+k) × len²) due to isSimilarQuestion. Acceptable for n<30 typical interviews.
+ * For larger datasets, consider pre-computing word sets or using a hash-based approach.
  */
 function filterDuplicateQuestions(
   newQuestions: InterviewSuggestion[],
@@ -137,7 +139,23 @@ export function useInterviewAssistant({
   const [config, setConfig] = useState<InterviewAIConfig>(DEFAULT_CONFIG);
 
   const lastTranscriptionCountRef = useRef(0);
+  // §18 FIX: Limit processedTranscriptionsRef to prevent unbounded growth
   const processedTranscriptionsRef = useRef(new Set<string>());
+  const MAX_PROCESSED_TRANSCRIPTIONS = 500;
+
+  // §18 FIX: Helper to add to processedTranscriptionsRef with size limit
+  const addToProcessed = (value: string) => {
+    if (processedTranscriptionsRef.current.size >= MAX_PROCESSED_TRANSCRIPTIONS) {
+      // Remove oldest entries (first 100) to make room
+      const iterator = processedTranscriptionsRef.current.values();
+      for (let i = 0; i < 100; i++) {
+        const next = iterator.next();
+        if (next.done) break;
+        processedTranscriptionsRef.current.delete(next.value);
+      }
+    }
+    processedTranscriptionsRef.current.add(value);
+  };
   const lastProcessedAnswerRef = useRef<string>('');
   const lastSuggestionTimeRef = useRef<number>(0);
   const totalAnswerLengthRef = useRef<number>(0);
@@ -196,16 +214,40 @@ export function useInterviewAssistant({
             }))
           });
           
-          await saveInterviewData(
-            roomId,
-            { 
-              suggestions: newSuggestions, 
-              questionsAsked: newQuestionsAsked,
-              context: { topic, meetingType, jobDescription } // Salvar contexto
-            },
-            userLogin
-          );
-          console.log('[InterviewAssistant] ✅ Dados salvos no DynamoDB com sucesso');
+          // §17 FIX: Retry logic with localStorage backup on failure
+          let lastError: Error | null = null;
+          for (let attempt = 0; attempt < 3; attempt++) {
+            try {
+              await saveInterviewData(
+                roomId,
+                { 
+                  suggestions: newSuggestions, 
+                  questionsAsked: newQuestionsAsked,
+                  context: { topic, meetingType, jobDescription } // Salvar contexto
+                },
+                userLogin
+              );
+              console.log('[InterviewAssistant] ✅ Dados salvos no DynamoDB com sucesso');
+              lastError = null;
+              break;
+            } catch (err: any) {
+              lastError = err;
+              console.warn(`[InterviewAssistant] ⚠️ Tentativa ${attempt + 1}/3 falhou:`, err.message);
+              if (attempt < 2) await new Promise(r => setTimeout(r, 1000 * (attempt + 1)));
+            }
+          }
+          
+          if (lastError) {
+            // Backup to localStorage as fallback
+            try {
+              localStorage.setItem(`interview_backup_${roomId}`, JSON.stringify({
+                suggestions: newSuggestions,
+                questionsAsked: newQuestionsAsked,
+                savedAt: Date.now()
+              }));
+              console.warn('[InterviewAssistant] 💾 Backup salvo em localStorage após falha no DynamoDB');
+            } catch { /* localStorage full or unavailable */ }
+          }
         } catch (error) {
           console.error('[InterviewAssistant] ❌ Erro ao salvar dados:', error);
         }
@@ -253,7 +295,7 @@ export function useInterviewAssistant({
           setQuestionsAsked(result.data.questionsAsked || []);
 
           result.data.questionsAsked?.forEach((qa) => {
-            processedTranscriptionsRef.current.add(qa.answer);
+            addToProcessed(qa.answer);
           });
 
           if (result.data.suggestions?.length > 0 || result.data.questionsAsked?.length > 0) {
@@ -360,7 +402,7 @@ export function useInterviewAssistant({
         console.log('[InterviewAssistant] 🎯 Pergunta detectada, aguardando confirmação...:', detectedSuggestion.question.substring(0, 50));
         
         // Marcar como processada para não detectar novamente
-        processedTranscriptionsRef.current.add(transKey);
+        addToProcessed(transKey);
         
         // DELAY antes de marcar como realizada (para dar tempo de confirmar)
         const detectionDelay = configRef.current.autoDetectionDelayMs || 3000;
@@ -514,7 +556,7 @@ export function useInterviewAssistant({
     );
     if (unprocessed.length === 0) return;
 
-    unprocessed.forEach((t) => processedTranscriptionsRef.current.add(t.transcribedText));
+    unprocessed.forEach((t) => addToProcessed(t.transcribedText));
 
     const newAnswerLength = unprocessed.reduce((sum, t) => sum + t.transcribedText.length, 0);
     totalAnswerLengthRef.current += newAnswerLength;    if (finalTranscriptions.length < currentConfig.minTranscriptionsForFollowup) {
@@ -676,6 +718,11 @@ export function useInterviewAssistant({
           };
           
           setQuestionsAsked((qa) => {
+            // §7.1 FIX: Check for duplicate QA entries before adding
+            if (qa.some(q => q.questionId === suggestionId)) {
+              saveDataToDynamoDB(updatedSuggestions, qa);
+              return qa;
+            }
             const updatedQA = [...qa, newQA];
             // Salvar ambos no DynamoDB
             saveDataToDynamoDB(updatedSuggestions, updatedQA);
@@ -695,25 +742,32 @@ export function useInterviewAssistant({
   );
 
   // Remover sugestão
+  // §7.2 FIX: Use functional update for questionsAsked to avoid stale closure
   const dismissSuggestion = useCallback(
     (suggestionId: string) => {
       setSuggestions((prev) => {
         const newSuggestions = prev.filter((s) => s.id !== suggestionId);
-        saveDataToDynamoDB(newSuggestions, questionsAsked);
+        setQuestionsAsked((currentQA) => {
+          saveDataToDynamoDB(newSuggestions, currentQA);
+          return currentQA;
+        });
         return newSuggestions;
       });
     },
-    [questionsAsked, saveDataToDynamoDB]
+    [saveDataToDynamoDB]
   );
 
   // Limpar sugestões lidas
   const clearReadSuggestions = useCallback(() => {
     setSuggestions((prev) => {
       const newSuggestions = prev.filter((s) => !s.isRead);
-      saveDataToDynamoDB(newSuggestions, questionsAsked);
+      setQuestionsAsked((currentQA) => {
+        saveDataToDynamoDB(newSuggestions, currentQA);
+        return currentQA;
+      });
       return newSuggestions;
     });
-  }, [questionsAsked, saveDataToDynamoDB]);
+  }, [saveDataToDynamoDB]);
 
   // Cleanup
   useEffect(() => {

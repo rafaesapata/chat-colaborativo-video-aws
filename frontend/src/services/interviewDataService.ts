@@ -4,8 +4,19 @@
  */
 
 import { InterviewSuggestion, QuestionAnswer } from './interviewAIService';
+import { authService } from './authService';
 
 const API_URL = import.meta.env.VITE_CHIME_API_URL || import.meta.env.VITE_API_URL || '';
+
+// §2.1 FIX: Helper to get auth headers
+function getAuthHeaders(): Record<string, string> {
+  const auth = authService.getStoredAuth();
+  const headers: Record<string, string> = { 'Content-Type': 'application/json' };
+  if (auth?.token) {
+    headers['Authorization'] = `Bearer ${auth.token}`;
+  }
+  return headers;
+}
 
 export interface InterviewData {
   roomId: string;
@@ -39,7 +50,7 @@ export async function saveInterviewData(
   try {
     const response = await fetch(`${API_URL}/interview/data/save`, {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
+      headers: getAuthHeaders(),
       body: JSON.stringify({
         roomId,
         userLogin,
@@ -71,7 +82,7 @@ export async function getInterviewData(
   try {
     const response = await fetch(`${API_URL}/interview/data/get`, {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
+      headers: getAuthHeaders(),
       body: JSON.stringify({ roomId }),
     });
 
@@ -101,7 +112,7 @@ export async function clearInterviewData(
   try {
     const response = await fetch(`${API_URL}/interview/data/clear`, {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
+      headers: getAuthHeaders(),
       body: JSON.stringify({ roomId, userLogin }),
     });
 

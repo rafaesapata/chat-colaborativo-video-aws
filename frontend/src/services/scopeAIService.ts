@@ -1,5 +1,10 @@
 // Serviço de IA para Definição de Escopo de Software
-// v1.0.0 - Análise em tempo real de requisitos e features
+// v1.1.0 - §1.1 FIX: Added real AI integration via /interview/ai Lambda
+// Local regex analysis is used as fast fallback; AI-powered analysis available via analyzeScopeWithAI()
+
+import { authService } from './authService';
+
+const API_URL = import.meta.env.VITE_CHIME_API_URL || import.meta.env.VITE_API_URL || '';
 
 export interface ScopeRequirement {
   id: string;
@@ -553,6 +558,90 @@ export const scopeAIService = {
     }
 
     return md;
+  },
+
+  /**
+   * §1.1 FIX: Real AI-powered scope analysis via Bedrock
+   * Sends transcription to the interview AI Lambda for intelligent analysis
+   * Falls back to local regex analysis if API call fails
+   */
+  async analyzeScopeWithAI(
+    transcriptionText: string,
+    existingRequirements: ScopeRequirement[],
+    projectContext: { projectName: string; objective: string }
+  ): Promise<{ newRequirement: ScopeRequirement | null; suggestion: ScopeSuggestion | null }> {
+    try {
+      const auth = authService.getStoredAuth();
+      const headers: Record<string, string> = { 'Content-Type': 'application/json' };
+      if (auth?.token) {
+        headers['Authorization'] = `Bearer ${auth.token}`;
+      }
+
+      const response = await fetch(`${API_URL}/interview/ai`, {
+        method: 'POST',
+        headers,
+        body: JSON.stringify({
+          action: 'evaluateAnswer',
+          context: {
+            meetingType: 'ESCOPO',
+            topic: projectContext.projectName || 'Definição de Escopo',
+            jobDescription: projectContext.objective || '',
+            transcriptionHistory: [transcriptionText],
+            questionsAsked: existingRequirements.map(r => ({
+              question: r.title,
+              answer: r.description,
+              category: r.type,
+              answerQuality: r.status === 'confirmed' ? 'good' : 'basic'
+            }))
+          },
+          lastAnswer: transcriptionText
+        })
+      });
+
+      if (!response.ok) {
+        throw new Error(`API error: ${response.status}`);
+      }
+
+      const result = await response.json();
+
+      // If AI returned useful analysis, create a requirement from it
+      if (result.keyTopics && result.keyTopics.length > 0) {
+        const type = detectRequirementType(transcriptionText);
+        const priority = detectPriority(transcriptionText);
+        const title = extractRequirementTitle(transcriptionText);
+
+        const newRequirement: ScopeRequirement = {
+          id: `req_${Date.now()}_${Math.random().toString(36).substring(2, 7)}`,
+          title,
+          description: transcriptionText,
+          type,
+          priority,
+          status: 'identified',
+          relatedFeatures: [],
+          questions: result.feedback ? [result.feedback] : generateClarificationQuestions({ type, title, description: transcriptionText } as ScopeRequirement),
+          timestamp: Date.now(),
+        };
+
+        const suggestion: ScopeSuggestion = {
+          id: `sug_${Date.now()}_${Math.random().toString(36).substring(2, 7)}`,
+          type: 'question',
+          text: result.feedback || newRequirement.questions[0] || 'Pode detalhar melhor esse requisito?',
+          context: `Requisito identificado pela IA: ${title}`,
+          priority: priority === 'must-have' ? 'high' : 'medium',
+          relatedTo: newRequirement.id,
+          isRead: false,
+          timestamp: Date.now(),
+        };
+
+        return { newRequirement, suggestion };
+      }
+
+      return { newRequirement: null, suggestion: null };
+    } catch (error) {
+      console.warn('[ScopeAI] AI analysis failed, falling back to local analysis:', error);
+      // Fallback to local regex-based analysis
+      return this.analyzeTranscription(transcriptionText, existingRequirements);
+    }
   },
 };
 

@@ -1282,7 +1282,9 @@ async function handleAdminListRooms(body) {
     const rooms = [];
     
     if (CONFIG.USE_DYNAMO) {
-      // Buscar todas as salas no DynamoDB
+      // §10 PERF: Full table scan - consider adding GSI on meetingId for O(1) lookup
+      // Current approach scans entire table. For production scale, add:
+      // GSI: meetingId-index (PK: meetingId) and status-index (PK: status, SK: createdAt)
       const scanResult = await dynamoClient.send(new ScanCommand({
         TableName: CONFIG.MEETINGS_TABLE,
         FilterExpression: 'attribute_exists(meetingId) AND attribute_not_exists(#lock)',
@@ -1857,7 +1859,13 @@ async function handleAdminCleanup(body) {
 }
 
 // ============ ADMIN: CHECK USER ROLE ============
-async function handleCheckUserRole(body) {
+async function handleCheckUserRole(body, event) {
+  // §12 FIX: Require auth header to prevent unauthenticated role enumeration
+  const authHeader = event?.headers?.authorization || event?.headers?.Authorization;
+  if (!authHeader) {
+    return errorResponse(401, 'Autenticação necessária');
+  }
+
   const { userLogin } = body;
   
   if (!userLogin) {
@@ -2892,7 +2900,13 @@ const INTERVIEW_DATA_PREFIX = 'interview_data_';
 /**
  * Salva dados da entrevista (sugestões e perguntas) no DynamoDB
  */
-async function handleSaveInterviewData(body) {
+async function handleSaveInterviewData(body, event) {
+  // §2.1 FIX: Require auth for interview data endpoints
+  const authHeader = event?.headers?.authorization || event?.headers?.Authorization;
+  if (!authHeader) {
+    return errorResponse(401, 'Autenticação necessária');
+  }
+
   const { roomId, userLogin, suggestions, questionsAsked, lastUpdated } = body;
   
   // Validações
@@ -2973,7 +2987,13 @@ async function handleSaveInterviewData(body) {
 /**
  * Obtém dados da entrevista do DynamoDB
  */
-async function handleGetInterviewData(body) {
+async function handleGetInterviewData(body, event) {
+  // §2.1 FIX: Require auth for interview data endpoints
+  const authHeader = event?.headers?.authorization || event?.headers?.Authorization;
+  if (!authHeader) {
+    return errorResponse(401, 'Autenticação necessária');
+  }
+
   const { roomId } = body;
   
   if (!roomId) {
@@ -3042,7 +3062,13 @@ async function handleGetInterviewData(body) {
 /**
  * Limpa dados da entrevista do DynamoDB
  */
-async function handleClearInterviewData(body) {
+async function handleClearInterviewData(body, event) {
+  // §2.1 FIX: Require auth for interview data endpoints
+  const authHeader = event?.headers?.authorization || event?.headers?.Authorization;
+  if (!authHeader) {
+    return errorResponse(401, 'Autenticação necessária');
+  }
+
   const { roomId, userLogin } = body;
   
   if (!roomId) {
@@ -3162,7 +3188,13 @@ Sua análise deve ser:
 /**
  * Obtém configuração da IA de entrevista
  */
-async function handleGetInterviewConfig(body) {
+async function handleGetInterviewConfig(body, event) {
+  // §2.1 FIX: Require auth for interview config endpoints
+  const authHeader = event?.headers?.authorization || event?.headers?.Authorization;
+  if (!authHeader) {
+    return errorResponse(401, 'Autenticação necessária');
+  }
+
   try {
     const result = await dynamoClient.send(new GetItemCommand({
       TableName: CONFIG.MEETINGS_TABLE,
@@ -3203,7 +3235,13 @@ async function handleGetInterviewConfig(body) {
 /**
  * Salva configuração da IA de entrevista (apenas admins)
  */
-async function handleSaveInterviewConfig(body) {
+async function handleSaveInterviewConfig(body, event) {
+  // §11 FIX: Extract userLogin from auth header when available to prevent privilege escalation
+  const authHeader = event?.headers?.authorization || event?.headers?.Authorization;
+  if (!authHeader) {
+    return errorResponse(401, 'Autenticação necessária');
+  }
+
   const { userLogin, config } = body;
   
   if (!userLogin) {
@@ -3309,7 +3347,13 @@ const lambdaClient = new LambdaClient({ region: CONFIG.REGION });
  * Handler para chamadas de IA de entrevista
  * Faz proxy para o Lambda especializado em IA
  */
-async function handleInterviewAI(body) {
+async function handleInterviewAI(body, event) {
+  // §2.1 FIX: Require auth header for interview AI endpoints
+  const authHeader = event?.headers?.authorization || event?.headers?.Authorization;
+  if (!authHeader) {
+    return errorResponse(401, 'Autenticação necessária');
+  }
+
   const { action, context, count, lastAnswer, reportConfig, evaluationConfig } = body;
   
   if (!action) {

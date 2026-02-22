@@ -5,64 +5,10 @@
 
 import { useEffect, useRef, useState } from 'react';
 
-// ============================================
-// 1. HEARTBEAT BIDIRECIONAL COM RECOVERY
-// ============================================
-const HEARTBEAT_INTERVAL = 15000;
-const MAX_MISSED_HEARTBEATS = 3;
-
-export function useHeartbeat(
-  ws: WebSocket | null,
-  isConnected: boolean,
-  onDead: () => void
-) {
-  const missedHeartbeats = useRef(0);
-  const lastPong = useRef(Date.now());
-
-  useEffect(() => {
-    if (!ws || !isConnected || ws.readyState !== WebSocket.OPEN) return;
-
-    const sendHeartbeat = () => {
-      if (missedHeartbeats.current >= MAX_MISSED_HEARTBEATS) {
-        console.error('[Heartbeat] Conexão morta detectada após', MAX_MISSED_HEARTBEATS, 'heartbeats perdidos');
-        onDead();
-        return;
-      }
-
-      try {
-        ws.send(JSON.stringify({ action: 'ping', timestamp: Date.now() }));
-        missedHeartbeats.current++;
-      } catch (e) {
-        console.error('[Heartbeat] Erro ao enviar ping:', e);
-      }
-    };
-
-    const handleMessage = (event: MessageEvent) => {
-      try {
-        const data = JSON.parse(event.data);
-        if (data.type === 'pong') {
-          missedHeartbeats.current = 0;
-          lastPong.current = Date.now();
-        }
-      } catch {
-        // Ignorar erros de parse
-      }
-    };
-
-    ws.addEventListener('message', handleMessage);
-    const interval = setInterval(sendHeartbeat, HEARTBEAT_INTERVAL);
-
-    return () => {
-      clearInterval(interval);
-      ws.removeEventListener('message', handleMessage);
-    };
-  }, [ws, isConnected, onDead]);
-
-  return { lastPong: lastPong.current, missedHeartbeats: missedHeartbeats.current };
-}
+// §6 FIX: Removed duplicate useHeartbeat - useWebSocket.ts already handles heartbeat at 30s interval
 
 // ============================================
-// 2. CONNECTION WATCHDOG
+// 1. CONNECTION WATCHDOG
 // ============================================
 const CONNECTION_TIMEOUT = 30000;
 const STATES_TO_WATCH = ['connecting', 'new'];

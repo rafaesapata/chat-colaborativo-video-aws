@@ -5,6 +5,7 @@
  */
 
 import { getCurrentConfig, getInterviewConfig } from './interviewConfigService';
+import { authService } from './authService';
 
 const API_URL = import.meta.env.VITE_CHIME_API_URL || import.meta.env.VITE_API_URL || '';
 
@@ -102,10 +103,12 @@ function cleanExpiredCache() {
 }
 
 /**
- * Chama a API de IA para gerar perguntas
+/**
+ * §8 FIX: Include roomId in cache key to prevent cross-session data leakage
  */
 async function callInterviewAI(action: string, context: InterviewContext, params: any = {}): Promise<any> {
-  const cacheKey = `${action}_${JSON.stringify({ topic: context.topic, jobDescription: context.jobDescription?.substring(0, 100), ...params })}`;
+  const roomId = params.roomId || context.topic || '';
+  const cacheKey = `${action}_${roomId}_${JSON.stringify({ topic: context.topic, jobDescription: context.jobDescription?.substring(0, 100), ...params })}`;
   
   // Verificar cache (não usar cache para relatórios)
   if (action !== 'generateReport') {
@@ -126,14 +129,21 @@ async function callInterviewAI(action: string, context: InterviewContext, params
       questionsCount: context.questionsAsked.length
     });
     
-    // Para relatórios, enviar TODAS as transcrições; para outras ações, últimas 10
+    // §9 FIX: Cap transcriptions for reports to prevent timeout on large payloads
     const transcriptionsToSend = action === 'generateReport' 
-      ? context.transcriptionHistory // TODAS as transcrições para relatório completo
+      ? context.transcriptionHistory.slice(-150) // Cap at last 150 to prevent Lambda timeout
       : context.transcriptionHistory.slice(-10); // Últimas 10 para outras ações
     
+    // §2.1 FIX: Add Authorization header for authenticated requests
+    const auth = authService.getStoredAuth();
+    const headers: Record<string, string> = { 'Content-Type': 'application/json' };
+    if (auth?.token) {
+      headers['Authorization'] = `Bearer ${auth.token}`;
+    }
+
     const response = await fetch(`${API_URL}/interview/ai`, {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
+      headers,
       body: JSON.stringify({
         action,
         context: {

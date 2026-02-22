@@ -44,10 +44,15 @@ exports.handler = async (event) => {
 
 async function handleConnect(event) {
   const { connectionId } = event.requestContext;
+  // §13 FIX: Validate userId from authorizer context when available
+  // If API Gateway has an authorizer configured, prefer authorizer identity
+  const authorizerUserId = event.requestContext?.authorizer?.userId || 
+                           event.requestContext?.authorizer?.principalId;
   const queryParams = event.queryStringParameters || {};
-  const { userId, roomId } = queryParams;
+  const userId = authorizerUserId || queryParams.userId;
+  const { roomId } = queryParams;
 
-  logger.info('Handling connect', { connectionId, userId, roomId });
+  logger.info('Handling connect', { connectionId, userId, roomId, authSource: authorizerUserId ? 'authorizer' : 'queryParam' });
 
   if (!userId || !roomId) {
     logger.error('Missing required parameters', { userId, roomId });

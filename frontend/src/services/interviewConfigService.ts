@@ -5,6 +5,22 @@
 
 const API_URL = import.meta.env.VITE_CHIME_API_URL || '';
 
+// §2.1 FIX: Helper to get auth headers
+function getAuthHeaders(): Record<string, string> {
+  // Dynamic import to avoid circular dependency
+  const stored = localStorage.getItem('videochat_auth') || sessionStorage.getItem('videochat_auth');
+  const headers: Record<string, string> = { 'Content-Type': 'application/json' };
+  if (stored) {
+    try {
+      const auth = JSON.parse(stored);
+      if (auth?.token) {
+        headers['Authorization'] = `Bearer ${auth.token}`;
+      }
+    } catch { /* ignore */ }
+  }
+  return headers;
+}
+
 export interface InterviewAIConfig {
   // Timing
   minAnswerLength: number;
@@ -180,7 +196,7 @@ export async function getInterviewConfig(forceRefresh = false): Promise<Intervie
   try {
     const response = await fetch(`${API_URL}/interview/config/get`, {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
+      headers: getAuthHeaders(),
       body: JSON.stringify({}),
     });
     
@@ -224,7 +240,7 @@ export async function saveInterviewConfig(
   try {
     const response = await fetch(`${API_URL}/interview/config/save`, {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
+      headers: getAuthHeaders(),
       body: JSON.stringify({
         userLogin,
         config: {
@@ -273,23 +289,40 @@ export function getCurrentConfig(): InterviewAIConfig {
 
 /**
  * Inicia polling para verificar mudanças de configuração
+ * §16 FIX: Exponential backoff on errors
  */
 let pollingInterval: NodeJS.Timeout | null = null;
+let pollingErrorCount = 0;
+const MAX_POLLING_INTERVAL = 60000; // Max 60s between polls
 
 export function startConfigPolling(intervalMs = 5000): void {
   if (pollingInterval) return;
   
-  pollingInterval = setInterval(() => {
-    getInterviewConfig(true).catch(console.error);
-  }, intervalMs);
+  const poll = () => {
+    getInterviewConfig(true)
+      .then(() => {
+        pollingErrorCount = 0; // Reset on success
+        // Schedule next poll at normal interval
+        pollingInterval = setTimeout(poll, intervalMs);
+      })
+      .catch((err) => {
+        console.error('[InterviewConfig] Polling error:', err);
+        pollingErrorCount++;
+        // Exponential backoff: intervalMs * 2^errorCount, capped at MAX_POLLING_INTERVAL
+        const backoffMs = Math.min(intervalMs * Math.pow(2, pollingErrorCount), MAX_POLLING_INTERVAL);
+        pollingInterval = setTimeout(poll, backoffMs);
+      });
+  };
   
+  pollingInterval = setTimeout(poll, intervalMs);
   console.log('[InterviewConfig] Polling iniciado');
 }
 
 export function stopConfigPolling(): void {
   if (pollingInterval) {
-    clearInterval(pollingInterval);
+    clearTimeout(pollingInterval);
     pollingInterval = null;
+    pollingErrorCount = 0;
     console.log('[InterviewConfig] Polling parado');
   }
 }
