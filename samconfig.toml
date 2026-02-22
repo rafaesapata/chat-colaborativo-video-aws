@@ -11,3 +11,5 @@ capabilities = "CAPABILITY_IAM"
 confirm_changeset = false
 resolve_s3 = true
 s3_prefix = "chat-colaborativo-serverless"
+profile = "LIVECHAT"
+parameter_overrides = "DomainName=app.livechat.udstec.io HostedZoneId=Z057297636BBK9F26RX75 CertificateArn=arn:aws:acm:us-east-1:881786083692:certificate/6df24931-71a3-4a1a-97a3-0b33b369c9fa"

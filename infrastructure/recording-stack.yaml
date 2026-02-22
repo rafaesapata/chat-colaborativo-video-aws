@@ -60,7 +60,7 @@ Resources:
       CorsConfiguration:
         CorsRules:
           - AllowedOrigins:
-              - 'https://livechat.ai.udstec.io'
+              - 'https://app.livechat.udstec.io'
               - 'http://localhost:5173'
             AllowedMethods: [GET, PUT, POST, HEAD]
             AllowedHeaders: ['*']
@@ -79,7 +79,7 @@ Resources:
       ProtocolType: HTTP
       CorsConfiguration:
         AllowOrigins:
-          - 'https://livechat.ai.udstec.io'
+          - 'https://app.livechat.udstec.io'
           - 'http://localhost:5173'
         AllowMethods: [GET, POST, OPTIONS]
         AllowHeaders: [Content-Type, Authorization]

@@ -84,6 +84,18 @@ export interface InterviewReport {
   candidateResponseCount?: number;
   questionsAskedCount?: number;
   summary?: string;
+  scoreBreakdown?: {
+    technicalScore: number;
+    softSkillsAvg: number;
+    experienceScore: number;
+    communicationScore: number;
+    weights: {
+      technical: number;
+      softSkills: number;
+      experience: number;
+      communication: number;
+    };
+  };
 }
 
 // Cache para evitar chamadas duplicadas

@@ -147,9 +147,8 @@ export function useChimeMeeting({ roomId, odUserId, userName = 'Usuário', isAut
             method: 'POST',
             headers: { 
               'Content-Type': 'application/json',
-              'X-Idempotency-Key': idempotencyKey,
             },
-            body: JSON.stringify({ roomId, odUserId, userName, isAuthenticated }),
+            body: JSON.stringify({ roomId, odUserId, userName, isAuthenticated, idempotencyKey }),
           });
         });
       });
@@ -394,14 +393,19 @@ export function useChimeMeeting({ roomId, odUserId, userName = 'Usuário', isAut
         setSelectedVideoInput(videoDevice.deviceId);
       }
 
-      // Selecionar saída de áudio
+      // Selecionar saída de áudio (Safari requer user gesture para setSinkId)
       if (audioOutputDevices.length > 0) {
         const savedAudioOutput = sessionStorage.getItem('videochat_audio_output');
         const outputDevice = savedAudioOutput
           ? audioOutputDevices.find(d => d.deviceId === savedAudioOutput) || audioOutputDevices[0]
           : audioOutputDevices[0];
-        await audioVideo.chooseAudioOutput(outputDevice.deviceId);
-        setSelectedAudioOutput(outputDevice.deviceId);
+        try {
+          await audioVideo.chooseAudioOutput(outputDevice.deviceId);
+          setSelectedAudioOutput(outputDevice.deviceId);
+        } catch (e) {
+          console.warn('[Chime] setSinkId não suportado ou requer gesto do usuário, usando default');
+          setSelectedAudioOutput(outputDevice.deviceId);
+        }
       }
 
       // Aplicar configurações salvas
@@ -614,7 +618,11 @@ export function useChimeMeeting({ roomId, odUserId, userName = 'Usuário', isAut
   // Bind elemento de áudio
   const bindAudioElement = useCallback((element: HTMLAudioElement | null) => {
     if (!element || !audioVideoRef.current) return;
-    audioVideoRef.current.bindAudioElement(element);
+    try {
+      audioVideoRef.current.bindAudioElement(element);
+    } catch (e) {
+      console.warn('[Chime] bindAudioElement falhou (Safari), tentando sem sinkId');
+    }
   }, []);
 
   // Auto-join quando o hook é montado

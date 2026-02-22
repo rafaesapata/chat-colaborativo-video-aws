@@ -411,6 +411,36 @@ export default function InterviewReportModal({
             </div>
           )}
 
+          {/* Score Breakdown */}
+          {report.scoreBreakdown && (
+            <div className={`p-4 rounded-xl ${darkMode ? 'bg-indigo-900/20' : 'bg-indigo-50'}`}>
+              <h4 className={`font-semibold mb-3 text-sm ${darkMode ? 'text-indigo-300' : 'text-indigo-700'}`}>
+                Composição do Score
+              </h4>
+              <div className="grid grid-cols-2 gap-3">
+                {[
+                  { label: 'Técnico', score: report.scoreBreakdown.technicalScore, weight: report.scoreBreakdown.weights.technical },
+                  { label: 'Soft Skills', score: report.scoreBreakdown.softSkillsAvg, weight: report.scoreBreakdown.weights.softSkills },
+                  { label: 'Experiência', score: report.scoreBreakdown.experienceScore, weight: report.scoreBreakdown.weights.experience },
+                  { label: 'Comunicação', score: report.scoreBreakdown.communicationScore, weight: report.scoreBreakdown.weights.communication },
+                ].map((item, i) => (
+                  <div key={i} className="flex items-center justify-between">
+                    <span className={`text-xs ${darkMode ? 'text-gray-400' : 'text-gray-500'}`}>
+                      {item.label} ({item.weight}%)
+                    </span>
+                    <span className={`text-sm font-semibold ${getScoreColor(item.score)}`}>
+                      {item.score}
+                    </span>
+                  </div>
+                ))}
+              </div>
+              <div className={`mt-2 pt-2 border-t ${darkMode ? 'border-indigo-800' : 'border-indigo-200'} flex justify-between`}>
+                <span className={`text-xs font-medium ${darkMode ? 'text-gray-300' : 'text-gray-600'}`}>Score Final (ponderado)</span>
+                <span className={`text-sm font-bold ${getScoreColor(report.overallScore)}`}>{report.overallScore}</span>
+              </div>
+            </div>
+          )}
+
           {/* Recommendation Details */}
           {report.recommendation.details && report.recommendation.details.length > 0 && (
             <div className={`p-3 rounded-lg ${darkMode ? 'bg-gray-700/30' : 'bg-gray-50'}`}>

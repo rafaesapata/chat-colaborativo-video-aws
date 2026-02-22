@@ -659,7 +659,7 @@ Responda APENAS com o JSON, sem texto adicional.`;
 /**
  * Invoca o modelo Bedrock com timeout e retry
  */
-async function invokeBedrockModel(prompt, maxTokens = 2000, retryCount = 0) {
+async function invokeBedrockModel(prompt, maxTokens = 2000, retryCount = 0, temperature = 0.7) {
   const startTime = Date.now();
   
   try {
@@ -689,7 +689,7 @@ async function invokeBedrockModel(prompt, maxTokens = 2000, retryCount = 0) {
       ],
       inferenceConfig: {
         max_new_tokens: maxTokens,
-        temperature: 0.7,
+        temperature: temperature,
         top_p: 0.9
       }
     };
@@ -752,7 +752,7 @@ async function invokeBedrockModel(prompt, maxTokens = 2000, retryCount = 0) {
       await new Promise(resolve => setTimeout(resolve, backoffTime));
       await recordMetric('BedrockRetry', 1);
       
-      return invokeBedrockModel(prompt, maxTokens, retryCount + 1);
+      return invokeBedrockModel(prompt, maxTokens, retryCount + 1, temperature);
     }
     
     // Se todas as tentativas falharam
@@ -989,11 +989,19 @@ Retorne APENAS o JSON, sem texto adicional.`;
 /**
  * Gera relatório completo da entrevista
  * Usa configurações customizáveis do painel de admin
+ * 
+ * v6.0.0 - Validação server-side de scores, decisões e schema
+ * - Recalcula overallScore a partir dos scores individuais (não confia na IA)
+ * - Aplica thresholds no backend para determinar recomendação
+ * - Normaliza/valida todos os campos do JSON retornado
+ * - Extração dinâmica de tecnologias via IA (sem lista hardcoded)
+ * - Temperature 0.3 para consistência
+ * - maxTokens 4096 para evitar truncamento
+ * - Limita transcrição para caber no context window
  */
 async function generateInterviewReport(context, reportConfig = null) {
   const { topic, jobDescription, questionsAsked, transcriptionHistory, candidateName } = context;
 
-  // Configurações padrão (usadas se reportConfig não for fornecido)
   const defaultConfig = {
     reportApprovedThreshold: 75,
     reportApprovedWithReservationsThreshold: 55,
@@ -1031,16 +1039,27 @@ Sua análise deve ser:
 - NÃO APROVADO (<40%): Não atende aos requisitos mínimos da vaga`
   };
 
-  // Mesclar configurações (reportConfig sobrescreve defaults)
   const config = { ...defaultConfig, ...reportConfig };
 
-  // §3 FIX: Wrap admin-configurable fields in data delimiters to prevent prompt injection
-  // Admin config text is treated as DATA, not as system instructions
+  // Sanitizar campos configuráveis contra prompt injection
   const safeSystemInstructions = (config.reportSystemInstructions || '').substring(0, 2000);
   const safeEvaluationCriteria = (config.reportEvaluationCriteria || '').substring(0, 2000);
   const safeSoftSkillsCriteria = (config.reportSoftSkillsCriteria || '').substring(0, 2000);
   const safeSeniorityGuidelines = (config.reportSeniorityGuidelines || '').substring(0, 2000);
   const safeRecommendationGuidelines = (config.reportRecommendationGuidelines || '').substring(0, 2000);
+
+  // Limitar transcrição para caber no context window (~12K tokens para Nova Lite)
+  // Budget: ~4K tokens para prompt fixo + respostas, ~4K para transcrição, ~4K para output
+  const MAX_TRANSCRIPTION_CHARS = 12000; // ~3.6K tokens
+  let trimmedTranscription = transcriptionHistory.join('\n');
+  if (trimmedTranscription.length > MAX_TRANSCRIPTION_CHARS) {
+    trimmedTranscription = trimmedTranscription.substring(trimmedTranscription.length - MAX_TRANSCRIPTION_CHARS);
+    // Cortar no início da próxima linha para não truncar no meio
+    const firstNewline = trimmedTranscription.indexOf('\n');
+    if (firstNewline > 0) {
+      trimmedTranscription = '[...transcrição anterior omitida...]\n' + trimmedTranscription.substring(firstNewline + 1);
+    }
+  }
 
   const prompt = `Você é um especialista em recrutamento técnico. Analise esta entrevista e gere um relatório detalhado em JSON.
 
@@ -1059,8 +1078,8 @@ ${i + 1}. Pergunta (${qa.category}): ${qa.question}
    Qualidade: ${qa.answerQuality || 'Não avaliada'}
 `).join('\n')}
 
-**TRANSCRIÇÃO COMPLETA:**
-${transcriptionHistory.join('\n')}
+**TRANSCRIÇÃO:**
+${trimmedTranscription}
 
 [ADMIN CONFIGURATION DATA - EVALUATION CRITERIA PARAMETERS]
 Critérios técnicos: ${safeEvaluationCriteria}
@@ -1075,57 +1094,53 @@ Diretrizes recomendação: ${safeRecommendationGuidelines}
 - Experiência: ${config.reportExperienceWeight}%
 - Comunicação: ${config.reportCommunicationWeight}%
 
-**THRESHOLDS DE DECISÃO:**
-- Aprovado: >= ${config.reportApprovedThreshold}%
-- Aprovado com Ressalvas: >= ${config.reportApprovedWithReservationsThreshold}%
-- Segunda Entrevista: >= ${config.reportNeedsSecondInterviewThreshold}%
-- Não Aprovado: < ${config.reportNeedsSecondInterviewThreshold}%
-
 **INSTRUÇÕES:**
-Gere um relatório JSON completo com:
+Gere um relatório JSON com os seguintes campos. TODOS os scores devem ser números inteiros de 0 a 100.
 
-1. **overallScore** (0-100): Pontuação geral calculada usando os pesos acima
-2. **recommendation**: 
-   - decision: Use os thresholds acima para determinar: "Aprovado", "Aprovado com ressalvas", "Não aprovado", ou "Necessita segunda entrevista"
-   - status: "approved", "approved_with_reservations", "rejected", ou "needs_second_interview"
+1. **technicalScore** (0-100): Pontuação de habilidades técnicas
+2. **experienceScore** (0-100): Pontuação de experiência profissional
+3. **communicationScore** (0-100): Pontuação de comunicação e articulação
+
+4. **recommendation**:
    - title: Título da recomendação
    - description: Descrição detalhada (2-3 frases)
    - details: Array com 3-5 pontos específicos
 
-3. **strengths**: Array com 5-7 pontos fortes demonstrados
+5. **strengths**: Array com 5-7 pontos fortes demonstrados
 
-4. **improvements**: Array com 3-5 áreas de melhoria
+6. **improvements**: Array com 3-5 áreas de melhoria
 
-5. **technicalAnalysis**:
+7. **technicalAnalysis**:
    - mentionedTechnologies: Array de tecnologias mencionadas pelo candidato
-   - relevantTechnologies: Array de tecnologias relevantes da vaga
+   - relevantTechnologies: Array de TODAS as tecnologias, frameworks, ferramentas e linguagens mencionadas na descrição da vaga
    - area: Área técnica principal
-   - score: Pontuação técnica (0-100)
+   - score: Pontuação técnica (0-100) - deve ser igual a technicalScore
    - depth: "basic", "intermediate", ou "advanced"
    - description: Análise detalhada (2-3 frases)
    - alignment: Alinhamento com a vaga (0-100)
 
-6. **softSkills**: Array de 4-6 soft skills com:
+8. **softSkills**: Array de 4-6 soft skills com:
    - name: Nome da habilidade
    - score: Pontuação (0-100)
    - description: Evidência observada
 
-7. **seniorityLevel**:
-   - level: "junior", "pleno", ou "senior"
+9. **seniorityLevel**:
+   - level: APENAS "junior", "pleno", ou "senior"
    - description: Justificativa (2-3 frases)
 
-8. **summary**: Resumo executivo da entrevista (3-4 frases)
+10. **summary**: Resumo executivo da entrevista (3-4 frases)
 
 **IMPORTANTE:**
 - Base a análise APENAS nas respostas e transcrição fornecidas
 - Seja específico e cite exemplos das respostas
 - Compare com os requisitos da vaga
 - Seja honesto e construtivo
-- Use os pesos e thresholds fornecidos para calcular scores e decisões
+- NÃO calcule overallScore nem decision/status - isso será feito pelo sistema
 
 Retorne APENAS o JSON, sem texto adicional.`;
 
-  const response = await invokeBedrockModel(prompt, 3000);
+  // Temperature 0.3 para avaliações mais consistentes e determinísticas
+  const response = await invokeBedrockModel(prompt, 4096, 0, 0.3);
   
   try {
     const jsonMatch = response.match(/\{[\s\S]*\}/);
@@ -1133,9 +1148,12 @@ Retorne APENAS o JSON, sem texto adicional.`;
       throw new Error('Resposta não contém JSON válido');
     }
     
-    const report = JSON.parse(jsonMatch[0]);
+    const rawReport = JSON.parse(jsonMatch[0]);
     
-    // Adicionar metadados
+    // === VALIDAÇÃO E NORMALIZAÇÃO DO SCHEMA ===
+    const report = validateAndNormalizeReport(rawReport, config);
+    
+    // Metadados
     report.topic = topic;
     report.candidateName = candidateName || 'Candidato';
     report.generatedAt = new Date().toISOString();
@@ -1143,32 +1161,154 @@ Retorne APENAS o JSON, sem texto adicional.`;
     report.questionsAskedCount = questionsAsked.length;
     report.candidateResponseCount = questionsAsked.filter(qa => qa.answer).length;
     
-    // Extrair tecnologias da descrição da vaga
-    if (jobDescription) {
-      const techKeywords = [
-        'javascript', 'typescript', 'react', 'vue', 'angular', 'node', 'python', 'java',
-        'c#', 'php', 'ruby', 'go', 'rust', 'swift', 'kotlin', 'sql', 'nosql', 'mongodb',
-        'postgresql', 'mysql', 'redis', 'docker', 'kubernetes', 'aws', 'azure', 'gcp',
-        'git', 'ci/cd', 'agile', 'scrum', 'rest', 'graphql', 'microservices'
-      ];
-      
-      const jobTechs = techKeywords.filter(tech => 
-        jobDescription.toLowerCase().includes(tech)
-      );
-      
-      report.jobTechnologies = jobTechs;
-    } else {
-      report.jobTechnologies = [];
-    }
+    // Tecnologias da vaga: usar as extraídas pela IA (relevantTechnologies) como fonte primária
+    report.jobTechnologies = report.technicalAnalysis.relevantTechnologies || [];
     
-    console.log('Relatório gerado com sucesso');
+    console.log('Relatório gerado com sucesso - Score:', report.overallScore, 'Decisão:', report.recommendation.status);
     return { report };
     
   } catch (error) {
     console.error('Error parsing report response:', error);
-    console.error('Raw response:', response);
+    console.error('Raw response:', response.substring(0, 500));
     throw new Error('Erro ao processar relatório');
   }
+}
+
+/**
+ * Valida e normaliza o relatório retornado pela IA
+ * Recalcula overallScore e aplica thresholds no backend (não confia na IA)
+ */
+function validateAndNormalizeReport(raw, config) {
+  // Helper: clamp score entre 0-100
+  const clampScore = (val) => Math.max(0, Math.min(100, Math.round(Number(val) || 0)));
+  
+  // === SCORES INDIVIDUAIS (extrair da IA, validar range) ===
+  const technicalScore = clampScore(raw.technicalScore || raw.technicalAnalysis?.score || 0);
+  const communicationScore = clampScore(raw.communicationScore || 0);
+  const experienceScore = clampScore(raw.experienceScore || 0);
+  
+  // Soft skills: validar array e calcular média
+  const softSkills = Array.isArray(raw.softSkills) && raw.softSkills.length > 0
+    ? raw.softSkills.slice(0, 8).map(ss => ({
+        name: String(ss.name || 'Não especificado').substring(0, 100),
+        score: clampScore(ss.score),
+        description: String(ss.description || '').substring(0, 500)
+      }))
+    : [{ name: 'Comunicação', score: communicationScore, description: 'Avaliação baseada nas respostas' }];
+  
+  const softSkillsAvg = softSkills.length > 0
+    ? Math.round(softSkills.reduce((sum, ss) => sum + ss.score, 0) / softSkills.length)
+    : 0;
+
+  // === RECALCULAR overallScore NO BACKEND (não confiar na IA) ===
+  const weights = {
+    technical: config.reportTechnicalWeight / 100,
+    softSkills: config.reportSoftSkillsWeight / 100,
+    experience: config.reportExperienceWeight / 100,
+    communication: config.reportCommunicationWeight / 100
+  };
+  
+  const overallScore = Math.round(
+    technicalScore * weights.technical +
+    softSkillsAvg * weights.softSkills +
+    experienceScore * weights.experience +
+    communicationScore * weights.communication
+  );
+
+  // === APLICAR THRESHOLDS NO BACKEND (não confiar na IA) ===
+  let decision, status, title;
+  if (overallScore >= config.reportApprovedThreshold) {
+    decision = 'Aprovado';
+    status = 'approved';
+    title = 'Candidato Aprovado';
+  } else if (overallScore >= config.reportApprovedWithReservationsThreshold) {
+    decision = 'Aprovado com ressalvas';
+    status = 'approved_with_reservations';
+    title = 'Aprovado com Ressalvas';
+  } else if (overallScore >= config.reportNeedsSecondInterviewThreshold) {
+    decision = 'Necessita segunda entrevista';
+    status = 'needs_second_interview';
+    title = 'Segunda Entrevista Necessária';
+  } else {
+    decision = 'Não aprovado';
+    status = 'rejected';
+    title = 'Candidato Não Aprovado';
+  }
+
+  // Mapear status para o formato esperado pelo frontend (recommended/consider/not_recommended)
+  const frontendStatus = status === 'approved' ? 'recommended'
+    : (status === 'approved_with_reservations' || status === 'needs_second_interview') ? 'consider'
+    : 'not_recommended';
+
+  // === NORMALIZAR TODOS OS CAMPOS ===
+  const recommendation = {
+    decision,
+    status: frontendStatus,
+    title: raw.recommendation?.title || title,
+    description: String(raw.recommendation?.description || `Score geral: ${overallScore}%. ${decision}.`).substring(0, 1000),
+    details: Array.isArray(raw.recommendation?.details) 
+      ? raw.recommendation.details.slice(0, 7).map(d => String(d).substring(0, 500))
+      : [`Score geral: ${overallScore}%`]
+  };
+
+  const strengths = Array.isArray(raw.strengths) && raw.strengths.length > 0
+    ? raw.strengths.slice(0, 10).map(s => String(s).substring(0, 500))
+    : ['Participou da entrevista'];
+
+  const improvements = Array.isArray(raw.improvements) && raw.improvements.length > 0
+    ? raw.improvements.slice(0, 10).map(s => String(s).substring(0, 500))
+    : ['Dados insuficientes para análise detalhada'];
+
+  // Validar seniorityLevel
+  const validLevels = ['junior', 'pleno', 'senior'];
+  const rawLevel = String(raw.seniorityLevel?.level || '').toLowerCase().trim();
+  const seniorityLevel = {
+    level: validLevels.includes(rawLevel) ? rawLevel : 'pleno',
+    description: String(raw.seniorityLevel?.description || 'Nível determinado com base nas respostas').substring(0, 500)
+  };
+
+  // Validar technicalAnalysis
+  const technicalAnalysis = {
+    mentionedTechnologies: Array.isArray(raw.technicalAnalysis?.mentionedTechnologies)
+      ? raw.technicalAnalysis.mentionedTechnologies.slice(0, 30).map(t => String(t).substring(0, 50))
+      : [],
+    relevantTechnologies: Array.isArray(raw.technicalAnalysis?.relevantTechnologies)
+      ? raw.technicalAnalysis.relevantTechnologies.slice(0, 30).map(t => String(t).substring(0, 50))
+      : [],
+    area: String(raw.technicalAnalysis?.area || 'Não especificado').substring(0, 200),
+    score: technicalScore,
+    depth: ['basic', 'intermediate', 'advanced'].includes(raw.technicalAnalysis?.depth)
+      ? raw.technicalAnalysis.depth
+      : 'basic',
+    description: String(raw.technicalAnalysis?.description || 'Análise técnica baseada nas respostas').substring(0, 1000),
+    alignment: clampScore(raw.technicalAnalysis?.alignment || 0)
+  };
+
+  const summary = String(raw.summary || `Entrevista para ${raw.topic || 'a vaga'}. Score: ${overallScore}%.`).substring(0, 2000);
+
+  return {
+    overallScore,
+    recommendation,
+    strengths,
+    improvements,
+    technicalAnalysis,
+    softSkills,
+    seniorityLevel,
+    summary,
+    // Scores individuais para transparência
+    scoreBreakdown: {
+      technicalScore,
+      softSkillsAvg,
+      experienceScore,
+      communicationScore,
+      weights: {
+        technical: config.reportTechnicalWeight,
+        softSkills: config.reportSoftSkillsWeight,
+        experience: config.reportExperienceWeight,
+        communication: config.reportCommunicationWeight
+      }
+    }
+  };
 }
 
 /**
@@ -1179,7 +1319,7 @@ function successResponse(data) {
     statusCode: 200,
     headers: {
       'Content-Type': 'application/json',
-      'Access-Control-Allow-Origin': 'https://livechat.ai.udstec.io',
+      'Access-Control-Allow-Origin': 'https://app.livechat.udstec.io',
       'Access-Control-Allow-Headers': 'Content-Type',
       'Access-Control-Allow-Methods': 'POST, OPTIONS'
     },
@@ -1198,7 +1338,7 @@ function errorResponse(statusCode, message) {
     statusCode,
     headers: {
       'Content-Type': 'application/json',
-      'Access-Control-Allow-Origin': 'https://livechat.ai.udstec.io',
+      'Access-Control-Allow-Origin': 'https://app.livechat.udstec.io',
       'Access-Control-Allow-Headers': 'Content-Type',
       'Access-Control-Allow-Methods': 'POST, OPTIONS'
     },

@@ -5,7 +5,7 @@ Description: Chat Colaborativo Serverless Completo com Domínio Customizado
 Parameters:
   DomainName:
     Type: String
-    Default: livechat.ai.udstec.io
+    Default: app.livechat.udstec.io
     Description: Domínio customizado para a aplicação
   
   HostedZoneId:
@@ -295,6 +295,42 @@ Resources:
         - Key: Application
           Value: ChatColaborativo
 
+  # Tabela para histórico de reuniões
+  MeetingHistoryTable:
+    Type: AWS::DynamoDB::Table
+    DeletionPolicy: Retain
+    UpdateReplacePolicy: Retain
+    Properties:
+      TableName: !Sub '${AWS::StackName}-meeting-history'
+      BillingMode: PAY_PER_REQUEST
+      AttributeDefinitions:
+        - AttributeName: meetingId
+          AttributeType: S
+        - AttributeName: userLogin
+          AttributeType: S
+        - AttributeName: startTime
+          AttributeType: N
+      KeySchema:
+        - AttributeName: meetingId
+          KeyType: HASH
+      GlobalSecondaryIndexes:
+        - IndexName: UserMeetingsIndex
+          KeySchema:
+            - AttributeName: userLogin
+              KeyType: HASH
+            - AttributeName: startTime
+              KeyType: RANGE
+          Projection:
+            ProjectionType: ALL
+      TimeToLiveSpecification:
+        AttributeName: ttl
+        Enabled: true
+      PointInTimeRecoverySpecification:
+        PointInTimeRecoveryEnabled: true
+      Tags:
+        - Key: Application
+          Value: ChatColaborativo
+
   # ==================== S3 Buckets ====================
   
   # S3 Buckets with DeletionPolicy
@@ -320,6 +356,7 @@ Resources:
       CorsConfiguration:
         CorsRules:
           - AllowedOrigins: 
+              - 'https://app.livechat.udstec.io'
               - 'https://livechat.ai.udstec.io'
               - 'http://localhost:5173'
             AllowedMethods: [GET, PUT, POST, HEAD]
@@ -407,9 +444,6 @@ Resources:
       ResponseHeadersPolicyConfig:
         Name: !Sub '${AWS::StackName}-security-headers'
         SecurityHeadersConfig:
-          ContentSecurityPolicy:
-            ContentSecurityPolicy: "default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src 'self' https://fonts.gstatic.com; connect-src 'self' https://*.execute-api.us-east-1.amazonaws.com wss://*.execute-api.us-east-1.amazonaws.com https://*.lambda-url.us-east-1.on.aws https://*.amazonaws.com; img-src 'self' data: blob:; media-src 'self' blob:; worker-src 'self' blob:;"
-            Override: true
           ContentTypeOptions:
             Override: true
           FrameOptions:
@@ -434,6 +468,23 @@ Resources:
         SigningBehavior: always
         SigningProtocol: sigv4
 
+  # CloudFront Function para remover /api prefix
+  ApiPathRewriteFunction:
+    Type: AWS::CloudFront::Function
+    Properties:
+      Name: !Sub '${AWS::StackName}-api-rewrite'
+      AutoPublish: true
+      FunctionCode: |
+        function handler(event) {
+          var request = event.request;
+          request.uri = request.uri.replace(/^\/api/, '');
+          if (request.uri === '') request.uri = '/';
+          return request;
+        }
+      FunctionConfig:
+        Comment: Remove /api prefix for API Gateway proxy
+        Runtime: cloudfront-js-2.0
+
   CloudFrontDistribution:
     Type: AWS::CloudFront::Distribution
     Properties:
@@ -441,13 +492,36 @@ Resources:
         Enabled: true
         Comment: !Sub 'Chat Colaborativo - ${AWS::StackName}'
         DefaultRootObject: index.html
+        Aliases:
+          - !Ref DomainName
         ViewerCertificate:
-          CloudFrontDefaultCertificate: true
+          AcmCertificateArn: !Ref CertificateArn
+          SslSupportMethod: sni-only
+          MinimumProtocolVersion: TLSv1.2_2021
         Origins:
           - Id: S3Origin
             DomainName: !GetAtt FrontendBucket.RegionalDomainName
             S3OriginConfig: {}
             OriginAccessControlId: !Ref CloudFrontOriginAccessControl
+          - Id: ApiOrigin
+            DomainName: !Sub '${RecordingApi}.execute-api.${AWS::Region}.amazonaws.com'
+            OriginPath: '/prod'
+            CustomOriginConfig:
+              HTTPSPort: 443
+              OriginProtocolPolicy: https-only
+              OriginSSLProtocols: [TLSv1.2]
+        CacheBehaviors:
+          - PathPattern: '/api/*'
+            TargetOriginId: ApiOrigin
+            ViewerProtocolPolicy: redirect-to-https
+            AllowedMethods: [GET, HEAD, OPTIONS, PUT, POST, PATCH, DELETE]
+            CachedMethods: [GET, HEAD]
+            Compress: true
+            CachePolicyId: '4135ea2d-6df8-44a3-9df3-4b5a84be39ad'
+            OriginRequestPolicyId: 'b689b0a8-53d0-40ab-baf2-68738e2966ac'
+            FunctionAssociations:
+              - EventType: viewer-request
+                FunctionARN: !GetAtt ApiPathRewriteFunction.FunctionARN
         DefaultCacheBehavior:
           TargetOriginId: S3Origin
           ViewerProtocolPolicy: redirect-to-https
@@ -476,6 +550,47 @@ Resources:
 
   # ==================== Route53 ====================
   
+  FrontendDnsRecord:
+    Type: AWS::Route53::RecordSet
+    Condition: HasHostedZone
+    Properties:
+      HostedZoneId: !Ref HostedZoneId
+      Name: !Ref DomainName
+      Type: A
+      AliasTarget:
+        DNSName: !GetAtt CloudFrontDistribution.DomainName
+        HostedZoneId: Z2FDTNDATAQYW2
+
+  ApiDomainName:
+    Type: AWS::ApiGatewayV2::DomainName
+    Condition: HasCertificate
+    Properties:
+      DomainName: !Sub 'api.livechat.udstec.io'
+      DomainNameConfigurations:
+        - CertificateArn: !Ref CertificateArn
+          EndpointType: REGIONAL
+          SecurityPolicy: TLS_1_2
+
+  ApiHttpDomainMapping:
+    Type: AWS::ApiGatewayV2::ApiMapping
+    Condition: HasCertificate
+    DependsOn: RecordingApiStage
+    Properties:
+      ApiId: !Ref RecordingApi
+      DomainName: !Ref ApiDomainName
+      Stage: !Ref Stage
+
+  ApiDnsRecord:
+    Type: AWS::Route53::RecordSet
+    Condition: HasHostedZone
+    DependsOn: ApiDomainName
+    Properties:
+      HostedZoneId: !Ref HostedZoneId
+      Name: api.livechat.udstec.io
+      Type: A
+      AliasTarget:
+        DNSName: !GetAtt ApiDomainName.RegionalDomainName
+        HostedZoneId: !GetAtt ApiDomainName.RegionalHostedZoneId
 
 
   # ==================== Cognito ====================
@@ -541,16 +656,21 @@ Resources:
       ProtocolType: HTTP
       CorsConfiguration:
         AllowOrigins:
+          - 'https://app.livechat.udstec.io'
           - 'https://livechat.ai.udstec.io'
           - 'http://localhost:5173'
         AllowMethods:
           - GET
           - POST
+          - PUT
+          - DELETE
           - OPTIONS
         AllowHeaders:
           - Content-Type
           - Authorization
-        MaxAge: 300
+          - X-Api-Key
+          - X-Idempotency-Key
+        MaxAge: 0
       Tags:
         Application: ChatColaborativo
 
@@ -748,11 +868,20 @@ Resources:
       Environment:
         Variables:
           MEETINGS_TABLE: !Ref ChatRoomsTable
+          CONNECTIONS_TABLE: !Ref ConnectionsTable
+          MEETING_HISTORY_TABLE: !Ref MeetingHistoryTable
           INTERVIEW_AI_LAMBDA: !GetAtt InterviewAIFunction.Arn
           APP_BASE_URL: !Sub 'https://${DomainName}'
+          API_GATEWAY_DOMAIN_NAME: !Sub '${WebSocketApi}.execute-api.${AWS::Region}.amazonaws.com'
+          STAGE: !Ref Stage
+          SUPER_ADMIN_LOGINS: 'rafael@uds.com.br'
       Policies:
         - DynamoDBCrudPolicy:
             TableName: !Ref ChatRoomsTable
+        - DynamoDBCrudPolicy:
+            TableName: !Ref ConnectionsTable
+        - DynamoDBCrudPolicy:
+            TableName: !Ref MeetingHistoryTable
         - S3CrudPolicy:
             BucketName: !Ref AudioBucket
         - Statement:
@@ -771,6 +900,10 @@ Resources:
               Action:
                 - lambda:InvokeFunction
               Resource: !GetAtt InterviewAIFunction.Arn
+            - Effect: Allow
+              Action:
+                - execute-api:ManageConnections
+              Resource: !Sub 'arn:aws:execute-api:${AWS::Region}:${AWS::AccountId}:${WebSocketApi}/*'
       Tags:
         Application: ChatColaborativo
 
@@ -834,6 +967,20 @@ Resources:
     Properties:
       ApiId: !Ref RecordingApi
       RouteKey: 'POST /{proxy+}'
+      Target: !Sub 'integrations/${ChimeMeetingIntegration}'
+
+  ChimeMeetingGetRoute:
+    Type: AWS::ApiGatewayV2::Route
+    Properties:
+      ApiId: !Ref RecordingApi
+      RouteKey: 'GET /{proxy+}'
+      Target: !Sub 'integrations/${ChimeMeetingIntegration}'
+
+  ChimeMeetingDeleteRoute:
+    Type: AWS::ApiGatewayV2::Route
+    Properties:
+      ApiId: !Ref RecordingApi
+      RouteKey: 'DELETE /{proxy+}'
       Target: !Sub 'integrations/${ChimeMeetingIntegration}'
 
   ChimeMeetingIntegration:

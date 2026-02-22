@@ -68,7 +68,8 @@ const CONFIG = Object.freeze({
 
 // Origens permitidas (imutável)
 const ALLOWED_ORIGINS = Object.freeze([
-  'https://livechat.ai.udstec.io',
+  'https://app.livechat.udstec.io',
+  'https://app.livechat.udstec.io',
   'https://dmz2oaky7xb1w.cloudfront.net',
 ]);
 
@@ -615,7 +616,14 @@ exports.handler = async (event) => {
   // Executar dentro do contexto AsyncLocalStorage
   return asyncLocalStorage.run({ requestId }, async () => {
     try {
-      return await processRequest(event);
+      const response = await processRequest(event);
+      // Injetar CORS dinâmico baseado na origin do request
+      const corsOrigin = getCorsOrigin(event);
+      response.headers = {
+        ...response.headers,
+        'Access-Control-Allow-Origin': corsOrigin,
+      };
+      return response;
     } catch (error) {
       log(LOG_LEVELS.ERROR, 'Erro não tratado no handler', { 
         error: error.message, 
@@ -1966,7 +1974,7 @@ async function handleScheduleCreate(body) {
     Item: item,
   }));
   
-  const meetingUrl = `${process.env.APP_BASE_URL || 'https://livechat.ai.udstec.io'}/meeting/${roomId}`;
+  const meetingUrl = `${process.env.APP_BASE_URL || 'https://app.livechat.udstec.io'}/meeting/${roomId}`;
   
   log(LOG_LEVELS.INFO, 'Reunião agendada', { scheduleId, userLogin, scheduledAt });
   
@@ -2005,7 +2013,7 @@ async function handleScheduleList(body) {
     duration: parseInt(item.duration?.N || '60'),
     createdBy: item.createdBy?.S,
     roomId: item.meetingRoomId?.S,
-    meetingUrl: `${process.env.APP_BASE_URL || 'https://livechat.ai.udstec.io'}/meeting/${item.meetingRoomId?.S}`,
+    meetingUrl: `${process.env.APP_BASE_URL || 'https://app.livechat.udstec.io'}/meeting/${item.meetingRoomId?.S}`,
     participants: JSON.parse(item.participants?.S || '[]'),
     status: item.status?.S || 'scheduled',
     createdAt: item.createdAt?.N ? new Date(parseInt(item.createdAt.N)).toISOString() : null,
@@ -2116,7 +2124,7 @@ async function handleScheduleGet(body, event) {
     duration: parseInt(item.duration?.N || '60'),
     createdBy: item.createdBy?.S,
     roomId: item.meetingRoomId?.S,
-    meetingUrl: `${process.env.APP_BASE_URL || 'https://livechat.ai.udstec.io'}/meeting/${item.meetingRoomId?.S}`,
+    meetingUrl: `${process.env.APP_BASE_URL || 'https://app.livechat.udstec.io'}/meeting/${item.meetingRoomId?.S}`,
     participants: JSON.parse(item.participants?.S || '[]'),
     status: item.status?.S || 'scheduled',
   });
@@ -2276,7 +2284,7 @@ async function handleApiScheduleMeeting(body, event) {
   return successResponse({
     scheduleId,
     roomId,
-    meetingUrl: `${process.env.APP_BASE_URL || 'https://livechat.ai.udstec.io'}/meeting/${roomId}`,
+    meetingUrl: `${process.env.APP_BASE_URL || 'https://app.livechat.udstec.io'}/meeting/${roomId}`,
     title,
     scheduledAt: new Date(scheduledTime).toISOString(),
     duration: duration || 60,
@@ -2305,7 +2313,7 @@ async function handleApiListScheduled(body, event) {
     scheduledAt: item.scheduledAt?.N ? new Date(parseInt(item.scheduledAt.N)).toISOString() : null,
     duration: parseInt(item.duration?.N || '60'),
     roomId: item.meetingRoomId?.S,
-    meetingUrl: `${process.env.APP_BASE_URL || 'https://livechat.ai.udstec.io'}/meeting/${item.meetingRoomId?.S}`,
+    meetingUrl: `${process.env.APP_BASE_URL || 'https://app.livechat.udstec.io'}/meeting/${item.meetingRoomId?.S}`,
     status: item.status?.S || 'scheduled',
   }));
   

@@ -81,7 +81,7 @@ exports.handler = async (event) => {
   }));
   
   // H-003: CORS restrito - não usar wildcard
-  const allowedOrigins = ['https://livechat.ai.udstec.io', 'https://dmz2oaky7xb1w.cloudfront.net'];
+  const allowedOrigins = ['https://app.livechat.udstec.io', 'https://app.livechat.udstec.io', 'https://dmz2oaky7xb1w.cloudfront.net'];
   if (process.env.NODE_ENV !== 'production') {
     allowedOrigins.push('http://localhost:5173', 'http://localhost:3000');
   }
