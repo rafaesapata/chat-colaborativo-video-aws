@@ -850,6 +850,86 @@ function buildSwaggerSpec(baseUrl) {
           }
         }
       },
+      '/api/v1/meetings/report': {
+        post: {
+          summary: 'Obter relatório de uma reunião',
+          description: 'Retorna o relatório gerado pela IA para uma reunião específica. Se não houver relatório de IA, retorna os dados básicos da reunião (participantes, duração, perguntas, etc).',
+          tags: ['External API'],
+          security: [{ ApiKeyAuth: [] }],
+          requestBody: { required: true, content: { 'application/json': { schema: {
+            type: 'object',
+            required: ['meetingId'],
+            properties: {
+              meetingId: { type: 'string', description: 'ID da reunião' },
+            }
+          } } } },
+          responses: {
+            '200': { description: 'Relatório da reunião', content: { 'application/json': { schema: {
+              type: 'object',
+              properties: {
+                meetingId: { type: 'string' },
+                roomName: { type: 'string' },
+                meetingType: { type: 'string', enum: ['REUNIAO', 'ENTREVISTA', 'ESCOPO'] },
+                meetingTopic: { type: 'string' },
+                participants: { type: 'array', items: { type: 'string' } },
+                duration: { type: 'integer', description: 'Duração em segundos' },
+                startTime: { type: 'string', format: 'date-time' },
+                endTime: { type: 'string', format: 'date-time' },
+                transcriptionCount: { type: 'integer' },
+                questionsAsked: { type: 'array', items: { type: 'string' } },
+                jobDescription: { type: 'string' },
+              }
+            } } } },
+            '401': { description: 'API Key inválida' },
+            '403': { description: 'Permissão negada (necessário: recordings ou schedule)' },
+            '404': { description: 'Reunião não encontrada' },
+          }
+        }
+      },
+      '/api/v1/meetings/transcription': {
+        post: {
+          summary: 'Obter transcrição de uma reunião',
+          description: 'Retorna a transcrição completa de uma reunião. Suporta formato JSON (padrão) ou texto plano.',
+          tags: ['External API'],
+          security: [{ ApiKeyAuth: [] }],
+          requestBody: { required: true, content: { 'application/json': { schema: {
+            type: 'object',
+            required: ['meetingId'],
+            properties: {
+              meetingId: { type: 'string', description: 'ID da reunião' },
+              format: { type: 'string', enum: ['json', 'text'], default: 'json', description: 'Formato de saída: json (padrão) ou text (texto plano)' },
+            }
+          } } } },
+          responses: {
+            '200': { description: 'Transcrição da reunião', content: { 'application/json': { schema: {
+              type: 'object',
+              properties: {
+                meetingId: { type: 'string' },
+                roomName: { type: 'string' },
+                format: { type: 'string', enum: ['json', 'text'] },
+                transcriptionCount: { type: 'integer' },
+                content: { type: 'string', description: 'Conteúdo em texto plano (apenas quando format=text)' },
+                transcriptions: { type: 'array', description: 'Lista de transcrições (apenas quando format=json)', items: {
+                  type: 'object',
+                  properties: {
+                    id: { type: 'string' },
+                    text: { type: 'string' },
+                    speaker: { type: 'string' },
+                    timestamp: { type: 'integer' },
+                  }
+                } },
+                participants: { type: 'array', items: { type: 'string' } },
+                duration: { type: 'integer' },
+                startTime: { type: 'string', format: 'date-time' },
+                endTime: { type: 'string', format: 'date-time' },
+              }
+            } } } },
+            '401': { description: 'API Key inválida' },
+            '403': { description: 'Permissão negada (necessário: recordings ou schedule)' },
+            '404': { description: 'Reunião ou transcrição não encontrada' },
+          }
+        }
+      },
     },
   };
 }

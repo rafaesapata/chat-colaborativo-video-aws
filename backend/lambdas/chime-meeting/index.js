@@ -628,6 +628,8 @@ const routes = Object.freeze({
   'DELETE:/api/v1/meetings/scheduled/:id': handleApiCancelScheduled,
   'POST:/api/v1/rooms/create': handleApiCreateRoom,
   'POST:/api/v1/meetings/download': handleApiDownloadMeeting,
+  'POST:/api/v1/meetings/report': handleApiMeetingReport,
+  'POST:/api/v1/meetings/transcription': handleApiMeetingTranscription,
   // API Keys management
   'POST:/admin/api-keys': handleAdminListApiKeys,
   'POST:/admin/api-keys/create': handleAdminCreateApiKey,
@@ -2239,7 +2241,22 @@ async function handleAdminCreateApiKey(body) {
   }));
   
   log(LOG_LEVELS.INFO, 'API Key criada', { keyId, name, userLogin });
-  return successResponse({ keyId, apiKey, name, message: 'Guarde esta chave, ela não será exibida novamente!' });
+  return successResponse({
+    keyId,
+    apiKey,
+    name,
+    message: 'Guarde esta chave, ela não será exibida novamente!',
+    keyInfo: {
+      keyId,
+      name,
+      createdBy: userLogin,
+      createdAt: new Date().toISOString(),
+      lastUsed: null,
+      usageCount: 0,
+      isActive: true,
+      permissions: permissions || ['schedule'],
+    },
+  });
 }
 
 async function handleAdminRevokeApiKey(body) {
@@ -2533,6 +2550,146 @@ async function handleApiDownloadMeeting(body, event) {
   } catch (error) {
     log(LOG_LEVELS.ERROR, 'Erro ao gerar download de reunião', { error: error.message });
     return errorResponse(500, 'Erro ao gerar URL de download');
+  }
+}
+
+// ============ API EXTERNA: RELATÓRIO DA REUNIÃO ============
+async function handleApiMeetingReport(body, event) {
+  const apiKey = event.headers?.['x-api-key'] || event.headers?.['X-Api-Key'];
+  const keyInfo = await validateApiKey(apiKey);
+  
+  if (!keyInfo) return errorResponse(401, 'API Key inválida ou expirada');
+  if (!keyInfo.permissions.includes('recordings') && !keyInfo.permissions.includes('schedule')) {
+    return errorResponse(403, 'Permissão negada. Necessário: recordings ou schedule');
+  }
+  
+  const { meetingId } = body;
+  if (!meetingId) return errorResponse(400, 'meetingId é obrigatório');
+  
+  try {
+    // Buscar relatório via Lambda de IA
+    const lambdaPayload = {
+      body: JSON.stringify({ action: 'getReport', meetingId })
+    };
+    
+    const command = new InvokeCommand({
+      FunctionName: process.env.INTERVIEW_AI_LAMBDA || 'chat-colaborativo-serverless-InterviewAIFunction',
+      InvocationType: 'RequestResponse',
+      Payload: JSON.stringify(lambdaPayload)
+    });
+    
+    const response = await lambdaClient.send(command);
+    const responsePayload = JSON.parse(new TextDecoder().decode(response.Payload));
+    
+    if (responsePayload.statusCode === 200) {
+      const reportData = JSON.parse(responsePayload.body);
+      log(LOG_LEVELS.INFO, 'Relatório obtido via API externa', { meetingId, apiKey: keyInfo.keyId });
+      return successResponse(reportData);
+    }
+    
+    // Se não encontrou na Lambda de IA, buscar dados básicos do histórico
+    const historyResult = await dynamoClient.send(new GetItemCommand({
+      TableName: MEETING_HISTORY_TABLE,
+      Key: { meetingId: { S: meetingId } },
+    }));
+    
+    if (!historyResult.Item) {
+      return errorResponse(404, 'Reunião não encontrada');
+    }
+    
+    const item = historyResult.Item;
+    return successResponse({
+      meetingId,
+      roomName: item.roomName?.S || '',
+      meetingType: item.meetingType?.S || 'REUNIAO',
+      meetingTopic: item.meetingTopic?.S || '',
+      participants: item.participants?.L?.map(p => p.S) || [],
+      duration: parseInt(item.duration?.N || '0'),
+      startTime: item.startTime?.N ? new Date(parseInt(item.startTime.N)).toISOString() : null,
+      endTime: item.endTime?.N ? new Date(parseInt(item.endTime.N)).toISOString() : null,
+      transcriptionCount: parseInt(item.transcriptionCount?.N || '0'),
+      questionsAsked: item.questionsAsked?.L?.map(q => q.S) || [],
+      jobDescription: item.jobDescription?.S || '',
+      message: 'Relatório de IA não disponível para esta reunião. Dados básicos retornados.',
+    });
+  } catch (error) {
+    log(LOG_LEVELS.ERROR, 'Erro ao obter relatório via API', { error: error.message, meetingId });
+    return errorResponse(500, 'Erro ao obter relatório da reunião');
+  }
+}
+
+// ============ API EXTERNA: TRANSCRIÇÃO DA REUNIÃO ============
+async function handleApiMeetingTranscription(body, event) {
+  const apiKey = event.headers?.['x-api-key'] || event.headers?.['X-Api-Key'];
+  const keyInfo = await validateApiKey(apiKey);
+  
+  if (!keyInfo) return errorResponse(401, 'API Key inválida ou expirada');
+  if (!keyInfo.permissions.includes('recordings') && !keyInfo.permissions.includes('schedule')) {
+    return errorResponse(403, 'Permissão negada. Necessário: recordings ou schedule');
+  }
+  
+  const { meetingId, format } = body;
+  if (!meetingId) return errorResponse(400, 'meetingId é obrigatório');
+  
+  try {
+    const result = await dynamoClient.send(new GetItemCommand({
+      TableName: MEETING_HISTORY_TABLE,
+      Key: { meetingId: { S: meetingId } },
+    }));
+    
+    if (!result.Item) {
+      return errorResponse(404, 'Reunião não encontrada');
+    }
+    
+    const item = result.Item;
+    const transcriptions = item.transcriptions?.L?.map(t => ({
+      id: t.M?.id?.S || '',
+      text: t.M?.text?.S || '',
+      speaker: t.M?.speaker?.S || '',
+      timestamp: parseInt(t.M?.timestamp?.N || '0'),
+    })) || [];
+    
+    if (transcriptions.length === 0) {
+      return errorResponse(404, 'Nenhuma transcrição encontrada para esta reunião');
+    }
+    
+    // Ordenar por timestamp
+    transcriptions.sort((a, b) => a.timestamp - b.timestamp);
+    
+    log(LOG_LEVELS.INFO, 'Transcrição obtida via API externa', { meetingId, count: transcriptions.length, apiKey: keyInfo.keyId });
+    
+    // Formato texto plano
+    if (format === 'text') {
+      const textContent = transcriptions.map(t => {
+        const time = t.timestamp ? new Date(t.timestamp).toLocaleTimeString('pt-BR') : '';
+        return `[${time}] ${t.speaker}: ${t.text}`;
+      }).join('\n');
+      
+      return successResponse({
+        meetingId,
+        roomName: item.roomName?.S || '',
+        format: 'text',
+        content: textContent,
+        transcriptionCount: transcriptions.length,
+      });
+    }
+    
+    // Formato JSON (padrão)
+    return successResponse({
+      meetingId,
+      roomName: item.roomName?.S || '',
+      meetingType: item.meetingType?.S || 'REUNIAO',
+      participants: item.participants?.L?.map(p => p.S) || [],
+      duration: parseInt(item.duration?.N || '0'),
+      startTime: item.startTime?.N ? new Date(parseInt(item.startTime.N)).toISOString() : null,
+      endTime: item.endTime?.N ? new Date(parseInt(item.endTime.N)).toISOString() : null,
+      format: 'json',
+      transcriptions,
+      transcriptionCount: transcriptions.length,
+    });
+  } catch (error) {
+    log(LOG_LEVELS.ERROR, 'Erro ao obter transcrição via API', { error: error.message, meetingId });
+    return errorResponse(500, 'Erro ao obter transcrição da reunião');
   }
 }
 
