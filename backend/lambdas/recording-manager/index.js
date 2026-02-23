@@ -10,6 +10,35 @@ const docClient = DynamoDBDocumentClient.from(dynamoClient);
 const RECORDINGS_BUCKET = process.env.RECORDINGS_BUCKET;
 const RECORDINGS_TABLE = process.env.RECORDINGS_TABLE;
 
+// PAG-001: Scan/Query paginados
+async function scanAllDoc(params, maxItems = 10000) {
+  const items = [];
+  let lastKey;
+  do {
+    const result = await docClient.send(new ScanCommand({
+      ...params,
+      ExclusiveStartKey: lastKey,
+    }));
+    items.push(...(result.Items || []));
+    lastKey = result.LastEvaluatedKey;
+  } while (lastKey && items.length < maxItems);
+  return items;
+}
+
+async function queryAllDoc(params, maxItems = 10000) {
+  const items = [];
+  let lastKey;
+  do {
+    const result = await docClient.send(new QueryCommand({
+      ...params,
+      ExclusiveStartKey: lastKey,
+    }));
+    items.push(...(result.Items || []));
+    lastKey = result.LastEvaluatedKey;
+  } while (lastKey && items.length < maxItems);
+  return items;
+}
+
 exports.handler = async (event) => {
   // LOG SEGURO: Não logar evento completo (contém headers/tokens sensíveis)
   console.log('Recording Manager Event:', JSON.stringify({ 
@@ -291,14 +320,12 @@ async function handleListRecordings(body, headers) {
 
   // Se é admin, listar todas as gravações
   if (isAdmin) {
-    const { ScanCommand } = require('@aws-sdk/lib-dynamodb');
-    const result = await docClient.send(new ScanCommand({
+    const recordings = await scanAllDoc({
       TableName: RECORDINGS_TABLE,
-      Limit: 200,
-    }));
+    });
     
     // Ordenar por data (mais recentes primeiro)
-    const recordings = (result.Items || []).sort((a, b) => b.createdAt - a.createdAt);
+    recordings.sort((a, b) => b.createdAt - a.createdAt);
     
     return {
       statusCode: 200,
@@ -309,7 +336,7 @@ async function handleListRecordings(body, headers) {
     };
   }
 
-  const result = await docClient.send(new QueryCommand({
+  const recordings = await queryAllDoc({
     TableName: RECORDINGS_TABLE,
     IndexName: 'UserRecordingsIndex',
     KeyConditionExpression: 'userLogin = :userLogin',
@@ -317,14 +344,13 @@ async function handleListRecordings(body, headers) {
       ':userLogin': userLogin,
     },
     ScanIndexForward: false, // Mais recentes primeiro
-    Limit: 50,
-  }));
+  });
 
   return {
     statusCode: 200,
     headers,
     body: JSON.stringify({
-      recordings: result.Items || [],
+      recordings: recordings,
     }),
   };
 }
@@ -436,14 +462,12 @@ async function handleFixOrphanedRecordings(body, headers) {
     console.log('Verificando gravações órfãs... maxAge:', maxAge);
 
     // Buscar todas as gravações com status "uploading"
-    const result = await docClient.send(new ScanCommand({
+    const orphanedRecordings = await scanAllDoc({
       TableName: RECORDINGS_TABLE,
       FilterExpression: '#status = :status',
       ExpressionAttributeNames: { '#status': 'status' },
       ExpressionAttributeValues: { ':status': 'uploading' },
-    }));
-
-    const orphanedRecordings = result.Items || [];
+    });
     console.log('Gravações com status uploading:', orphanedRecordings.length);
 
     const now = Date.now();

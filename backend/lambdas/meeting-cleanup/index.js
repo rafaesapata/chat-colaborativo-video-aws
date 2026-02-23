@@ -45,17 +45,32 @@ function log(level, msg, data = {}) {
   }));
 }
 
+// PAG-001: Scan paginado para evitar truncamento
+async function scanAll(params, maxItems = 10000) {
+  const items = [];
+  let lastKey;
+  do {
+    const result = await dynamoClient.send(new ScanCommand({
+      ...params,
+      ExclusiveStartKey: lastKey,
+    }));
+    items.push(...(result.Items || []));
+    lastKey = result.LastEvaluatedKey;
+  } while (lastKey && items.length < maxItems);
+  return items;
+}
+
 // Buscar todas as salas ativas no DynamoDB
 async function getActiveMeetings() {
   const meetings = [];
   
   try {
-    const result = await dynamoClient.send(new ScanCommand({
+    const items = await scanAll({
       TableName: CONFIG.MEETINGS_TABLE,
       FilterExpression: 'attribute_exists(meetingId) AND attribute_not_exists(lockedBy)',
     }));
     
-    for (const item of result.Items || []) {
+    for (const item of items) {
       if (item.meetingId?.S && item.roomId?.S) {
         // Ignorar registros de rate limit e admin
         if (item.roomId.S.startsWith('ratelimit_') || 

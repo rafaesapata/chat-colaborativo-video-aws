@@ -7,6 +7,21 @@ const ddb = DynamoDBDocumentClient.from(ddbClient);
 const CHATROOMS_TABLE = process.env.CHATROOMS_TABLE;
 const CONNECTIONS_TABLE = process.env.CONNECTIONS_TABLE;
 
+// PAG-001: Scan paginado
+async function scanAllDoc(params, maxItems = 10000) {
+  const items = [];
+  let lastKey;
+  do {
+    const result = await ddb.send(new ScanCommand({
+      ...params,
+      ExclusiveStartKey: lastKey,
+    }));
+    items.push(...(result.Items || []));
+    lastKey = result.LastEvaluatedKey;
+  } while (lastKey && items.length < maxItems);
+  return items;
+}
+
 exports.handler = async (event) => {
   try {
     const body = JSON.parse(event.body);
@@ -121,19 +136,19 @@ async function leaveRoom(roomId, userId) {
 async function listRooms() {
   // GSI CreatedAtIndex tem createdAt como HASH key, não suporta query por 'active'
   // Usar Scan com filtro por active=true, ordenar por createdAt desc no código
-  const result = await ddb.send(new ScanCommand({
+  const rooms = await scanAllDoc({
     TableName: CHATROOMS_TABLE,
     FilterExpression: 'active = :active',
     ExpressionAttributeValues: {
       ':active': true
     },
-    Limit: 200
-  }));
+  });
 
   // Ordenar por createdAt desc (mais recentes primeiro)
-  const rooms = (result.Items || []).sort((a, b) => (b.createdAt || 0) - (a.createdAt || 0)).slice(0, 50);
+  rooms.sort((a, b) => (b.createdAt || 0) - (a.createdAt || 0));
+  const topRooms = rooms.slice(0, 50);
 
-  return { statusCode: 200, body: JSON.stringify({ rooms }) };
+  return { statusCode: 200, body: JSON.stringify({ rooms: topRooms }) };
 }
 
 async function getRoomInfo(roomId) {

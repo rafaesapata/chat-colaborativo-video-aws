@@ -9,6 +9,21 @@ const lambdaClient = new LambdaClient({});
 
 const TRANSCRIPTIONS_TABLE = process.env.TRANSCRIPTIONS_TABLE;
 
+// PAG-001: Query paginada
+async function queryAll(params, maxItems = 10000) {
+  const items = [];
+  let lastKey;
+  do {
+    const result = await ddb.send(new QueryCommand({
+      ...params,
+      ExclusiveStartKey: lastKey,
+    }));
+    items.push(...(result.Items || []));
+    lastKey = result.LastEvaluatedKey;
+  } while (lastKey && items.length < maxItems);
+  return items;
+}
+
 exports.handler = async (event) => {
   const { connectionId, domainName, stage } = event.requestContext;
   
@@ -29,7 +44,7 @@ exports.handler = async (event) => {
     }
 
     // Buscar transcrições da sala
-    const transcriptions = await ddb.send(new QueryCommand({
+    const transcriptionItems = await queryAll({
       TableName: TRANSCRIPTIONS_TABLE,
       IndexName: 'RoomTranscriptionsIndex',
       KeyConditionExpression: 'roomId = :roomId AND #ts BETWEEN :start AND :end',
@@ -42,10 +57,10 @@ exports.handler = async (event) => {
         ':end': endTime || Date.now()
       },
       ScanIndexForward: true
-    }));
+    });
 
     // Agrupar por falante e formatar
-    const formattedTranscriptions = formatTranscriptions(transcriptions.Items);
+    const formattedTranscriptions = formatTranscriptions(transcriptionItems);
 
     // Enviar transcrições agregadas
     const message = {
@@ -53,7 +68,7 @@ exports.handler = async (event) => {
       data: {
         roomId,
         transcriptions: formattedTranscriptions,
-        count: transcriptions.Items.length
+        count: transcriptionItems.length
       }
     };
 

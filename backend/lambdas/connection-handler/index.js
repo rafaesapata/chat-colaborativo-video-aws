@@ -9,6 +9,21 @@ const CONNECTIONS_TABLE = process.env.CONNECTIONS_TABLE;
 const USERS_TABLE = process.env.USERS_TABLE;
 const ROOM_EVENTS_TABLE = process.env.ROOM_EVENTS_TABLE;
 
+// PAG-001: Query paginada para evitar truncamento silencioso
+async function queryAll(params, maxItems = 10000) {
+  const items = [];
+  let lastKey;
+  do {
+    const result = await ddb.send(new QueryCommand({
+      ...params,
+      ExclusiveStartKey: lastKey,
+    }));
+    items.push(...(result.Items || []));
+    lastKey = result.LastEvaluatedKey;
+  } while (lastKey && items.length < maxItems);
+  return items;
+}
+
 // Logger simples
 const logger = {
   info: (msg, data) => console.log(`[INFO] ${msg}`, data || ''),
@@ -86,21 +101,21 @@ async function handleConnect(event) {
     }));
 
     // Buscar todos os participantes da sala
-    const participantsResult = await ddb.send(new QueryCommand({
+    const participants = await queryAll({
       TableName: CONNECTIONS_TABLE,
       IndexName: 'RoomConnectionsIndex',
       KeyConditionExpression: 'roomId = :roomId',
       ExpressionAttributeValues: { ':roomId': roomId }
-    }));
+    });
 
-    const participants = (participantsResult.Items || []).map(item => item.userId);
-    const existingParticipants = participants.filter(p => p !== userId);
+    const participantIds = participants.map(item => item.userId);
+    const existingParticipants = participantIds.filter(p => p !== userId);
 
     logger.info('Participantes na sala', { 
       roomId, 
-      total: participants.length, 
+      total: participantIds.length, 
       existing: existingParticipants.length,
-      participants 
+      participants: participantIds 
     });
 
     // ✅ SALVAR EVENTO DE ENTRADA NO DYNAMODB
@@ -115,7 +130,7 @@ async function handleConnect(event) {
             eventType: 'user_joined',
             userId,
             timestamp: Date.now(),
-            participantCount: participants.length,
+            participantCount: participantIds.length,
             ttl: Math.floor(Date.now() / 1000) + (30 * 24 * 60 * 60) // 30 dias
           }
         }));
@@ -149,7 +164,7 @@ async function handleConnect(event) {
         userId,
         userName, // ✅ Incluir nome do usuário
         roomId,
-        participants,
+        participants: participantIds,
         existingParticipants, // ✅ Incluir para que o novo usuário saiba quem já está
         timestamp: Date.now()
       }
@@ -198,14 +213,14 @@ async function handleDisconnect(event) {
       }));
 
       // Buscar participantes restantes da sala
-      const participantsResult = await ddb.send(new QueryCommand({
+      const remainingItems = await queryAll({
         TableName: CONNECTIONS_TABLE,
         IndexName: 'RoomConnectionsIndex',
         KeyConditionExpression: 'roomId = :roomId',
         ExpressionAttributeValues: { ':roomId': roomId }
-      }));
+      });
 
-      const participants = (participantsResult.Items || [])
+      const remainingParticipants = remainingItems
         .filter(item => item.connectionId !== connectionId)
         .map(item => item.userId);
 
@@ -221,7 +236,7 @@ async function handleDisconnect(event) {
               eventType: 'user_left',
               userId,
               timestamp: Date.now(),
-              participantCount: participants.length,
+              participantCount: remainingParticipants.length,
               ttl: Math.floor(Date.now() / 1000) + (30 * 24 * 60 * 60) // 30 dias
             }
           }));
@@ -238,7 +253,7 @@ async function handleDisconnect(event) {
           eventType: 'user_left',
           userId,
           roomId,
-          participants,
+          participants: remainingParticipants,
           timestamp: Date.now()
         }
       }, connectionId);
@@ -257,14 +272,13 @@ async function handleDisconnect(event) {
 async function notifyRoomUsers(roomId, message, excludeConnectionId = null) {
   try {
     // Buscar todas as conexões da sala
-    const result = await ddb.send(new QueryCommand({
+    const connections = await queryAll({
       TableName: CONNECTIONS_TABLE,
       IndexName: 'RoomConnectionsIndex',
       KeyConditionExpression: 'roomId = :roomId',
       ExpressionAttributeValues: { ':roomId': roomId }
-    }));
+    });
 
-    const connections = result.Items || [];
     logger.info('Notifying room users', { roomId, connectionCount: connections.length });
 
     // Criar cliente API Gateway

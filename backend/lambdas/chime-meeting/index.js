@@ -45,7 +45,7 @@ const {
 } = require('@aws-sdk/client-s3');
 
 const { ApiGatewayManagementApiClient, PostToConnectionCommand } = require('@aws-sdk/client-apigatewaymanagementapi');
-const { DynamoDBDocumentClient, QueryCommand: DocQueryCommand } = require('@aws-sdk/lib-dynamodb');
+const { DynamoDBDocumentClient, QueryCommand: DocQueryCommand, GetCommand: DocGetCommand } = require('@aws-sdk/lib-dynamodb');
 
 const { getSignedUrl } = require('@aws-sdk/s3-request-presigner');
 
@@ -103,6 +103,8 @@ const s3Client = new S3Client({
 
 // Bucket para backgrounds (usa o mesmo bucket de áudio)
 const BACKGROUNDS_BUCKET = process.env.AUDIO_BUCKET || 'chat-colaborativo-serverless-audio-383234048592';
+const RECORDINGS_BUCKET = process.env.RECORDINGS_BUCKET || '';
+const RECORDINGS_TABLE = process.env.RECORDINGS_TABLE || '';
 const BACKGROUNDS_PREFIX = 'backgrounds/';
 
 // H-003: CORS dinâmico - não usar wildcard
@@ -455,6 +457,57 @@ function successResponse(data, extraHeaders = {}) {
   return createResponse(200, data, extraHeaders);
 }
 
+// ============ PAGINAÇÃO DYNAMODB ============
+// PAG-001: Scan/Query paginados para evitar truncamento silencioso de dados
+
+/**
+ * Executa ScanCommand com paginação automática (raw DynamoDB client)
+ * @param {object} params - Parâmetros do ScanCommand (sem ExclusiveStartKey)
+ * @param {number} [maxItems=10000] - Limite de segurança para evitar loops infinitos
+ * @returns {Promise<object[]>} Todos os items encontrados
+ */
+async function scanAll(params, maxItems = 10000) {
+  const items = [];
+  let lastKey;
+  do {
+    const result = await dynamoClient.send(new ScanCommand({
+      ...params,
+      ExclusiveStartKey: lastKey,
+    }));
+    items.push(...(result.Items || []));
+    lastKey = result.LastEvaluatedKey;
+  } while (lastKey && items.length < maxItems);
+  
+  if (items.length >= maxItems) {
+    log(LOG_LEVELS.WARN, 'scanAll atingiu limite de segurança', { maxItems, table: params.TableName });
+  }
+  return items;
+}
+
+/**
+ * Executa QueryCommand com paginação automática (DocumentClient / docClient)
+ * @param {object} params - Parâmetros do QueryCommand (sem ExclusiveStartKey)
+ * @param {number} [maxItems=10000] - Limite de segurança
+ * @returns {Promise<object[]>} Todos os items encontrados
+ */
+async function docQueryAll(params, maxItems = 10000) {
+  const items = [];
+  let lastKey;
+  do {
+    const result = await docClient.send(new DocQueryCommand({
+      ...params,
+      ExclusiveStartKey: lastKey,
+    }));
+    items.push(...(result.Items || []));
+    lastKey = result.LastEvaluatedKey;
+  } while (lastKey && items.length < maxItems);
+  
+  if (items.length >= maxItems) {
+    log(LOG_LEVELS.WARN, 'docQueryAll atingiu limite de segurança', { maxItems, table: params.TableName });
+  }
+  return items;
+}
+
 // C-003: Super admins carregados de variável de ambiente (sem PII no código)
 const SUPER_ADMINS = Object.freeze(
   (process.env.SUPER_ADMIN_LOGINS || 'admin').split(',').filter(Boolean).map(s => s.trim().toLowerCase())
@@ -573,6 +626,8 @@ const routes = Object.freeze({
   'POST:/api/v1/meetings/schedule': handleApiScheduleMeeting,
   'GET:/api/v1/meetings/scheduled': handleApiListScheduled,
   'DELETE:/api/v1/meetings/scheduled/:id': handleApiCancelScheduled,
+  'POST:/api/v1/rooms/create': handleApiCreateRoom,
+  'POST:/api/v1/meetings/download': handleApiDownloadMeeting,
   // API Keys management
   'POST:/admin/api-keys': handleAdminListApiKeys,
   'POST:/admin/api-keys/create': handleAdminCreateApiKey,
@@ -1298,13 +1353,13 @@ async function handleAdminListRooms(body) {
       // §10 PERF: Full table scan - consider adding GSI on meetingId for O(1) lookup
       // Current approach scans entire table. For production scale, add:
       // GSI: meetingId-index (PK: meetingId) and status-index (PK: status, SK: createdAt)
-      const scanResult = await dynamoClient.send(new ScanCommand({
+      const scanItems = await scanAll({
         TableName: CONFIG.MEETINGS_TABLE,
         FilterExpression: 'attribute_exists(meetingId) AND attribute_not_exists(#lock)',
         ExpressionAttributeNames: { '#lock': 'lockedBy' }
-      }));
+      });
       
-      for (const item of scanResult.Items || []) {
+      for (const item of scanItems) {
         const roomId = item.roomId?.S;
         const meetingId = item.meetingId?.S;
         
@@ -1368,24 +1423,24 @@ async function notifyRoomEnded(roomId, adminLogin, excludeUserId = null) {
     }
 
     // Buscar todas as conexões da sala
-    const result = await docClient.send(new DocQueryCommand({
+    const connections = await docQueryAll({
       TableName: CONNECTIONS_TABLE,
       IndexName: 'RoomConnectionsIndex',
       KeyConditionExpression: 'roomId = :roomId',
       ExpressionAttributeValues: { ':roomId': roomId }
-    }));
+    });
 
-    let connections = result.Items || [];
+    let filteredConnections = connections;
     
     // Excluir o usuário que está encerrando (ele não precisa receber a notificação)
     if (excludeUserId) {
-      connections = connections.filter(c => c.odUserId !== excludeUserId);
-      log(LOG_LEVELS.INFO, 'Excluindo host da notificação', { excludeUserId, remainingConnections: connections.length });
+      filteredConnections = connections.filter(c => c.odUserId !== excludeUserId);
+      log(LOG_LEVELS.INFO, 'Excluindo host da notificação', { excludeUserId, remainingConnections: filteredConnections.length });
     }
     
-    log(LOG_LEVELS.INFO, 'Conexões encontradas para notificar', { roomId, count: connections.length });
+    log(LOG_LEVELS.INFO, 'Conexões encontradas para notificar', { roomId, count: filteredConnections.length });
 
-    if (connections.length === 0) {
+    if (filteredConnections.length === 0) {
       return;
     }
 
@@ -1407,7 +1462,7 @@ async function notifyRoomEnded(roomId, adminLogin, excludeUserId = null) {
     };
 
     // Enviar para todas as conexões (exceto o host)
-    const promises = connections.map(async (connection) => {
+    const promises = filteredConnections.map(async (connection) => {
       try {
         await apiGateway.send(new PostToConnectionCommand({
           ConnectionId: connection.connectionId,
@@ -1427,7 +1482,7 @@ async function notifyRoomEnded(roomId, adminLogin, excludeUserId = null) {
     });
 
     await Promise.allSettled(promises);
-    log(LOG_LEVELS.INFO, 'Notificações de encerramento enviadas', { roomId, count: connections.length });
+    log(LOG_LEVELS.INFO, 'Notificações de encerramento enviadas', { roomId, count: filteredConnections.length });
 
   } catch (error) {
     log(LOG_LEVELS.ERROR, 'Erro ao notificar encerramento de sala', { error: error.message });
@@ -1509,13 +1564,13 @@ async function handleAdminStats(body) {
     let roomsByRegion = {};
     
     if (CONFIG.USE_DYNAMO) {
-      const scanResult = await dynamoClient.send(new ScanCommand({
+      const scanItems = await scanAll({
         TableName: CONFIG.MEETINGS_TABLE,
         FilterExpression: 'attribute_exists(meetingId) AND attribute_not_exists(#lock)',
         ExpressionAttributeNames: { '#lock': 'lockedBy' }
-      }));
+      });
       
-      for (const item of scanResult.Items || []) {
+      for (const item of scanItems) {
         const meetingId = item.meetingId?.S;
         if (!meetingId) continue;
         
@@ -1746,13 +1801,13 @@ async function handleAdminCleanup(body) {
     }
 
     // Buscar todas as salas
-    const scanResult = await dynamoClient.send(new ScanCommand({
+    const scanItems = await scanAll({
       TableName: CONFIG.MEETINGS_TABLE,
       FilterExpression: 'attribute_exists(meetingId) AND attribute_not_exists(lockedBy)',
-    }));
+    });
 
     const meetings = [];
-    for (const item of scanResult.Items || []) {
+    for (const item of scanItems) {
       if (item.meetingId?.S && item.roomId?.S) {
         const roomId = item.roomId.S;
         
@@ -1909,7 +1964,7 @@ async function findScheduledMeetingByRoomId(roomId) {
   
   try {
     // Buscar reuniões agendadas que usam este roomId
-    const result = await dynamoClient.send(new ScanCommand({
+    const scanItems = await scanAll({
       TableName: CONFIG.MEETINGS_TABLE,
       FilterExpression: 'begins_with(roomId, :prefix) AND meetingRoomId = :roomId AND #status = :scheduled',
       ExpressionAttributeNames: { '#status': 'status' },
@@ -1918,11 +1973,10 @@ async function findScheduledMeetingByRoomId(roomId) {
         ':roomId': { S: roomId },
         ':scheduled': { S: 'scheduled' }
       },
-      Limit: 1
-    }));
+    }, 1);
     
-    if (result.Items && result.Items.length > 0) {
-      const item = result.Items[0];
+    if (scanItems.length > 0) {
+      const item = scanItems[0];
       return {
         scheduleId: item.scheduleId?.S,
         title: item.title?.S,
@@ -2000,15 +2054,15 @@ async function handleScheduleList(body) {
   if (!userLogin) return errorResponse(400, 'userLogin é obrigatório');
   if (!await isAdmin(userLogin)) return errorResponse(403, 'Acesso negado');
   
-  const result = await dynamoClient.send(new ScanCommand({
+  const scheduleItems = await scanAll({
     TableName: CONFIG.MEETINGS_TABLE,
     FilterExpression: 'begins_with(roomId, :prefix)',
     ExpressionAttributeValues: { ':prefix': { S: SCHEDULED_MEETINGS_PREFIX } },
-  }));
+  });
   
   const now = Date.now();
   
-  let meetings = (result.Items || []).map(item => ({
+  let meetings = (scheduleItems).map(item => ({
     scheduleId: item.scheduleId?.S,
     title: item.title?.S,
     description: item.description?.S,
@@ -2140,13 +2194,13 @@ async function handleAdminListApiKeys(body) {
   const { userLogin } = body;
   if (!userLogin || !isSuperAdmin(userLogin)) return errorResponse(403, 'Apenas super admins');
   
-  const result = await dynamoClient.send(new ScanCommand({
+  const apiKeyItems = await scanAll({
     TableName: CONFIG.MEETINGS_TABLE,
     FilterExpression: 'begins_with(roomId, :prefix)',
     ExpressionAttributeValues: { ':prefix': { S: API_KEYS_PREFIX } },
-  }));
+  });
   
-  const keys = (result.Items || []).map(item => ({
+  const keys = (apiKeyItems).map(item => ({
     keyId: item.keyId?.S,
     name: item.keyName?.S,
     createdBy: item.createdBy?.S,
@@ -2214,7 +2268,7 @@ async function validateApiKey(apiKey) {
   
   const hashedKey = crypto.createHash('sha256').update(apiKey).digest('hex');
   
-  const result = await dynamoClient.send(new ScanCommand({
+  const validationItems = await scanAll({
     TableName: CONFIG.MEETINGS_TABLE,
     FilterExpression: 'begins_with(roomId, :prefix) AND hashedKey = :hash AND isActive = :true',
     ExpressionAttributeValues: {
@@ -2222,11 +2276,11 @@ async function validateApiKey(apiKey) {
       ':hash': { S: hashedKey },
       ':true': { BOOL: true },
     },
-  }));
+  }, 1);
   
-  if (!result.Items || result.Items.length === 0) return null;
+  if (validationItems.length === 0) return null;
   
-  const keyItem = result.Items[0];
+  const keyItem = validationItems[0];
   
   // Atualizar uso
   await dynamoClient.send(new UpdateItemCommand({
@@ -2303,16 +2357,16 @@ async function handleApiListScheduled(body, event) {
   
   if (!keyInfo) return errorResponse(401, 'API Key inválida ou expirada');
   
-  const result = await dynamoClient.send(new ScanCommand({
+  const apiListItems = await scanAll({
     TableName: CONFIG.MEETINGS_TABLE,
     FilterExpression: 'begins_with(roomId, :prefix) AND apiKeyId = :keyId',
     ExpressionAttributeValues: {
       ':prefix': { S: SCHEDULED_MEETINGS_PREFIX },
       ':keyId': { S: keyInfo.keyId },
     },
-  }));
+  });
   
-  const meetings = (result.Items || []).map(item => ({
+  const meetings = (apiListItems).map(item => ({
     scheduleId: item.scheduleId?.S,
     title: item.title?.S,
     scheduledAt: item.scheduledAt?.N ? new Date(parseInt(item.scheduledAt.N)).toISOString() : null,
@@ -2358,6 +2412,128 @@ async function handleApiCancelScheduled(body, event) {
   }));
   
   return successResponse({ success: true, scheduleId });
+}
+
+// ============ API EXTERNA: CRIAR SALA ============
+async function handleApiCreateRoom(body, event) {
+  const apiKey = event.headers?.['x-api-key'] || event.headers?.['X-Api-Key'];
+  const keyInfo = await validateApiKey(apiKey);
+  
+  if (!keyInfo) return errorResponse(401, 'API Key inválida ou expirada');
+  if (!keyInfo.permissions.includes('rooms') && !keyInfo.permissions.includes('schedule')) {
+    return errorResponse(403, 'Permissão negada. Necessário: rooms ou schedule');
+  }
+  
+  const { title, description, meetingType, jobDescription, participants } = body;
+  
+  if (!title) return errorResponse(400, 'title é obrigatório');
+  
+  const roomId = `room_${crypto.randomBytes(8).toString('hex')}`;
+  const meetingUrl = `${process.env.APP_BASE_URL || 'https://app.livechat.udstec.io'}/meeting/${roomId}`;
+  
+  // Criar a reunião imediatamente no Chime
+  const clientRequestToken = `${roomId}-${Date.now()}-${crypto.randomBytes(8).toString('hex')}`;
+  
+  try {
+    const createMeetingResponse = await chimeClient.send(new CreateMeetingCommand({
+      ClientRequestToken: clientRequestToken,
+      MediaRegion: CONFIG.REGION,
+      ExternalMeetingId: roomId,
+      MeetingFeatures: {
+        Audio: { EchoReduction: 'AVAILABLE' },
+        Video: { MaxResolution: 'HD' }
+      }
+    }));
+    
+    const meeting = createMeetingResponse.Meeting;
+    await setMeetingInCache(roomId, meeting.MeetingId, `api:${keyInfo.name}`);
+    
+    log(LOG_LEVELS.INFO, 'Sala criada via API externa', { roomId, apiKey: keyInfo.keyId });
+    
+    return successResponse({
+      roomId,
+      meetingId: meeting.MeetingId,
+      meetingUrl,
+      title,
+      description: description || '',
+      meetingType: meetingType || 'REUNIAO',
+      mediaRegion: meeting.MediaRegion,
+      createdAt: new Date().toISOString(),
+      createdBy: `api:${keyInfo.name}`,
+    });
+  } catch (error) {
+    log(LOG_LEVELS.ERROR, 'Erro ao criar sala via API', { error: error.message });
+    return errorResponse(500, 'Erro ao criar sala');
+  }
+}
+
+// ============ API EXTERNA: DOWNLOAD DE REUNIÃO ============
+async function handleApiDownloadMeeting(body, event) {
+  const apiKey = event.headers?.['x-api-key'] || event.headers?.['X-Api-Key'];
+  const keyInfo = await validateApiKey(apiKey);
+  
+  if (!keyInfo) return errorResponse(401, 'API Key inválida ou expirada');
+  if (!keyInfo.permissions.includes('recordings') && !keyInfo.permissions.includes('schedule')) {
+    return errorResponse(403, 'Permissão negada. Necessário: recordings ou schedule');
+  }
+  
+  const { recordingId, recordingKey } = body;
+  
+  if (!recordingId && !recordingKey) {
+    return errorResponse(400, 'recordingId ou recordingKey é obrigatório');
+  }
+  
+  if (!RECORDINGS_BUCKET || !RECORDINGS_TABLE) {
+    return errorResponse(503, 'Serviço de gravações não configurado');
+  }
+  
+  try {
+    let key = recordingKey;
+    let recording = null;
+    
+    if (recordingId && !recordingKey) {
+      // Buscar a key no DynamoDB via recordings table
+      const result = await docClient.send(new DocGetCommand({
+        TableName: RECORDINGS_TABLE,
+        Key: { recordingId },
+      }));
+      
+      if (!result.Item) {
+        return errorResponse(404, 'Gravação não encontrada');
+      }
+      
+      recording = result.Item;
+      key = recording.recordingKey;
+    }
+    
+    if (!key) {
+      return errorResponse(400, 'Não foi possível determinar a chave da gravação');
+    }
+    
+    // Gerar URL pré-assinada para download (válida por 2 horas)
+    const command = new GetObjectCommand({
+      Bucket: RECORDINGS_BUCKET,
+      Key: key,
+    });
+    
+    const downloadUrl = await getSignedUrl(s3Client, command, { expiresIn: 7200 });
+    
+    log(LOG_LEVELS.INFO, 'Download de reunião via API', { recordingId, apiKey: keyInfo.keyId });
+    
+    return successResponse({
+      downloadUrl,
+      expiresIn: 7200,
+      recordingId: recordingId || null,
+      recordingKey: key,
+      fileSize: recording?.fileSize || null,
+      duration: recording?.recordingDuration || recording?.duration || null,
+      roomId: recording?.roomId || null,
+      createdAt: recording?.createdAt ? new Date(recording.createdAt).toISOString() : null,
+    });
+  } catch (error) {
+    log(LOG_LEVELS.ERROR, 'Erro ao gerar download de reunião', { error: error.message });
+    return errorResponse(500, 'Erro ao gerar URL de download');
+  }
 }
 
 // ============ DOCUMENTATION ============
@@ -2416,73 +2592,11 @@ async function handleSwaggerJson(body, event) {
   if (!userLogin || !await isAdmin(userLogin)) {
     return errorResponse(403, 'Acesso negado');
   }
-  
-  const swagger = {
-    openapi: '3.0.3',
-    info: {
-      title: 'Video Chat API',
-      version: '1.0.0',
-      description: 'API para integração com o sistema de Video Chat. Permite agendar reuniões programaticamente.',
-    },
-    servers: [{ url: 'https://q565matpkz62gs4pmzyfbusy4i0zeqfi.lambda-url.us-east-1.on.aws', description: 'Produção' }],
-    security: [{ ApiKeyAuth: [] }],
-    components: {
-      securitySchemes: {
-        ApiKeyAuth: { type: 'apiKey', in: 'header', name: 'X-Api-Key', description: 'Chave de API gerada no painel admin' }
-      },
-      schemas: {
-        ScheduleMeetingRequest: {
-          type: 'object',
-          required: ['title', 'scheduledAt'],
-          properties: {
-            title: { type: 'string', example: 'Reunião de Alinhamento' },
-            description: { type: 'string', example: 'Discussão sobre o projeto X' },
-            scheduledAt: { type: 'string', format: 'date-time', example: '2025-12-25T14:00:00Z' },
-            duration: { type: 'integer', default: 60, example: 30 },
-            participants: { type: 'array', items: { type: 'string' }, example: ['user1@email.com', 'user2@email.com'] },
-            callbackUrl: { type: 'string', example: 'https://seu-sistema.com/webhook/meeting' }
-          }
-        },
-        ScheduleMeetingResponse: {
-          type: 'object',
-          properties: {
-            scheduleId: { type: 'string' },
-            roomId: { type: 'string' },
-            meetingUrl: { type: 'string' },
-            title: { type: 'string' },
-            scheduledAt: { type: 'string', format: 'date-time' },
-            duration: { type: 'integer' }
-          }
-        }
-      }
-    },
-    paths: {
-      '/api/v1/meetings/schedule': {
-        post: {
-          summary: 'Agendar nova reunião',
-          tags: ['Meetings'],
-          requestBody: { required: true, content: { 'application/json': { schema: { '$ref': '#/components/schemas/ScheduleMeetingRequest' } } } },
-          responses: { '200': { description: 'Reunião agendada', content: { 'application/json': { schema: { '$ref': '#/components/schemas/ScheduleMeetingResponse' } } } } }
-        }
-      },
-      '/api/v1/meetings/scheduled': {
-        get: {
-          summary: 'Listar reuniões agendadas',
-          tags: ['Meetings'],
-          responses: { '200': { description: 'Lista de reuniões' } }
-        }
-      },
-      '/api/v1/meetings/scheduled/{scheduleId}': {
-        delete: {
-          summary: 'Cancelar reunião agendada',
-          tags: ['Meetings'],
-          parameters: [{ name: 'scheduleId', in: 'path', required: true, schema: { type: 'string' } }],
-          responses: { '200': { description: 'Reunião cancelada' } }
-        }
-      }
-    }
-  };
-  
+
+  const baseUrl = process.env.APP_BASE_URL || 'https://api.livechat.udstec.io';
+
+  const swagger = buildSwaggerSpec(baseUrl);
+
   return { statusCode: 200, headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(swagger) };
 }
 
@@ -3621,10 +3735,10 @@ async function handleAdminListHistory(body) {
       scanParams.ExpressionAttributeValues = expressionAttributeValues;
     }
 
-    const result = await dynamoClient.send(new ScanCommand(scanParams));
+    const historyItems = await scanAll(scanParams);
     
     // Ordenar por data (mais recentes primeiro)
-    const history = (result.Items || [])
+    const history = (historyItems)
       .map(item => ({
         meetingId: item.meetingId?.S || '',
         userLogin: item.userLogin?.S || '',

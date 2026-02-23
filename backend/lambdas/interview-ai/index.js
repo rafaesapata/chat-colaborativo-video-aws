@@ -24,6 +24,21 @@ const ddb = DynamoDBDocumentClient.from(ddbClient);
 // Tabela para relatórios de entrevista
 const MEETING_HISTORY_TABLE = process.env.MEETING_HISTORY_TABLE || '';
 
+// PAG-001: Query paginada
+async function queryAll(params, maxItems = 10000) {
+  const items = [];
+  let lastKey;
+  do {
+    const result = await ddb.send(new QueryCommand({
+      ...params,
+      ExclusiveStartKey: lastKey,
+    }));
+    items.push(...(result.Items || []));
+    lastKey = result.LastEvaluatedKey;
+  } while (lastKey && items.length < maxItems);
+  return items;
+}
+
 // Modelos disponíveis
 const AVAILABLE_MODELS = {
   'amazon.nova-lite-v1:0': {
@@ -1584,7 +1599,7 @@ async function compareReportsForJob(body) {
   if (!MEETING_HISTORY_TABLE) throw new Error('MEETING_HISTORY_TABLE nao configurada');
 
   // Scan com filtro por meetingTopic e meetingType=ENTREVISTA
-  const result = await ddb.send(new QueryCommand({
+  const candidates = await queryAll({
     TableName: MEETING_HISTORY_TABLE,
     IndexName: 'UserMeetingsIndex',
     KeyConditionExpression: 'userLogin = :user',
@@ -1594,10 +1609,9 @@ async function compareReportsForJob(body) {
       ':topic': meetingTopic,
       ':type': 'ENTREVISTA'
     },
-    Limit: 50
-  }));
+  });
 
-  const candidates = (result.Items || [])
+  const rankedCandidates = candidates
     .filter(item => item.interviewReport)
     .map(item => ({
       meetingId: item.meetingId,
@@ -1616,8 +1630,8 @@ async function compareReportsForJob(body) {
 
   return {
     topic: meetingTopic,
-    totalCandidates: candidates.length,
-    ranking: candidates
+    totalCandidates: rankedCandidates.length,
+    ranking: rankedCandidates
   };
 }
 

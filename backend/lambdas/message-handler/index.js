@@ -13,6 +13,21 @@ const ddb = DynamoDBDocumentClient.from(ddbClient);
 const MESSAGES_TABLE = process.env.MESSAGES_TABLE;
 const CONNECTIONS_TABLE = process.env.CONNECTIONS_TABLE;
 const TRANSCRIPTIONS_TABLE = process.env.TRANSCRIPTIONS_TABLE;
+
+// PAG-001: Query paginada para evitar truncamento silencioso
+async function queryAll(params, maxItems = 10000) {
+  const items = [];
+  let lastKey;
+  do {
+    const result = await ddb.send(new QueryCommand({
+      ...params,
+      ExclusiveStartKey: lastKey,
+    }));
+    items.push(...(result.Items || []));
+    lastKey = result.LastEvaluatedKey;
+  } while (lastKey && items.length < maxItems);
+  return items;
+}
 const ROOM_EVENTS_TABLE = process.env.ROOM_EVENTS_TABLE;
 
 // Logger simples
@@ -217,18 +232,18 @@ async function handleWebRTCSignal(event, body) {
       logger.info('📋 Solicitação de participantes recebida de:', userId);
       
       // Buscar todos os participantes da sala
-      const participantsResult = await ddb.send(new QueryCommand({
+      const participants = await queryAll({
         TableName: CONNECTIONS_TABLE,
         IndexName: 'RoomConnectionsIndex',
         KeyConditionExpression: 'roomId = :roomId',
         ExpressionAttributeValues: { ':roomId': roomId }
-      }));
+      });
 
-      const participants = (participantsResult.Items || []).map(item => item.userId);
-      const existingParticipants = participants.filter(p => p !== userId);
+      const participantIds = participants.map(item => item.userId);
+      const existingParticipants = participantIds.filter(p => p !== userId);
 
       logger.info('📋 Participantes encontrados:', { 
-        total: participants.length, 
+        total: participantIds.length, 
         existing: existingParticipants.length,
         existingParticipants 
       });
@@ -244,7 +259,7 @@ async function handleWebRTCSignal(event, body) {
           eventType: 'participants_list',
           userId,
           roomId,
-          participants,
+          participants: participantIds,
           existingParticipants,
           timestamp: Date.now()
         }
@@ -325,14 +340,13 @@ async function notifyRoomUsers(roomId, message, excludeConnectionId = null) {
     logger.info('🔍 Buscando conexões da sala:', roomId);
     
     // Buscar todas as conexões da sala
-    const result = await ddb.send(new QueryCommand({
+    const connections = await queryAll({
       TableName: CONNECTIONS_TABLE,
       IndexName: 'RoomConnectionsIndex',
       KeyConditionExpression: 'roomId = :roomId',
       ExpressionAttributeValues: { ':roomId': roomId }
-    }));
+    });
 
-    const connections = result.Items || [];
     logger.info('📋 Conexões encontradas na sala', { 
       roomId, 
       connectionCount: connections.length,
@@ -396,14 +410,12 @@ async function notifySpecificUser(userId, message) {
     logger.info('🔍 Buscando conexões do usuário:', userId);
     
     // Buscar conexão do usuário específico
-    const result = await ddb.send(new QueryCommand({
+    const connections = await queryAll({
       TableName: CONNECTIONS_TABLE,
       IndexName: 'UserConnectionsIndex',
       KeyConditionExpression: 'userId = :userId',
       ExpressionAttributeValues: { ':userId': userId }
-    }));
-
-    const connections = result.Items || [];
+    });
     
     if (connections.length === 0) {
       logger.warn('⚠️ No connections found for user', { userId });

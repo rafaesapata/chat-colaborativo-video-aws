@@ -12,6 +12,21 @@ const TRANSCRIPTIONS_TABLE = process.env.TRANSCRIPTIONS_TABLE;
 const CONNECTIONS_TABLE = process.env.CONNECTIONS_TABLE;
 const AUDIO_BUCKET = process.env.AUDIO_BUCKET;
 
+// PAG-001: Query paginada
+async function queryAll(params, maxItems = 10000) {
+  const items = [];
+  let lastKey;
+  do {
+    const result = await ddb.send(new QueryCommand({
+      ...params,
+      ExclusiveStartKey: lastKey,
+    }));
+    items.push(...(result.Items || []));
+    lastKey = result.LastEvaluatedKey;
+  } while (lastKey && items.length < maxItems);
+  return items;
+}
+
 exports.handler = async (event) => {
   const { connectionId, domainName, stage } = event.requestContext;
   
@@ -76,14 +91,14 @@ exports.handler = async (event) => {
       }));
 
       // Buscar todas as conexões da sala
-      const connections = await ddb.send(new QueryCommand({
+      const connectionItems = await queryAll({
         TableName: CONNECTIONS_TABLE,
         IndexName: 'RoomConnectionsIndex',
         KeyConditionExpression: 'roomId = :roomId',
         ExpressionAttributeValues: {
           ':roomId': roomId
         }
-      }));
+      });
 
       // Enviar transcrição para todos os participantes da sala
       const message = {
@@ -91,7 +106,7 @@ exports.handler = async (event) => {
         data: transcriptionItem
       };
 
-      const postCalls = connections.Items.map(async ({ connectionId: targetConnectionId }) => {
+      const postCalls = connectionItems.map(async ({ connectionId: targetConnectionId }) => {
         try {
           await apigwClient.send(new PostToConnectionCommand({
             ConnectionId: targetConnectionId,
