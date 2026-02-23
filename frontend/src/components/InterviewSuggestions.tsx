@@ -531,23 +531,47 @@ export default function InterviewSuggestions({
               <div
                 key={suggestion.id}
                 className={`p-3 border-b last:border-b-0 transition-all ${
-                  darkMode ? 'border-gray-700 hover:bg-gray-700/50' : 'border-gray-100 hover:bg-gray-50'
-                } ${index === 0 ? 'animate-slideIn' : ''}`}
+                  suggestion.pendingDetection 
+                    ? 'animate-detectedBlink ' + (darkMode ? 'border-yellow-600 bg-yellow-900/40' : 'border-yellow-400 bg-yellow-50')
+                    : darkMode ? 'border-gray-700 hover:bg-gray-700/50' : 'border-gray-100 hover:bg-gray-50'
+                } ${index === 0 && !suggestion.pendingDetection ? 'animate-slideIn' : ''}`}
               >
                 <div className="flex items-start gap-2">
-                  {getPriorityIndicator(suggestion.priority)}
+                  {suggestion.pendingDetection ? (
+                    <span className="w-2 h-2 rounded-full bg-yellow-500 animate-pulse" />
+                  ) : (
+                    getPriorityIndicator(suggestion.priority)
+                  )}
                   <div className="flex-1 min-w-0">
                     <div className="flex items-center gap-2 mb-1">
                       <span className={`text-[10px] px-1.5 py-0.5 rounded border ${getCategoryColor(suggestion.category)}`}>
                         {getCategoryLabel(suggestion.category)}
                       </span>
+                      {suggestion.pendingDetection && (
+                        <span className={`text-[10px] px-2 py-0.5 rounded-full font-bold animate-detectedBadge ${
+                          darkMode 
+                            ? 'bg-yellow-500 text-black' 
+                            : 'bg-yellow-500 text-black'
+                        }`}>
+                          🎯 DETECTADA
+                        </span>
+                      )}
                     </div>
                     <p className={`text-sm leading-relaxed ${
-                      darkMode ? 'text-gray-200' : 'text-gray-700'
+                      suggestion.pendingDetection
+                        ? (darkMode ? 'text-yellow-200 font-medium' : 'text-yellow-800 font-medium')
+                        : (darkMode ? 'text-gray-200' : 'text-gray-700')
                     } ${expandedId === suggestion.id ? '' : 'line-clamp-2'}`}>
                       {suggestion.question}
                     </p>
-                    {suggestion.question.length > 80 && (
+                    {suggestion.pendingDetection && (
+                      <p className={`text-xs mt-1 animate-pulse ${
+                        darkMode ? 'text-yellow-400' : 'text-yellow-600'
+                      }`}>
+                        Pergunta identificada na conversa — será marcada como feita em breve
+                      </p>
+                    )}
+                    {!suggestion.pendingDetection && suggestion.question.length > 80 && (
                       <button
                         onClick={(e) => {
                           e.stopPropagation();
@@ -733,10 +757,24 @@ export default function InterviewSuggestions({
           50% { transform: scale(1.1); }
         }
         .animate-feitoBlink {
-          animation: feitoBlink 0.8s ease-in-out 3;
+          animation: feitoBlink 0.8s ease-in-out 8;
         }
         .animate-feitoBadge {
-          animation: feitoBadgePulse 0.5s ease-in-out 4;
+          animation: feitoBadgePulse 0.5s ease-in-out 10;
+        }
+        @keyframes detectedBlink {
+          0%, 100% { opacity: 1; box-shadow: 0 0 0 0 rgba(234, 179, 8, 0); }
+          50% { opacity: 0.7; box-shadow: 0 0 8px 2px rgba(234, 179, 8, 0.3); }
+        }
+        @keyframes detectedBadgePulse {
+          0%, 100% { transform: scale(1); opacity: 1; }
+          50% { transform: scale(1.15); opacity: 0.8; }
+        }
+        .animate-detectedBlink {
+          animation: detectedBlink 1s ease-in-out infinite;
+        }
+        .animate-detectedBadge {
+          animation: detectedBadgePulse 0.8s ease-in-out infinite;
         }
         @keyframes shimmer {
           0% { opacity: 0.6; }

@@ -23,6 +23,8 @@ export interface InterviewSuggestion {
   technology?: string; // Tecnologia específica da pergunta
   justMarkedAsRead?: boolean; // Flag para animação de "FEITO" piscando
   autoDetected?: boolean; // Se foi detectado automaticamente na transcrição
+  pendingDetection?: boolean; // Pergunta detectada mas ainda piscando (aguardando confirmação)
+  pendingDetectionTimestamp?: number; // Quando a detecção pendente começou
 }
 
 export interface QuestionAnswer {

@@ -398,34 +398,47 @@ export function useInterviewAssistant({
       // Detectar se alguma sugestão foi feita
       const detectedSuggestion = detectAskedQuestion(trans.transcribedText, suggestions);
       
-      if (detectedSuggestion && !detectedSuggestion.isRead) {
-        console.log('[InterviewAssistant] 🎯 Pergunta detectada, aguardando confirmação...:', detectedSuggestion.question.substring(0, 50));
+      if (detectedSuggestion && !detectedSuggestion.isRead && !detectedSuggestion.pendingDetection) {
+        console.log('[InterviewAssistant] 🎯 Pergunta detectada! Iniciando animação de piscagem:', detectedSuggestion.question.substring(0, 50));
         
         // Marcar como processada para não detectar novamente
         addToProcessed(transKey);
         
-        // DELAY antes de marcar como realizada (para dar tempo de confirmar)
-        const detectionDelay = configRef.current.autoDetectionDelayMs || 3000;
+        // FASE 1: Marcar como "pendingDetection" - pisca na lista de não-lidas por 8s
+        setSuggestions((prev) => {
+          const current = prev.find(s => s.id === detectedSuggestion.id);
+          if (!current || current.isRead || current.pendingDetection) return prev;
+          
+          return prev.map((s) =>
+            s.id === detectedSuggestion.id
+              ? { ...s, pendingDetection: true, pendingDetectionTimestamp: Date.now(), autoDetected: true }
+              : s
+          );
+        });
+        
+        // FASE 2: Após 8s de piscagem, marcar como lida definitivamente
+        const blinkDuration = Math.max(configRef.current.autoDetectionDelayMs || 3000, 8000);
         
         setTimeout(() => {
-          console.log('[InterviewAssistant] ⏰ Confirmando detecção após delay:', detectedSuggestion.question.substring(0, 50));
-          console.log('[InterviewAssistant] Speaker:', trans.speakerLabel, '| Entrevistador:', userName);
+          console.log('[InterviewAssistant] ⏰ Finalizando piscagem, marcando como lida:', detectedSuggestion.question.substring(0, 50));
           
-          // Verificar se a sugestão ainda existe e não foi marcada manualmente
           setSuggestions((prev) => {
             const currentSuggestion = prev.find(s => s.id === detectedSuggestion.id);
             
-            // Se já foi marcada como lida (manualmente), não fazer nada
+            // Se já foi marcada como lida (manualmente), limpar pendingDetection
             if (!currentSuggestion || currentSuggestion.isRead) {
-              console.log('[InterviewAssistant] ⏭️ Sugestão já foi marcada ou removida, ignorando');
-              return prev;
+              return prev.map((s) =>
+                s.id === detectedSuggestion.id
+                  ? { ...s, pendingDetection: false }
+                  : s
+              );
             }
             
-            console.log('[InterviewAssistant] 🔄 Marcando como realizada após delay');
+            console.log('[InterviewAssistant] 🔄 Marcando como realizada após piscagem');
             
             const updated = prev.map((s) =>
               s.id === detectedSuggestion.id
-                ? { ...s, isRead: true, justMarkedAsRead: true, autoDetected: true }
+                ? { ...s, isRead: true, justMarkedAsRead: true, autoDetected: true, pendingDetection: false }
                 : s
             );
             
@@ -452,7 +465,7 @@ export function useInterviewAssistant({
               return newSet;
             });
             
-            // Remover animação após 5 segundos
+            // FASE 3: Remover animação de "FEITO" após 15 segundos (mais tempo para ler)
             setTimeout(() => {
               setRecentlyMarkedIds((prev) => {
                 const newSet = new Set(prev);
@@ -470,7 +483,7 @@ export function useInterviewAssistant({
                     : s
                 );
               });
-            }, 5000);
+            }, 15000);
             
             return updated;
           });
@@ -510,7 +523,7 @@ export function useInterviewAssistant({
             }
           }, 2000);
           
-        }, detectionDelay);
+        }, blinkDuration);
         
         break; // Processar apenas uma detecção por vez
       } else if (detectedSuggestion && detectedSuggestion.isRead) {
