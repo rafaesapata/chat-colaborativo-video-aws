@@ -71,6 +71,9 @@ export interface InterviewAIConfig {
   reportSeniorityGuidelines: string; // Diretrizes para determinar senioridade
   reportRecommendationGuidelines: string; // Diretrizes para recomendação final
   
+  // Modelo de IA
+  aiModelId: string; // ID do modelo Bedrock (ex: 'amazon.nova-lite-v1:0')
+  
   // Metadata
   lastUpdated?: number;
   updatedBy?: string;
@@ -144,6 +147,9 @@ Sua análise deve ser:
 - APROVADO COM RESSALVAS (55-74%): Potencial, mas precisa de desenvolvimento em áreas específicas
 - SEGUNDA ENTREVISTA (40-54%): Inconclusivo, necessita avaliação adicional
 - NÃO APROVADO (<40%): Não atende aos requisitos mínimos da vaga`,
+
+  // Modelo de IA
+  aiModelId: 'amazon.nova-lite-v1:0',
 };
 
 

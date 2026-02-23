@@ -3196,6 +3196,9 @@ Sua análise deve ser:
 - APROVADO COM RESSALVAS (55-74%): Potencial, mas precisa de desenvolvimento em áreas específicas
 - SEGUNDA ENTREVISTA (40-54%): Inconclusivo, necessita avaliação adicional
 - NÃO APROVADO (<40%): Não atende aos requisitos mínimos da vaga`,
+
+  // Modelo de IA
+  aiModelId: 'amazon.nova-lite-v1:0',
 };
 
 /**
@@ -3321,6 +3324,10 @@ async function handleSaveInterviewConfig(body, event) {
     reportSoftSkillsCriteria: sanitizeConfigString(config.reportSoftSkillsCriteria, 2000),
     reportSeniorityGuidelines: sanitizeConfigString(config.reportSeniorityGuidelines, 2000),
     reportRecommendationGuidelines: sanitizeConfigString(config.reportRecommendationGuidelines, 2000),
+    
+    // Modelo de IA
+    aiModelId: config.aiModelId && ['amazon.nova-lite-v1:0', 'us.anthropic.claude-3-5-haiku-20241022-v1:0'].includes(config.aiModelId)
+      ? config.aiModelId : 'amazon.nova-lite-v1:0',
   };
   
   const now = Math.floor(Date.now() / 1000);
@@ -3439,7 +3446,12 @@ async function handleInterviewReportAction(body, event) {
   }
 
   // Mapear rota para action
-  const path = event.rawPath || event.path || '';
+  let path = event.rawPath || event.path || '';
+  // Normalizar: remover stage prefix
+  if (path.startsWith('/prod/')) path = path.substring(5);
+  else if (path.startsWith('/dev/')) path = path.substring(4);
+  path = path.split('?')[0].replace(/\/+$/, '');
+  
   const actionMap = {
     '/interview/report/save': 'saveReport',
     '/interview/report/get': 'getReport',

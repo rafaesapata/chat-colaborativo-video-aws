@@ -392,6 +392,43 @@ export default function InterviewAIConfigPanel({ darkMode, userLogin }: Intervie
           </h2>
         </div>
 
+        {/* Modelo de IA */}
+        <section>
+          <h3 className={`text-sm font-semibold mb-4 flex items-center gap-2 ${darkMode ? 'text-gray-300' : 'text-gray-700'}`}>
+            <Brain size={16} className="text-purple-500" />
+            Modelo de IA
+          </h3>
+          <div className="space-y-2">
+            <label className={`block text-sm ${darkMode ? 'text-gray-400' : 'text-gray-600'}`}>
+              Selecione o modelo Bedrock para geração de perguntas e relatórios
+            </label>
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+              {[
+                { id: 'amazon.nova-lite-v1:0', name: 'Amazon Nova Lite', desc: 'Rápido e econômico. Disponível sem EULA.', cost: '$0.06/1M input' },
+                { id: 'us.anthropic.claude-3-5-haiku-20241022-v1:0', name: 'Claude 3.5 Haiku', desc: 'Melhor qualidade em PT-BR. Requer ativação no Bedrock.', cost: '$0.80/1M input' },
+              ].map((model) => (
+                <button
+                  key={model.id}
+                  type="button"
+                  onClick={() => updateConfig('aiModelId', model.id)}
+                  className={`p-3 rounded-lg border-2 text-left transition-all ${
+                    config.aiModelId === model.id
+                      ? 'border-purple-500 bg-purple-500/10'
+                      : darkMode ? 'border-gray-600 hover:border-gray-500' : 'border-gray-200 hover:border-gray-300'
+                  }`}
+                >
+                  <div className={`font-medium text-sm ${darkMode ? 'text-gray-200' : 'text-gray-800'}`}>
+                    {model.name}
+                    {config.aiModelId === model.id && <span className="ml-2 text-purple-500">✓</span>}
+                  </div>
+                  <div className={`text-xs mt-1 ${darkMode ? 'text-gray-400' : 'text-gray-500'}`}>{model.desc}</div>
+                  <div className={`text-xs mt-1 ${darkMode ? 'text-gray-500' : 'text-gray-400'}`}>{model.cost}</div>
+                </button>
+              ))}
+            </div>
+          </div>
+        </section>
+
         {/* Thresholds de Recomendação */}
         <section>
           <h3 className={`text-sm font-semibold mb-4 flex items-center gap-2 ${darkMode ? 'text-gray-300' : 'text-gray-700'}`}>

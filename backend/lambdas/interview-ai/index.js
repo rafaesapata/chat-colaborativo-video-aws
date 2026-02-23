@@ -2,8 +2,8 @@
  * Lambda para geração inteligente de perguntas de entrevista usando Bedrock AI
  * Gera perguntas personalizadas baseadas no contexto da vaga e histórico da conversa
  * 
- * v7.0.0 - Claude 3.5 Haiku + Double Evaluation + Evidências + Speaker Separation
- * - Migrado de Amazon Nova Lite para Claude 3.5 Haiku (melhor qualidade em PT-BR)
+ * v7.0.0 - Nova Lite + Double Evaluation + Evidências + Speaker Separation
+ * - Amazon Nova Lite (disponível sem EULA, custo baixo)
  * - Double evaluation para relatórios (média de 2 avaliações independentes)
  * - Separação de transcrição por speaker (entrevistador vs candidato)
  * - Evidências com citações diretas das respostas
@@ -24,8 +24,27 @@ const ddb = DynamoDBDocumentClient.from(ddbClient);
 // Tabela para relatórios de entrevista
 const MEETING_HISTORY_TABLE = process.env.MEETING_HISTORY_TABLE || '';
 
-// Claude 3.5 Haiku - melhor qualidade em PT-BR que Nova Lite, custo acessível
-const MODEL_ID = 'anthropic.claude-3-5-haiku-20241022-v1:0';
+// Modelos disponíveis
+const AVAILABLE_MODELS = {
+  'amazon.nova-lite-v1:0': {
+    name: 'Amazon Nova Lite',
+    format: 'nova',
+    costPerInputToken: 0.00006 / 1000,
+    costPerOutputToken: 0.00024 / 1000
+  },
+  'us.anthropic.claude-3-5-haiku-20241022-v1:0': {
+    name: 'Claude 3.5 Haiku',
+    format: 'anthropic',
+    costPerInputToken: 0.0008 / 1000,
+    costPerOutputToken: 0.004 / 1000
+  }
+};
+
+// Modelo padrão (Nova Lite - disponível sem EULA)
+const DEFAULT_MODEL_ID = 'amazon.nova-lite-v1:0';
+
+// Modelo ativo para a request atual (setado no handler)
+let currentRequestModelId = DEFAULT_MODEL_ID;
 
 // Rate limiting (em memória - para produção usar DynamoDB)
 const rateLimiter = new Map(); // userId -> { count, resetTime }
@@ -77,6 +96,15 @@ exports.handler = async (event) => {
 
     const { action, context, count, lastAnswer, reportConfig, evaluationConfig } = validatedInput;
 
+    // Setar modelo ativo para esta request (do reportConfig ou evaluationConfig)
+    const configModelId = reportConfig?.aiModelId || evaluationConfig?.aiModelId || body.aiModelId;
+    if (configModelId && AVAILABLE_MODELS[configModelId]) {
+      currentRequestModelId = configModelId;
+      console.log(`[Model] Usando modelo configurado: ${configModelId} (${AVAILABLE_MODELS[configModelId].name})`);
+    } else {
+      currentRequestModelId = DEFAULT_MODEL_ID;
+    }
+
     // 4. EXECUTAR AÇÃO
     let result;
     const actionStartTime = Date.now();
@@ -120,6 +148,16 @@ exports.handler = async (event) => {
       
       case 'submitCalibration':
         result = await submitCalibrationFeedback(body);
+        break;
+      
+      case 'listModels':
+        result = {
+          models: Object.entries(AVAILABLE_MODELS).map(([id, info]) => ({
+            id, name: info.name, format: info.format,
+            isDefault: id === DEFAULT_MODEL_ID
+          })),
+          currentModel: currentRequestModelId
+        };
         break;
       
       default:
@@ -168,7 +206,8 @@ function validateAndSanitizeInput(body) {
     'saveReport',
     'getReport',
     'compareReports',
-    'submitCalibration'
+    'submitCalibration',
+    'listModels'
   ];
   
   if (!action || !validActions.includes(action)) {
@@ -176,7 +215,7 @@ function validateAndSanitizeInput(body) {
   }
   
   // Actions que não precisam de context (operam direto no body)
-  const noContextActions = ['saveReport', 'getReport', 'compareReports', 'submitCalibration'];
+  const noContextActions = ['saveReport', 'getReport', 'compareReports', 'submitCalibration', 'listModels'];
   if (noContextActions.includes(action)) {
     return { action, context: {}, count: 0, lastAnswer: '', reportConfig: null, evaluationConfig: null };
   }
@@ -223,6 +262,9 @@ function validateAndSanitizeInput(body) {
   
   // Validar e sanitizar reportConfig (configurações customizáveis de relatório)
   const validatedReportConfig = reportConfig ? {
+    // Modelo de IA
+    aiModelId: (reportConfig.aiModelId && AVAILABLE_MODELS[reportConfig.aiModelId]) ? reportConfig.aiModelId : DEFAULT_MODEL_ID,
+    
     // Thresholds de recomendação
     reportApprovedThreshold: Math.max(50, Math.min(100, Number(reportConfig.reportApprovedThreshold) || 75)),
     reportApprovedWithReservationsThreshold: Math.max(30, Math.min(80, Number(reportConfig.reportApprovedWithReservationsThreshold) || 55)),
@@ -244,6 +286,9 @@ function validateAndSanitizeInput(body) {
   
   // Validar e sanitizar evaluationConfig (configurações de avaliação de respostas)
   const validatedEvaluationConfig = evaluationConfig ? {
+    // Modelo de IA
+    aiModelId: (evaluationConfig.aiModelId && AVAILABLE_MODELS[evaluationConfig.aiModelId]) ? evaluationConfig.aiModelId : DEFAULT_MODEL_ID,
+    
     // Pesos de avaliação
     keywordMatchWeight: Math.max(0, Math.min(100, Number(evaluationConfig.keywordMatchWeight) || 60)),
     lengthBonusMax: Math.max(0, Math.min(50, Number(evaluationConfig.lengthBonusMax) || 20)),
@@ -692,8 +737,10 @@ Responda APENAS com o JSON, sem texto adicional.`;
 /**
  * Invoca o modelo Bedrock com timeout e retry
  */
-async function invokeBedrockModel(prompt, maxTokens = 2000, retryCount = 0, temperature = 0.7) {
+async function invokeBedrockModel(prompt, maxTokens = 2000, retryCount = 0, temperature = 0.7, modelId = null) {
   const startTime = Date.now();
+  const activeModelId = modelId || currentRequestModelId || DEFAULT_MODEL_ID;
+  const modelInfo = AVAILABLE_MODELS[activeModelId] || AVAILABLE_MODELS[DEFAULT_MODEL_ID];
   
   try {
     // Estimar tokens de entrada
@@ -708,28 +755,33 @@ async function invokeBedrockModel(prompt, maxTokens = 2000, retryCount = 0, temp
     // Registrar tokens de entrada
     await recordMetric('InputTokens', inputTokens);
     
-    // Claude 3.5 Haiku - formato Anthropic Messages API
-    const payload = {
-      anthropic_version: 'bedrock-2023-05-31',
-      max_tokens: maxTokens,
-      temperature: temperature,
-      top_p: 0.9,
-      messages: [
-        {
-          role: 'user',
-          content: prompt
-        }
-      ]
-    };
+    // Montar payload de acordo com o formato do modelo
+    let payload;
+    if (modelInfo.format === 'anthropic') {
+      payload = {
+        anthropic_version: 'bedrock-2023-05-31',
+        max_tokens: maxTokens,
+        temperature: temperature,
+        top_p: 0.9,
+        messages: [{ role: 'user', content: prompt }]
+      };
+    } else {
+      // Nova Lite - formato Messages API
+      payload = {
+        schemaVersion: 'messages-v1',
+        messages: [{ role: 'user', content: [{ text: prompt }] }],
+        inferenceConfig: { maxTokens, temperature, topP: 0.9 }
+      };
+    }
 
     const command = new InvokeModelCommand({
-      modelId: MODEL_ID,
+      modelId: activeModelId,
       contentType: 'application/json',
       accept: 'application/json',
       body: JSON.stringify(payload)
     });
 
-    console.log(`[Bedrock] Invoking model: ${MODEL_ID} (attempt ${retryCount + 1})`);
+    console.log(`[Bedrock] Invoking model: ${activeModelId} (${modelInfo.name}, attempt ${retryCount + 1})`);
     
     // Implementar timeout
     const timeoutPromise = new Promise((_, reject) => 
@@ -741,26 +793,38 @@ async function invokeBedrockModel(prompt, maxTokens = 2000, retryCount = 0, temp
     const response = await Promise.race([bedrockPromise, timeoutPromise]);
     const responseBody = JSON.parse(new TextDecoder().decode(response.body));
 
-    // Claude retorna: { content: [{ type: "text", text: "..." }] }
-    const text = responseBody.content?.[0]?.text;
+    // Parsear resposta de acordo com o formato do modelo
+    let text;
+    if (modelInfo.format === 'anthropic') {
+      // Claude: { content: [{ type: "text", text: "..." }] }
+      text = responseBody.content?.[0]?.text;
+    } else {
+      // Nova: { output: { message: { content: [{ text: "..." }] } } }
+      text = responseBody.output?.message?.content?.[0]?.text;
+    }
     
     if (!text) {
       console.error('Unexpected response format:', JSON.stringify(responseBody).substring(0, 500));
       throw new Error('Formato de resposta inesperado do Bedrock');
     }
     
-    // Calcular métricas (Claude retorna usage real)
+    // Calcular métricas
     const latency = Date.now() - startTime;
-    const outputTokens = responseBody.usage?.output_tokens || estimateTokens(text);
-    const actualInputTokens = responseBody.usage?.input_tokens || inputTokens;
+    let outputTokens, actualInputTokens;
+    if (modelInfo.format === 'anthropic') {
+      outputTokens = responseBody.usage?.output_tokens || estimateTokens(text);
+      actualInputTokens = responseBody.usage?.input_tokens || inputTokens;
+    } else {
+      outputTokens = responseBody.usage?.outputTokens || estimateTokens(text);
+      actualInputTokens = responseBody.usage?.inputTokens || inputTokens;
+    }
     
     // Registrar métricas
     await recordMetric('BedrockLatency', latency, 'Milliseconds');
     await recordMetric('OutputTokens', outputTokens);
     await recordMetric('BedrockSuccess', 1);
     
-    // Claude 3.5 Haiku: $0.80/1M input, $4.00/1M output
-    const estimatedCost = (actualInputTokens * 0.0008 + outputTokens * 0.004) / 1000;
+    const estimatedCost = actualInputTokens * modelInfo.costPerInputToken + outputTokens * modelInfo.costPerOutputToken;
     await recordMetric('EstimatedCost', estimatedCost, 'None');
     
     console.log(`[Bedrock] Success - Latency: ${latency}ms, Input: ${actualInputTokens} tokens, Output: ${outputTokens} tokens, Cost: $${estimatedCost.toFixed(6)}`);
@@ -781,7 +845,7 @@ async function invokeBedrockModel(prompt, maxTokens = 2000, retryCount = 0, temp
       await new Promise(resolve => setTimeout(resolve, backoffTime));
       await recordMetric('BedrockRetry', 1);
       
-      return invokeBedrockModel(prompt, maxTokens, retryCount + 1, temperature);
+      return invokeBedrockModel(prompt, maxTokens, retryCount + 1, temperature, modelId);
     }
     
     // Se todas as tentativas falharam
@@ -1259,8 +1323,15 @@ function mergeDoubleEvaluation(raw1, raw2) {
   const avgScore = (a, b) => Math.round(((Number(a) || 0) + (Number(b) || 0)) / 2);
   const pickLonger = (a, b) => (a || '').length >= (b || '').length ? a : b;
   const mergeArrays = (a, b) => {
-    const set = new Set([...(a || []), ...(b || [])]);
-    return [...set];
+    const combined = [...(a || []), ...(b || [])];
+    // Deduplica por string representation
+    const seen = new Set();
+    return combined.filter(item => {
+      const key = typeof item === 'string' ? item : (item?.text || item?.description || item?.name || JSON.stringify(item));
+      if (seen.has(key)) return false;
+      seen.add(key);
+      return true;
+    });
   };
 
   // Mesclar soft skills (media dos scores, evidencia mais longa)
@@ -1372,16 +1443,28 @@ function validateAndNormalizeReport(raw, config) {
     title: raw.recommendation?.title || title,
     description: String(raw.recommendation?.description || `Score geral: ${overallScore}%. ${decision}.`).substring(0, 1000),
     details: Array.isArray(raw.recommendation?.details)
-      ? raw.recommendation.details.slice(0, 7).map(d => String(d).substring(0, 500))
+      ? raw.recommendation.details.slice(0, 7).map(d => {
+          if (typeof d === 'string') return d.substring(0, 500);
+          if (typeof d === 'object' && d !== null) return String(d.text || d.description || JSON.stringify(d)).substring(0, 500);
+          return String(d).substring(0, 500);
+        })
       : [`Score geral: ${overallScore}%`]
   };
 
   const strengths = Array.isArray(raw.strengths) && raw.strengths.length > 0
-    ? raw.strengths.slice(0, 10).map(s => String(s).substring(0, 500))
+    ? raw.strengths.slice(0, 10).map(s => {
+        if (typeof s === 'string') return s.substring(0, 500);
+        if (typeof s === 'object' && s !== null) return String(s.text || s.description || s.name || JSON.stringify(s)).substring(0, 500);
+        return String(s).substring(0, 500);
+      })
     : ['Participou da entrevista'];
 
   const improvements = Array.isArray(raw.improvements) && raw.improvements.length > 0
-    ? raw.improvements.slice(0, 10).map(s => String(s).substring(0, 500))
+    ? raw.improvements.slice(0, 10).map(s => {
+        if (typeof s === 'string') return s.substring(0, 500);
+        if (typeof s === 'object' && s !== null) return String(s.text || s.description || s.name || JSON.stringify(s)).substring(0, 500);
+        return String(s).substring(0, 500);
+      })
     : ['Dados insuficientes para analise detalhada'];
 
   const validLevels = ['junior', 'pleno', 'senior'];

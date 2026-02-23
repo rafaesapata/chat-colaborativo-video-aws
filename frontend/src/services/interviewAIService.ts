@@ -187,6 +187,7 @@ async function callInterviewAI(action: string, context: InterviewContext, params
       headers,
       body: JSON.stringify({
         action,
+        aiModelId: getCurrentConfig().aiModelId,
         context: {
           meetingType: context.meetingType,
           topic: context.topic,
@@ -515,6 +516,8 @@ export const interviewAIService = {
         excellentThreshold: config.excellentThreshold,
         goodThreshold: config.goodThreshold,
         basicThreshold: config.basicThreshold,
+        // Modelo de IA
+        aiModelId: config.aiModelId,
       };
       
       const result = await callInterviewAI('evaluateAnswer', context, { 
@@ -607,6 +610,7 @@ export const interviewAIService = {
         reportSoftSkillsCriteria: config.reportSoftSkillsCriteria,
         reportSeniorityGuidelines: config.reportSeniorityGuidelines,
         reportRecommendationGuidelines: config.reportRecommendationGuidelines,
+        aiModelId: config.aiModelId,
       };
       
       console.log('[InterviewAI] Usando configurações customizáveis:', {
