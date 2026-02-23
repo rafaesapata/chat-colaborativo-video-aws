@@ -1,5 +1,5 @@
 const { DynamoDBClient } = require('@aws-sdk/client-dynamodb');
-const { DynamoDBDocumentClient, PutCommand, GetCommand, DeleteCommand, UpdateCommand, QueryCommand } = require('@aws-sdk/lib-dynamodb');
+const { DynamoDBDocumentClient, PutCommand, GetCommand, DeleteCommand, UpdateCommand, QueryCommand, ScanCommand } = require('@aws-sdk/lib-dynamodb');
 
 const ddbClient = new DynamoDBClient({});
 const ddb = DynamoDBDocumentClient.from(ddbClient);
@@ -119,18 +119,21 @@ async function leaveRoom(roomId, userId) {
 }
 
 async function listRooms() {
-  const result = await ddb.send(new QueryCommand({
+  // GSI CreatedAtIndex tem createdAt como HASH key, não suporta query por 'active'
+  // Usar Scan com filtro por active=true, ordenar por createdAt desc no código
+  const result = await ddb.send(new ScanCommand({
     TableName: CHATROOMS_TABLE,
-    IndexName: 'CreatedAtIndex',
-    KeyConditionExpression: 'active = :active',
+    FilterExpression: 'active = :active',
     ExpressionAttributeValues: {
       ':active': true
     },
-    ScanIndexForward: false,
-    Limit: 50
+    Limit: 200
   }));
 
-  return { statusCode: 200, body: JSON.stringify({ rooms: result.Items }) };
+  // Ordenar por createdAt desc (mais recentes primeiro)
+  const rooms = (result.Items || []).sort((a, b) => (b.createdAt || 0) - (a.createdAt || 0)).slice(0, 50);
+
+  return { statusCode: 200, body: JSON.stringify({ rooms }) };
 }
 
 async function getRoomInfo(roomId) {

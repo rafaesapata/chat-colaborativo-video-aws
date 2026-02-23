@@ -2,10 +2,10 @@ const { DynamoDBClient } = require('@aws-sdk/client-dynamodb');
 const { DynamoDBDocumentClient, PutCommand, QueryCommand, DeleteCommand } = require('@aws-sdk/lib-dynamodb');
 const { ApiGatewayManagementApiClient, PostToConnectionCommand } = require('@aws-sdk/client-apigatewaymanagementapi');
 
-// SEC-003: Importar sanitização e validação
-const { sanitizeContent, sanitizeUserName } = require('../../shared/lib/sanitizer');
-const { validateInput, messageSchema, ValidationError } = require('../../shared/lib/validation');
-const { withRetry } = require('../../shared/lib/resilience');
+// SEC-003: Importar sanitização e validação (libs locais)
+const { sanitizeContent, sanitizeUserName } = require('./lib/sanitizer');
+const { validateInput, messageSchema, ValidationError } = require('./lib/validation');
+const { withRetry } = require('./lib/resilience');
 
 const ddbClient = new DynamoDBClient({});
 const ddb = DynamoDBDocumentClient.from(ddbClient);

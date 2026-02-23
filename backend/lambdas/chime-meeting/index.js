@@ -3380,13 +3380,14 @@ async function handleInterviewAI(body, event) {
     return errorResponse(400, 'action é obrigatório');
   }
   
-  if (!context || !context.meetingType) {
-    return errorResponse(400, 'context é obrigatório');
-  }
-  
-  const validActions = ['generateInitialQuestions', 'generateFollowUp', 'evaluateAnswer', 'generateNewQuestions', 'generateReport', 'evaluateCompleteness', 'saveReport', 'getReport', 'compareReports', 'submitCalibration'];
+  const validActions = ['generateInitialQuestions', 'generateFollowUp', 'evaluateAnswer', 'generateNewQuestions', 'generateReport', 'evaluateCompleteness', 'listModels'];
   if (!validActions.includes(action)) {
     return errorResponse(400, `action inválido. Valores permitidos: ${validActions.join(', ')}`);
+  }
+  
+  // listModels não precisa de context
+  if (action !== 'listModels' && (!context || !context.meetingType)) {
+    return errorResponse(400, 'context é obrigatório');
   }
   
   try {
@@ -3405,7 +3406,8 @@ async function handleInterviewAI(body, event) {
         count,
         lastAnswer,
         reportConfig,      // Configurações de relatório
-        evaluationConfig   // Configurações de avaliação de respostas
+        evaluationConfig,  // Configurações de avaliação de respostas
+        aiModelId: body.aiModelId || reportConfig?.aiModelId || evaluationConfig?.aiModelId  // Modelo de IA
       })
     };
     
