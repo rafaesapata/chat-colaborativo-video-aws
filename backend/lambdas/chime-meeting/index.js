@@ -2538,27 +2538,6 @@ async function handleApiDownloadMeeting(body, event) {
 
 // ============ DOCUMENTATION ============
 async function handleDocsPage(body, event) {
-  // Verificar autenticação via header ou query param
-  const authHeader = event.headers?.authorization || event.headers?.Authorization;
-  const userLogin = event.queryStringParameters?.user;
-  
-  if (!authHeader && !userLogin) {
-    return {
-      statusCode: 401,
-      headers: { 'Content-Type': 'text/html' },
-      body: '<html><body><h1>Autenticação necessária</h1><p>Adicione ?user=seu_login na URL</p></body></html>',
-    };
-  }
-  
-  const login = userLogin || (authHeader?.replace('Bearer ', ''));
-  if (!await isAdmin(login)) {
-    return {
-      statusCode: 403,
-      headers: { 'Content-Type': 'text/html' },
-      body: '<html><body><h1>Acesso negado</h1><p>Apenas administradores podem acessar a documentação.</p></body></html>',
-    };
-  }
-  
   const html = `<!DOCTYPE html>
 <html lang="pt-BR">
 <head>
@@ -2575,7 +2554,7 @@ async function handleDocsPage(body, event) {
   <script src="https://unpkg.com/swagger-ui-dist@5/swagger-ui-bundle.js"></script>
   <script>
     SwaggerUIBundle({
-      url: '/docs/swagger.json?user=${login}',
+      url: '/docs/swagger.json',
       dom_id: '#swagger-ui',
       presets: [SwaggerUIBundle.presets.apis, SwaggerUIBundle.SwaggerUIStandalonePreset],
       layout: "BaseLayout"
@@ -2583,16 +2562,11 @@ async function handleDocsPage(body, event) {
   </script>
 </body>
 </html>`;
-  
+
   return { statusCode: 200, headers: { 'Content-Type': 'text/html' }, body: html };
 }
 
 async function handleSwaggerJson(body, event) {
-  const userLogin = event.queryStringParameters?.user;
-  if (!userLogin || !await isAdmin(userLogin)) {
-    return errorResponse(403, 'Acesso negado');
-  }
-
   const baseUrl = process.env.APP_BASE_URL || 'https://api.livechat.udstec.io';
   const { buildSwaggerSpec } = require('./swagger-spec');
   const swagger = buildSwaggerSpec(baseUrl);
