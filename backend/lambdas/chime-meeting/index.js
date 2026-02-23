@@ -2594,7 +2594,7 @@ async function handleSwaggerJson(body, event) {
   }
 
   const baseUrl = process.env.APP_BASE_URL || 'https://api.livechat.udstec.io';
-
+  const { buildSwaggerSpec } = require('./swagger-spec');
   const swagger = buildSwaggerSpec(baseUrl);
 
   return { statusCode: 200, headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(swagger) };

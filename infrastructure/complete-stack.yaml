@@ -884,6 +884,8 @@ Resources:
           API_GATEWAY_DOMAIN_NAME: !Sub '${WebSocketApi}.execute-api.${AWS::Region}.amazonaws.com'
           STAGE: !Ref Stage
           SUPER_ADMIN_LOGINS: 'rafael@uds.com.br'
+          RECORDINGS_BUCKET: !Ref RecordingsBucket
+          RECORDINGS_TABLE: !Ref RecordingsTable
       Policies:
         - DynamoDBCrudPolicy:
             TableName: !Ref ChatRoomsTable
@@ -891,8 +893,12 @@ Resources:
             TableName: !Ref ConnectionsTable
         - DynamoDBCrudPolicy:
             TableName: !Ref MeetingHistoryTable
+        - DynamoDBCrudPolicy:
+            TableName: !Ref RecordingsTable
         - S3CrudPolicy:
             BucketName: !Ref AudioBucket
+        - S3CrudPolicy:
+            BucketName: !Ref RecordingsBucket
         - Statement:
             - Effect: Allow
               Action:
