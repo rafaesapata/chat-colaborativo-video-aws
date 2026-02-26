@@ -660,6 +660,7 @@ const routes = Object.freeze({
   // Meeting History (histórico de reuniões para admin)
   'POST:/admin/history/list': handleAdminListHistory,
   'POST:/admin/history/save': handleSaveMeetingHistory,
+  'POST:/admin/history/delete': handleDeleteMeetingHistory,
   // Job Positions (vagas por usuário)
   'POST:/jobs/list': handleListJobPositions,
   'POST:/jobs/create': handleCreateJobPosition,
@@ -3944,6 +3945,69 @@ async function handleAdminListHistory(body) {
     }
     
     return errorResponse(500, 'Erro ao listar histórico');
+  }
+}
+
+// Deletar histórico de reunião
+async function handleDeleteMeetingHistory(body) {
+  const { userLogin, meetingId } = body;
+
+  if (!userLogin || !meetingId) {
+    return errorResponse(400, 'userLogin e meetingId são obrigatórios');
+  }
+
+  try {
+    // Buscar o item para verificar se pertence ao usuário (ou se é admin)
+    const getResult = await dynamoClient.send(new GetItemCommand({
+      TableName: MEETING_HISTORY_TABLE,
+      Key: {
+        meetingId: { S: meetingId },
+        userLogin: { S: userLogin },
+      },
+    }));
+
+    if (!getResult.Item) {
+      // Se não encontrou com o userLogin fornecido, verificar se é admin
+      if (await isAdmin(userLogin)) {
+        // Admin pode deletar de qualquer usuário - buscar o item pelo meetingId
+        const scanResult = await scanAll({
+          TableName: MEETING_HISTORY_TABLE,
+          FilterExpression: 'meetingId = :mid',
+          ExpressionAttributeValues: { ':mid': { S: meetingId } },
+          Limit: 1,
+        });
+        
+        if (scanResult.length === 0) {
+          return errorResponse(404, 'Reunião não encontrada');
+        }
+        
+        const item = scanResult[0];
+        await dynamoClient.send(new DeleteItemCommand({
+          TableName: MEETING_HISTORY_TABLE,
+          Key: {
+            meetingId: { S: meetingId },
+            userLogin: { S: item.userLogin?.S || '' },
+          },
+        }));
+      } else {
+        return errorResponse(404, 'Reunião não encontrada');
+      }
+    } else {
+      await dynamoClient.send(new DeleteItemCommand({
+        TableName: MEETING_HISTORY_TABLE,
+        Key: {
+          meetingId: { S: meetingId },
+          userLogin: { S: userLogin },
+        },
+      }));
+    }
+
+    log(LOG_LEVELS.INFO, 'Histórico de reunião deletado', { meetingId, userLogin });
+    return successResponse({ success: true, meetingId });
+
+  } catch (error) {
+    log(LOG_LEVELS.ERROR, 'Erro ao deletar histórico', { error: error.message, meetingId });
+    return errorResponse(500, 'Erro ao deletar histórico');
   }
 }
 
