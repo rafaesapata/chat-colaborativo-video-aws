@@ -255,33 +255,39 @@ export default function MeetingReportModal({ isOpen, onClose, report, roomId }: 
 
   const html = buildReportHTML(report, roomId);
 
-  const handleDownload = () => {
-    const blob = new Blob([html], { type: 'text/html;charset=utf-8' });
-    const url = URL.createObjectURL(blob);
-    const a = document.createElement('a');
-    a.href = url;
-    a.download = `relatorio_reuniao_${roomId || 'meeting'}_${new Date().toISOString().split('T')[0]}.html`;
-    document.body.appendChild(a);
-    a.click();
-    document.body.removeChild(a);
-    URL.revokeObjectURL(url);
+  const handleDownloadPDF = () => {
+    const iframe = iframeRef.current;
+    if (!iframe?.contentWindow) return;
+    
+    // Inject print styles for clean PDF output
+    const style = iframe.contentDocument?.createElement('style');
+    if (style) {
+      style.textContent = `
+        @media print {
+          body { -webkit-print-color-adjust: exact; print-color-adjust: exact; }
+          @page { margin: 10mm; size: A4; }
+        }
+      `;
+      iframe.contentDocument?.head?.appendChild(style);
+    }
+    iframe.contentWindow.print();
   };
 
   return (
-    <div className="fixed inset-0 z-[100] flex items-center justify-center bg-black/70 backdrop-blur-sm" onClick={onClose}>
+    <div className="fixed inset-0 z-[100] flex items-center justify-center bg-black/70 backdrop-blur-sm p-4" onClick={onClose}>
       <div
-        className="relative w-[95vw] max-w-[1000px] h-[90vh] rounded-2xl overflow-hidden border border-border-dark bg-[#0F1117] shadow-2xl flex flex-col"
+        className="relative w-full max-w-[1400px] h-[95vh] rounded-2xl overflow-hidden border border-border-dark bg-[#0F1117] shadow-2xl flex flex-col"
         onClick={e => e.stopPropagation()}
       >
         <div className="flex items-center justify-between px-6 py-4 border-b border-border-dark/50 bg-[#181B25]">
           <h3 className="text-white font-semibold text-lg">Relatório da Reunião</h3>
           <div className="flex items-center gap-3">
             <button
-              onClick={handleDownload}
+              onClick={handleDownloadPDF}
               className="flex items-center gap-2 px-4 py-2 rounded-lg bg-blue-600/20 text-blue-400 hover:bg-blue-600/30 transition text-sm font-medium"
             >
               <Download size={16} />
-              Baixar HTML
+              Baixar PDF
             </button>
             <button
               onClick={onClose}
@@ -296,7 +302,7 @@ export default function MeetingReportModal({ isOpen, onClose, report, roomId }: 
           srcDoc={html}
           className="flex-1 w-full border-0"
           title="Relatório da Reunião"
-          sandbox="allow-same-origin"
+          sandbox="allow-same-origin allow-modals"
         />
       </div>
     </div>

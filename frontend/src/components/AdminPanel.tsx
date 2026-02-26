@@ -550,7 +550,9 @@ export default function AdminPanel({ darkMode }: AdminPanelProps) {
     }
     
     if (result.success && result.background) {
-      setCustomBackgrounds(prev => [...prev, result.background!]);
+      // Recarregar lista do servidor para obter URLs pré-assinadas corretas
+      const freshBackgrounds = await backgroundService.getBackgrounds();
+      setCustomBackgrounds(freshBackgrounds);
       setBackgroundForm({ name: '', url: '' });
       setBackgroundFile(null);
       setBackgroundFilePreview(null);
