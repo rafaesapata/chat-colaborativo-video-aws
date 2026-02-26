@@ -71,7 +71,7 @@ const VideoTileComponent = memo(({
         isActiveSpeaker 
           ? 'ring-4 ring-green-500 ring-opacity-75' 
           : ''
-      } ${darkMode ? 'bg-gray-800' : 'bg-gray-200'}`}
+      } ${darkMode ? 'bg-card-dark' : 'bg-black/5'}`}
       style={{ minHeight: '200px' }}
     >
       {/* Vídeo */}
@@ -92,12 +92,12 @@ const VideoTileComponent = memo(({
       {/* Placeholder quando vídeo está desligado */}
       {!isVideoEnabled && isLocal && (
         <div className={`absolute inset-0 flex items-center justify-center ${
-          darkMode ? 'bg-gray-800' : 'bg-gray-300'
+          darkMode ? 'bg-card-dark' : 'bg-black/10'
         }`}>
           <div className={`w-24 h-24 rounded-full flex items-center justify-center ${
-            darkMode ? 'bg-gray-700' : 'bg-gray-400'
+            darkMode ? 'bg-white/5' : 'bg-black/15'
           }`}>
-            <User size={48} className={darkMode ? 'text-gray-500' : 'text-gray-600'} />
+            <User size={48} className={darkMode ? 'text-muted-light' : 'text-muted-light'} />
           </div>
         </div>
       )}
@@ -193,15 +193,15 @@ export default function ChimeVideoGrid({
   if (allTiles.length === 0) {
     return (
       <div className={`h-full flex items-center justify-center ${
-        darkMode ? 'bg-gray-900' : 'bg-gray-100'
+        darkMode ? 'bg-surface-dark' : 'bg-black/5'
       }`}>
         <div className="text-center">
           <div className={`w-32 h-32 mx-auto mb-4 rounded-full flex items-center justify-center ${
-            darkMode ? 'bg-gray-800' : 'bg-gray-200'
+            darkMode ? 'bg-card-dark' : 'bg-black/5'
           }`}>
-            <Video size={48} className={darkMode ? 'text-gray-600' : 'text-gray-400'} />
+            <Video size={48} className={darkMode ? 'text-muted-light' : 'text-muted-dark'} />
           </div>
-          <p className={`text-lg ${darkMode ? 'text-gray-400' : 'text-gray-600'}`}>
+          <p className={`text-lg ${darkMode ? 'text-muted-dark' : 'text-muted-light'}`}>
             Conectando à reunião...
           </p>
         </div>
@@ -212,7 +212,7 @@ export default function ChimeVideoGrid({
   }
 
   return (
-    <div className={`h-full p-2 ${darkMode ? 'bg-gray-900' : 'bg-gray-100'}`}>
+    <div className={`h-full p-2 ${darkMode ? 'bg-surface-dark' : 'bg-black/5'}`}>
       {/* Audio element oculto para receber áudio remoto */}
       <audio ref={audioRef} autoPlay style={{ display: 'none' }} />
 

@@ -700,23 +700,23 @@ export default function MeetingRoom({ darkMode }: { darkMode: boolean }) {
   if (!isMainTab) {
     return (
       <div className={`h-screen w-screen flex items-center justify-center ${
-        darkMode ? 'bg-gray-900' : 'bg-gray-50'
+        darkMode ? 'bg-surface-dark' : 'bg-black/3'
       }`}>
         <div className={`text-center p-8 rounded-2xl ${
-          darkMode ? 'bg-gray-800' : 'bg-white'
+          darkMode ? 'bg-card-dark' : 'bg-white'
         } shadow-xl max-w-md mx-4`}>
           <AlertTriangle size={48} className="mx-auto mb-4 text-yellow-500" />
-          <h2 className={`text-xl font-bold mb-2 ${darkMode ? 'text-white' : 'text-gray-900'}`}>
+          <h2 className={`text-xl font-bold mb-2 ${darkMode ? 'text-white' : 'text-foreground-light'}`}>
             Sala aberta em outra aba
           </h2>
-          <p className={`mb-4 ${darkMode ? 'text-gray-400' : 'text-gray-600'}`}>
+          <p className={`mb-4 ${darkMode ? 'text-muted-dark' : 'text-muted-light'}`}>
             Esta sala já está aberta em outra aba do navegador.
           </p>
           <button
             onClick={() => navigate('/')}
             className={`px-6 py-2 rounded-lg font-medium ${
-              darkMode ? 'bg-purple-600 hover:bg-purple-700 text-white' 
-                       : 'bg-indigo-600 hover:bg-indigo-700 text-white'
+              darkMode ? 'bg-primary hover:bg-primary-600 text-white' 
+                       : 'bg-primary hover:bg-primary-600 text-white'
             }`}
           >
             Voltar ao Início
@@ -730,33 +730,33 @@ export default function MeetingRoom({ darkMode }: { darkMode: boolean }) {
   if (!criticalFeaturesCheck.supported) {
     return (
       <div className={`h-screen w-screen flex items-center justify-center ${
-        darkMode ? 'bg-gray-900' : 'bg-gray-50'
+        darkMode ? 'bg-surface-dark' : 'bg-black/3'
       }`}>
         <div className={`text-center p-8 rounded-2xl ${
-          darkMode ? 'bg-gray-800' : 'bg-white'
+          darkMode ? 'bg-card-dark' : 'bg-white'
         } shadow-xl max-w-md mx-4`}>
           <AlertTriangle size={48} className="mx-auto mb-4 text-orange-500" />
-          <h2 className={`text-xl font-bold mb-2 ${darkMode ? 'text-white' : 'text-gray-900'}`}>
+          <h2 className={`text-xl font-bold mb-2 ${darkMode ? 'text-white' : 'text-foreground-light'}`}>
             Navegador Incompatível
           </h2>
-          <p className={`mb-4 ${darkMode ? 'text-gray-400' : 'text-gray-600'}`}>
+          <p className={`mb-4 ${darkMode ? 'text-muted-dark' : 'text-muted-light'}`}>
             Seu navegador não suporta as funcionalidades necessárias para videochamadas:
           </p>
-          <ul className={`text-left mb-4 ${darkMode ? 'text-gray-300' : 'text-gray-700'}`}>
+          <ul className={`text-left mb-4 ${darkMode ? 'text-foreground-dark' : 'text-muted-light'}`}>
             {criticalFeaturesCheck.missing.map((feature, i) => (
               <li key={i} className="flex items-center gap-2 mb-1">
                 <span className="text-red-500">✗</span> {feature}
               </li>
             ))}
           </ul>
-          <p className={`text-sm mb-4 ${darkMode ? 'text-gray-500' : 'text-gray-500'}`}>
+          <p className={`text-sm mb-4 ${darkMode ? 'text-muted-light' : 'text-muted-light'}`}>
             Recomendamos usar Chrome, Firefox, Edge ou Safari atualizados.
           </p>
           <button
             onClick={() => navigate('/')}
             className={`px-6 py-2 rounded-lg font-medium ${
-              darkMode ? 'bg-purple-600 hover:bg-purple-700 text-white' 
-                       : 'bg-indigo-600 hover:bg-indigo-700 text-white'
+              darkMode ? 'bg-primary hover:bg-primary-600 text-white' 
+                       : 'bg-primary hover:bg-primary-600 text-white'
             }`}
           >
             Voltar ao Início
@@ -770,14 +770,14 @@ export default function MeetingRoom({ darkMode }: { darkMode: boolean }) {
   if (isJoining) {
     return (
       <div className={`h-screen w-screen flex items-center justify-center ${
-        darkMode ? 'bg-gray-900' : 'bg-gray-50'
+        darkMode ? 'bg-surface-dark' : 'bg-black/3'
       }`}>
         <div className="text-center">
           <div className="w-16 h-16 mx-auto mb-4 border-4 border-blue-500 border-t-transparent rounded-full animate-spin" />
-          <h2 className={`text-xl font-bold mb-2 ${darkMode ? 'text-white' : 'text-gray-900'}`}>
+          <h2 className={`text-xl font-bold mb-2 ${darkMode ? 'text-white' : 'text-foreground-light'}`}>
             Conectando à reunião...
           </h2>
-          <p className={`${darkMode ? 'text-gray-400' : 'text-gray-600'}`}>
+          <p className={`${darkMode ? 'text-muted-dark' : 'text-muted-light'}`}>
             Aguarde enquanto estabelecemos a conexão
           </p>
         </div>
@@ -789,16 +789,16 @@ export default function MeetingRoom({ darkMode }: { darkMode: boolean }) {
   if (chimeError) {
     return (
       <div className={`h-screen w-screen flex items-center justify-center ${
-        darkMode ? 'bg-gray-900' : 'bg-gray-50'
+        darkMode ? 'bg-surface-dark' : 'bg-black/3'
       }`}>
         <div className={`text-center p-8 rounded-2xl ${
-          darkMode ? 'bg-gray-800' : 'bg-white'
+          darkMode ? 'bg-card-dark' : 'bg-white'
         } shadow-xl max-w-md mx-4`}>
           <AlertTriangle size={48} className="mx-auto mb-4 text-red-500" />
-          <h2 className={`text-xl font-bold mb-2 ${darkMode ? 'text-white' : 'text-gray-900'}`}>
+          <h2 className={`text-xl font-bold mb-2 ${darkMode ? 'text-white' : 'text-foreground-light'}`}>
             Erro ao conectar
           </h2>
-          <p className={`mb-4 ${darkMode ? 'text-gray-400' : 'text-gray-600'}`}>
+          <p className={`mb-4 ${darkMode ? 'text-muted-dark' : 'text-muted-light'}`}>
             {chimeError}
           </p>
           <div className="flex gap-3 justify-center">
@@ -814,8 +814,8 @@ export default function MeetingRoom({ darkMode }: { darkMode: boolean }) {
             <button
               onClick={() => navigate('/')}
               className={`px-6 py-2 rounded-lg font-medium ${
-                darkMode ? 'bg-gray-700 hover:bg-gray-600 text-white' 
-                         : 'bg-gray-200 hover:bg-gray-300 text-gray-800'
+                darkMode ? 'bg-white/5 hover:bg-white/15 text-white' 
+                         : 'bg-black/5 hover:bg-black/10 text-foreground-light'
               }`}
             >
               Voltar
@@ -827,9 +827,9 @@ export default function MeetingRoom({ darkMode }: { darkMode: boolean }) {
   }
 
   return (
-    <div className={`h-screen w-screen overflow-hidden transition-colors duration-300 ${
-      darkMode ? 'bg-gray-900' : 'bg-gray-50'
-    }`}>
+    <div className={`w-screen overflow-hidden transition-colors duration-300 ${
+      darkMode ? 'bg-surface-dark' : 'bg-black/3'
+    }`} style={{ height: '100dvh' }}>
       {/* Video Grid usando Chime SDK */}
       <FeatureErrorBoundary feature="VideoGrid" darkMode={darkMode}>
         <div className={`h-full ${isMobile ? 'p-1' : 'p-4'}`}>
@@ -1045,8 +1045,8 @@ export default function MeetingRoom({ darkMode }: { darkMode: boolean }) {
         onClick={() => setShowVersionInfo(true)}
         className={`fixed ${isMobile ? 'top-2 left-2 w-7 h-7' : 'top-4 left-4 w-8 h-8'} rounded-full flex items-center justify-center transition-all duration-150 hover:scale-110 z-40 backdrop-blur-xl ${
           darkMode 
-            ? 'bg-gray-900/60 text-white/70 hover:text-white border border-white/10' 
-            : 'bg-white/40 text-gray-500 hover:text-gray-700 border border-white/30'
+            ? 'bg-surface-dark/60 text-white/70 hover:text-white border border-white/10' 
+            : 'bg-white/40 text-muted-light hover:text-muted-light border border-white/30'
         }`}
         title="Informações da versão"
       >
@@ -1059,8 +1059,8 @@ export default function MeetingRoom({ darkMode }: { darkMode: boolean }) {
           isAuthenticated
             ? darkMode ? 'bg-green-900/60 text-green-400 border border-green-700/50' 
                        : 'bg-green-100/80 text-green-700 border border-green-300/50'
-            : darkMode ? 'bg-gray-900/60 text-gray-400 border border-gray-700/50' 
-                       : 'bg-gray-100/80 text-gray-500 border border-gray-300/50'
+            : darkMode ? 'bg-surface-dark/60 text-muted-dark border border-border-dark/50' 
+                       : 'bg-black/5/80 text-muted-light border border-border-light/50'
         }`}
         title={isAuthenticated ? `Autenticado como ${user?.login}` : 'Modo Convidado'}
       >
@@ -1104,57 +1104,57 @@ export default function MeetingRoom({ darkMode }: { darkMode: boolean }) {
       {showVersionInfo && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 backdrop-blur-sm p-4">
           <div className={`relative ${isMobile ? 'w-full max-w-xs' : 'w-80'} rounded-2xl shadow-2xl ${isMobile ? 'p-4' : 'p-6'} ${
-            darkMode ? 'bg-gray-800 text-white' : 'bg-white text-gray-900'
+            darkMode ? 'bg-card-dark text-white' : 'bg-white text-foreground-light'
           }`}>
             <button
               onClick={() => setShowVersionInfo(false)}
               className={`absolute ${isMobile ? 'top-2 right-2 w-7 h-7' : 'top-3 right-3 w-8 h-8'} rounded-full flex items-center justify-center transition hover:rotate-90 ${
-                darkMode ? 'hover:bg-gray-700 text-gray-400' : 'hover:bg-gray-100 text-gray-500'
+                darkMode ? 'hover:bg-white/10 text-muted-dark' : 'hover:bg-black/5 text-muted-light'
               }`}
             >
               <X size={isMobile ? 16 : 18} />
             </button>
             
             <div className="text-center">
-              <div className={`${isMobile ? 'w-12 h-12' : 'w-16 h-16'} mx-auto mb-3 rounded-2xl bg-gradient-to-br from-blue-500 to-purple-600 flex items-center justify-center`}>
+              <div className={`${isMobile ? 'w-12 h-12' : 'w-16 h-16'} mx-auto mb-3 rounded-2xl bg-gradient-to-br from-blue-500 to-primary flex items-center justify-center`}>
                 <span className={isMobile ? 'text-xl' : 'text-2xl'}>📹</span>
               </div>
               
               <h3 className={`${isMobile ? 'text-lg' : 'text-xl'} font-bold mb-1`}>Video Chat</h3>
-              <p className={`${isMobile ? 'text-xs' : 'text-sm'} mb-3 ${darkMode ? 'text-gray-400' : 'text-gray-500'}`}>
+              <p className={`${isMobile ? 'text-xs' : 'text-sm'} mb-3 ${darkMode ? 'text-muted-dark' : 'text-muted-light'}`}>
                 Powered by Amazon Chime SDK
               </p>
               
-              <div className={`rounded-xl ${isMobile ? 'p-3' : 'p-4'} mb-3 ${darkMode ? 'bg-gray-700/50' : 'bg-gray-100'}`}>
+              <div className={`rounded-xl ${isMobile ? 'p-3' : 'p-4'} mb-3 ${darkMode ? 'bg-white/5' : 'bg-black/5'}`}>
                 <div className="flex justify-between items-center mb-2">
-                  <span className={`${isMobile ? 'text-xs' : 'text-sm'} ${darkMode ? 'text-gray-400' : 'text-gray-500'}`}>Versão</span>
+                  <span className={`${isMobile ? 'text-xs' : 'text-sm'} ${darkMode ? 'text-muted-dark' : 'text-muted-light'}`}>Versão</span>
                   <span className={`font-mono font-bold text-blue-500 ${isMobile ? 'text-sm' : ''}`}>{APP_VERSION}</span>
                 </div>
                 <div className="flex justify-between items-center mb-2">
-                  <span className={`${isMobile ? 'text-xs' : 'text-sm'} ${darkMode ? 'text-gray-400' : 'text-gray-500'}`}>Build</span>
-                  <span className={`font-mono ${isMobile ? 'text-xs' : 'text-sm'} ${darkMode ? 'text-gray-300' : 'text-gray-600'}`}>{BUILD_DATE}</span>
+                  <span className={`${isMobile ? 'text-xs' : 'text-sm'} ${darkMode ? 'text-muted-dark' : 'text-muted-light'}`}>Build</span>
+                  <span className={`font-mono ${isMobile ? 'text-xs' : 'text-sm'} ${darkMode ? 'text-foreground-dark' : 'text-muted-light'}`}>{BUILD_DATE}</span>
                 </div>
                 <div className="flex justify-between items-center mb-2">
-                  <span className={`${isMobile ? 'text-xs' : 'text-sm'} ${darkMode ? 'text-gray-400' : 'text-gray-500'}`}>Chat</span>
+                  <span className={`${isMobile ? 'text-xs' : 'text-sm'} ${darkMode ? 'text-muted-dark' : 'text-muted-light'}`}>Chat</span>
                   <span className={`${isMobile ? 'text-xs' : 'text-sm'} ${isConnected ? 'text-green-500' : 'text-red-500'}`}>
                     {isConnected ? '● Conectado' : '○ Desconectado'}
                   </span>
                 </div>
                 <div className="flex justify-between items-center mb-2">
-                  <span className={`${isMobile ? 'text-xs' : 'text-sm'} ${darkMode ? 'text-gray-400' : 'text-gray-500'}`}>Mídia</span>
+                  <span className={`${isMobile ? 'text-xs' : 'text-sm'} ${darkMode ? 'text-muted-dark' : 'text-muted-light'}`}>Mídia</span>
                   <span className={`${isMobile ? 'text-xs' : 'text-sm'} ${isJoined ? 'text-green-500' : 'text-yellow-500'}`}>
                     {isJoined ? '● Chime SDK' : '○ Conectando...'}
                   </span>
                 </div>
                 <div className="flex justify-between items-center">
-                  <span className={`${isMobile ? 'text-xs' : 'text-sm'} ${darkMode ? 'text-gray-400' : 'text-gray-500'}`}>Dispositivo</span>
-                  <span className={`${isMobile ? 'text-xs' : 'text-sm'} ${darkMode ? 'text-gray-300' : 'text-gray-600'}`}>
+                  <span className={`${isMobile ? 'text-xs' : 'text-sm'} ${darkMode ? 'text-muted-dark' : 'text-muted-light'}`}>Dispositivo</span>
+                  <span className={`${isMobile ? 'text-xs' : 'text-sm'} ${darkMode ? 'text-foreground-dark' : 'text-muted-light'}`}>
                     {isMobile ? '📱 Mobile' : '💻 Desktop'}
                   </span>
                 </div>
               </div>
               
-              <div className={`${isMobile ? 'text-[10px]' : 'text-xs'} ${darkMode ? 'text-gray-500' : 'text-gray-400'}`}>
+              <div className={`${isMobile ? 'text-[10px]' : 'text-xs'} ${darkMode ? 'text-muted-light' : 'text-muted-dark'}`}>
                 <p>Sala: {roomId}</p>
                 <p>Participantes: {videoTiles.length}</p>
               </div>

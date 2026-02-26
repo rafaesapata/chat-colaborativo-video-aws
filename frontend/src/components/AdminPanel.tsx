@@ -13,6 +13,7 @@ import { backgroundService, CustomBackground } from '../services/backgroundServi
 import InterviewAIConfigPanel from './InterviewAIConfigPanel';
 import { meetingHistoryService, MeetingRecord } from '../services/meetingHistoryService';
 import { interviewAIService } from '../services/interviewAIService';
+import { SkeletonRoomCard, SkeletonHistoryRow, SkeletonStatsCard } from './Skeleton';
 
 const CHIME_API_URL = import.meta.env.VITE_CHIME_API_URL || '';
 const RECORDING_API_URL = import.meta.env.VITE_API_URL || '';
@@ -781,18 +782,18 @@ export default function AdminPanel({ darkMode }: AdminPanelProps) {
 
   if (!isAuthenticated) {
     return (
-      <div className={`min-h-screen flex items-center justify-center ${darkMode ? 'bg-gray-900' : 'bg-gray-50'}`}>
+      <div className={`min-h-screen flex items-center justify-center ${darkMode ? 'bg-surface-dark' : 'bg-black/3'}`}>
         <div className="text-center">
           <AlertTriangle size={48} className="mx-auto mb-4 text-yellow-500" />
-          <h2 className={`text-xl font-bold ${darkMode ? 'text-white' : 'text-gray-900'}`}>
+          <h2 className={`text-xl font-bold ${darkMode ? 'text-white' : 'text-foreground-light'}`}>
             Acesso Restrito
           </h2>
-          <p className={`mt-2 ${darkMode ? 'text-gray-400' : 'text-gray-600'}`}>
+          <p className={`mt-2 ${darkMode ? 'text-muted-dark' : 'text-muted-light'}`}>
             Faça login para acessar o painel administrativo
           </p>
           <button
             onClick={() => navigate('/login')}
-            className="mt-4 px-6 py-2 bg-indigo-600 text-white rounded-lg hover:bg-indigo-700"
+            className="mt-4 px-6 py-2 bg-primary text-white rounded-lg hover:bg-primary-600"
           >
             Fazer Login
           </button>
@@ -802,14 +803,14 @@ export default function AdminPanel({ darkMode }: AdminPanelProps) {
   }
 
   return (
-    <div className={`min-h-screen ${darkMode ? 'bg-gray-900 text-white' : 'bg-gray-50 text-gray-900'}`}>
+    <div className={`min-h-screen ${darkMode ? 'bg-surface-dark text-white' : 'bg-black/3 text-foreground-light'}`}>
       {/* Header */}
-      <header className={`sticky top-0 z-10 ${darkMode ? 'bg-gray-800/90' : 'bg-white/90'} backdrop-blur-lg border-b ${darkMode ? 'border-gray-700' : 'border-gray-200'}`}>
+      <header className={`sticky top-0 z-10 ${darkMode ? 'bg-card-dark/90' : 'bg-white/90'} backdrop-blur-lg border-b ${darkMode ? 'border-border-dark' : 'border-border-light'}`}>
         <div className="max-w-7xl mx-auto px-4 py-4 flex items-center justify-between">
           <div className="flex items-center gap-4">
             <button
               onClick={() => navigate('/')}
-              className={`p-2 rounded-lg ${darkMode ? 'hover:bg-gray-700' : 'hover:bg-gray-100'}`}
+              className={`p-2 rounded-lg ${darkMode ? 'hover:bg-white/10' : 'hover:bg-black/5'}`}
             >
               <ArrowLeft size={20} />
             </button>
@@ -834,7 +835,7 @@ export default function AdminPanel({ darkMode }: AdminPanelProps) {
               onClick={fetchData}
               disabled={loading}
               className={`flex items-center gap-2 px-4 py-2 rounded-lg ${
-                darkMode ? 'bg-gray-700 hover:bg-gray-600' : 'bg-gray-100 hover:bg-gray-200'
+                darkMode ? 'bg-white/5 hover:bg-white/15' : 'bg-black/5 hover:bg-black/5'
               } ${loading ? 'opacity-50' : ''}`}
             >
               <RefreshCw size={16} className={loading ? 'animate-spin' : ''} />
@@ -862,7 +863,7 @@ export default function AdminPanel({ darkMode }: AdminPanelProps) {
               <button
                 onClick={() => setCleanupResult(null)}
                 className={`px-3 py-1 rounded text-sm ${
-                  darkMode ? 'bg-gray-600 hover:bg-gray-700' : 'bg-gray-300 hover:bg-gray-400'
+                  darkMode ? 'bg-white/10 hover:bg-white/10' : 'bg-black/10 hover:bg-black/15'
                 }`}
               >
                 Fechar
@@ -881,49 +882,49 @@ export default function AdminPanel({ darkMode }: AdminPanelProps) {
         {/* Stats Cards */}
         {stats && (
           <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mb-6">
-            <div className={`p-4 rounded-xl ${darkMode ? 'bg-gray-800' : 'bg-white'} shadow-lg`}>
+            <div className={`p-4 rounded-xl ${darkMode ? 'bg-card-dark' : 'bg-white'} shadow-lg`}>
               <div className="flex items-center gap-3">
                 <div className={`p-2 rounded-lg ${darkMode ? 'bg-blue-900/50' : 'bg-blue-100'}`}>
                   <Video size={20} className="text-blue-500" />
                 </div>
                 <div>
-                  <p className={`text-sm ${darkMode ? 'text-gray-400' : 'text-gray-500'}`}>Salas Ativas</p>
+                  <p className={`text-sm ${darkMode ? 'text-muted-dark' : 'text-muted-light'}`}>Salas Ativas</p>
                   <p className="text-2xl font-bold">{stats.totalRooms}</p>
                 </div>
               </div>
             </div>
 
-            <div className={`p-4 rounded-xl ${darkMode ? 'bg-gray-800' : 'bg-white'} shadow-lg`}>
+            <div className={`p-4 rounded-xl ${darkMode ? 'bg-card-dark' : 'bg-white'} shadow-lg`}>
               <div className="flex items-center gap-3">
                 <div className={`p-2 rounded-lg ${darkMode ? 'bg-green-900/50' : 'bg-green-100'}`}>
                   <Users size={20} className="text-green-500" />
                 </div>
                 <div>
-                  <p className={`text-sm ${darkMode ? 'text-gray-400' : 'text-gray-500'}`}>Participantes</p>
+                  <p className={`text-sm ${darkMode ? 'text-muted-dark' : 'text-muted-light'}`}>Participantes</p>
                   <p className="text-2xl font-bold">{stats.totalAttendees}</p>
                 </div>
               </div>
             </div>
 
-            <div className={`p-4 rounded-xl ${darkMode ? 'bg-gray-800' : 'bg-white'} shadow-lg`}>
+            <div className={`p-4 rounded-xl ${darkMode ? 'bg-card-dark' : 'bg-white'} shadow-lg`}>
               <div className="flex items-center gap-3">
-                <div className={`p-2 rounded-lg ${darkMode ? 'bg-purple-900/50' : 'bg-purple-100'}`}>
-                  <Activity size={20} className="text-purple-500" />
+                <div className={`p-2 rounded-lg ${darkMode ? 'bg-primary-900/50' : 'bg-primary-50'}`}>
+                  <Activity size={20} className="text-primary" />
                 </div>
                 <div>
-                  <p className={`text-sm ${darkMode ? 'text-gray-400' : 'text-gray-500'}`}>Média/Sala</p>
+                  <p className={`text-sm ${darkMode ? 'text-muted-dark' : 'text-muted-light'}`}>Média/Sala</p>
                   <p className="text-2xl font-bold">{stats.averageAttendeesPerRoom}</p>
                 </div>
               </div>
             </div>
 
-            <div className={`p-4 rounded-xl ${darkMode ? 'bg-gray-800' : 'bg-white'} shadow-lg`}>
+            <div className={`p-4 rounded-xl ${darkMode ? 'bg-card-dark' : 'bg-white'} shadow-lg`}>
               <div className="flex items-center gap-3">
                 <div className={`p-2 rounded-lg ${darkMode ? 'bg-orange-900/50' : 'bg-orange-100'}`}>
                   <Server size={20} className="text-orange-500" />
                 </div>
                 <div>
-                  <p className={`text-sm ${darkMode ? 'text-gray-400' : 'text-gray-500'}`}>Região</p>
+                  <p className={`text-sm ${darkMode ? 'text-muted-dark' : 'text-muted-light'}`}>Região</p>
                   <p className="text-2xl font-bold">{stats.config.region}</p>
                 </div>
               </div>
@@ -932,13 +933,13 @@ export default function AdminPanel({ darkMode }: AdminPanelProps) {
         )}
 
         {/* Tabs */}
-        <div className={`flex gap-2 mb-6 p-1 rounded-xl ${darkMode ? 'bg-gray-800' : 'bg-gray-200'}`}>
+        <div className={`flex gap-2 mb-6 p-1 rounded-xl ${darkMode ? 'bg-card-dark' : 'bg-black/5'}`}>
           <button
             onClick={() => setActiveTab('rooms')}
             className={`flex-1 py-2 px-4 rounded-lg font-medium transition flex items-center justify-center gap-2 ${
               activeTab === 'rooms'
-                ? darkMode ? 'bg-gray-700 text-white' : 'bg-white text-gray-900 shadow'
-                : darkMode ? 'text-gray-400 hover:text-white' : 'text-gray-600 hover:text-gray-900'
+                ? darkMode ? 'bg-white/5 text-white' : 'bg-white text-foreground-light shadow'
+                : darkMode ? 'text-muted-dark hover:text-white' : 'text-muted-light hover:text-foreground-light'
             }`}
           >
             <Video size={18} />
@@ -948,8 +949,8 @@ export default function AdminPanel({ darkMode }: AdminPanelProps) {
             onClick={() => setActiveTab('admins')}
             className={`flex-1 py-2 px-4 rounded-lg font-medium transition flex items-center justify-center gap-2 ${
               activeTab === 'admins'
-                ? darkMode ? 'bg-gray-700 text-white' : 'bg-white text-gray-900 shadow'
-                : darkMode ? 'text-gray-400 hover:text-white' : 'text-gray-600 hover:text-gray-900'
+                ? darkMode ? 'bg-white/5 text-white' : 'bg-white text-foreground-light shadow'
+                : darkMode ? 'text-muted-dark hover:text-white' : 'text-muted-light hover:text-foreground-light'
             }`}
           >
             <Shield size={18} />
@@ -959,8 +960,8 @@ export default function AdminPanel({ darkMode }: AdminPanelProps) {
             onClick={() => setActiveTab('schedule')}
             className={`flex-1 py-2 px-4 rounded-lg font-medium transition flex items-center justify-center gap-2 ${
               activeTab === 'schedule'
-                ? darkMode ? 'bg-gray-700 text-white' : 'bg-white text-gray-900 shadow'
-                : darkMode ? 'text-gray-400 hover:text-white' : 'text-gray-600 hover:text-gray-900'
+                ? darkMode ? 'bg-white/5 text-white' : 'bg-white text-foreground-light shadow'
+                : darkMode ? 'text-muted-dark hover:text-white' : 'text-muted-light hover:text-foreground-light'
             }`}
           >
             <Calendar size={18} />
@@ -970,8 +971,8 @@ export default function AdminPanel({ darkMode }: AdminPanelProps) {
             onClick={() => setActiveTab('apikeys')}
             className={`flex-1 py-2 px-4 rounded-lg font-medium transition flex items-center justify-center gap-2 ${
               activeTab === 'apikeys'
-                ? darkMode ? 'bg-gray-700 text-white' : 'bg-white text-gray-900 shadow'
-                : darkMode ? 'text-gray-400 hover:text-white' : 'text-gray-600 hover:text-gray-900'
+                ? darkMode ? 'bg-white/5 text-white' : 'bg-white text-foreground-light shadow'
+                : darkMode ? 'text-muted-dark hover:text-white' : 'text-muted-light hover:text-foreground-light'
             }`}
           >
             <Key size={18} />
@@ -981,8 +982,8 @@ export default function AdminPanel({ darkMode }: AdminPanelProps) {
             onClick={() => setActiveTab('backgrounds')}
             className={`flex-1 py-2 px-4 rounded-lg font-medium transition flex items-center justify-center gap-2 ${
               activeTab === 'backgrounds'
-                ? darkMode ? 'bg-gray-700 text-white' : 'bg-white text-gray-900 shadow'
-                : darkMode ? 'text-gray-400 hover:text-white' : 'text-gray-600 hover:text-gray-900'
+                ? darkMode ? 'bg-white/5 text-white' : 'bg-white text-foreground-light shadow'
+                : darkMode ? 'text-muted-dark hover:text-white' : 'text-muted-light hover:text-foreground-light'
             }`}
           >
             <Image size={18} />
@@ -992,8 +993,8 @@ export default function AdminPanel({ darkMode }: AdminPanelProps) {
             onClick={() => setActiveTab('interviewai')}
             className={`flex-1 py-2 px-4 rounded-lg font-medium transition flex items-center justify-center gap-2 ${
               activeTab === 'interviewai'
-                ? darkMode ? 'bg-gray-700 text-white' : 'bg-white text-gray-900 shadow'
-                : darkMode ? 'text-gray-400 hover:text-white' : 'text-gray-600 hover:text-gray-900'
+                ? darkMode ? 'bg-white/5 text-white' : 'bg-white text-foreground-light shadow'
+                : darkMode ? 'text-muted-dark hover:text-white' : 'text-muted-light hover:text-foreground-light'
             }`}
           >
             <Brain size={18} />
@@ -1003,8 +1004,8 @@ export default function AdminPanel({ darkMode }: AdminPanelProps) {
             onClick={() => setActiveTab('history')}
             className={`flex-1 py-2 px-4 rounded-lg font-medium transition flex items-center justify-center gap-2 ${
               activeTab === 'history'
-                ? darkMode ? 'bg-gray-700 text-white' : 'bg-white text-gray-900 shadow'
-                : darkMode ? 'text-gray-400 hover:text-white' : 'text-gray-600 hover:text-gray-900'
+                ? darkMode ? 'bg-white/5 text-white' : 'bg-white text-foreground-light shadow'
+                : darkMode ? 'text-muted-dark hover:text-white' : 'text-muted-light hover:text-foreground-light'
             }`}
           >
             <History size={18} />
@@ -1014,8 +1015,8 @@ export default function AdminPanel({ darkMode }: AdminPanelProps) {
 
         {/* Rooms Tab */}
         {activeTab === 'rooms' && (
-        <div className={`rounded-xl ${darkMode ? 'bg-gray-800' : 'bg-white'} shadow-lg overflow-hidden`}>
-          <div className={`px-6 py-4 border-b ${darkMode ? 'border-gray-700' : 'border-gray-200'}`}>
+        <div className={`rounded-xl ${darkMode ? 'bg-card-dark' : 'bg-white'} shadow-lg overflow-hidden`}>
+          <div className={`px-6 py-4 border-b ${darkMode ? 'border-border-dark' : 'border-border-light'}`}>
             <h2 className="text-lg font-semibold flex items-center gap-2">
               <Video size={20} />
               Salas Ativas ({rooms.length})
@@ -1023,19 +1024,20 @@ export default function AdminPanel({ darkMode }: AdminPanelProps) {
           </div>
 
           {loading ? (
-            <div className="p-8 text-center">
-              <RefreshCw size={32} className="mx-auto mb-4 animate-spin text-blue-500" />
-              <p className={darkMode ? 'text-gray-400' : 'text-gray-500'}>Carregando...</p>
+            <div className="divide-y divide-border-dark/50">
+              {[...Array(3)].map((_, i) => (
+                <SkeletonRoomCard key={i} darkMode={darkMode} />
+              ))}
             </div>
           ) : rooms.length === 0 ? (
             <div className="p-8 text-center">
-              <Video size={48} className={`mx-auto mb-4 ${darkMode ? 'text-gray-600' : 'text-gray-300'}`} />
-              <p className={darkMode ? 'text-gray-400' : 'text-gray-500'}>Nenhuma sala ativa no momento</p>
+              <Video size={48} className={`mx-auto mb-4 ${darkMode ? 'text-muted-light' : 'text-foreground-dark'}`} />
+              <p className={darkMode ? 'text-muted-dark' : 'text-muted-light'}>Nenhuma sala ativa no momento</p>
             </div>
           ) : (
-            <div className="divide-y divide-gray-700">
-              {rooms.map(room => (
-                <div key={room.roomId} className={`${darkMode ? 'hover:bg-gray-700/50' : 'hover:bg-gray-50'}`}>
+            <div className="divide-y divide-border-dark">
+              {rooms.map((room, idx) => (
+                <div key={room.roomId} className={`animate-fade-in-up ${darkMode ? 'hover:bg-white/10/50' : 'hover:bg-black/3'}`} style={{ animationDelay: `${Math.min(idx, 8) * 50}ms` }}>
                   <div 
                     className="px-6 py-4 cursor-pointer"
                     onClick={() => setExpandedRoom(expandedRoom === room.roomId ? null : room.roomId)}
@@ -1054,11 +1056,11 @@ export default function AdminPanel({ darkMode }: AdminPanelProps) {
                             <Users size={12} />
                             {room.attendeeCount}
                           </span>
-                          <span className={`text-xs ${darkMode ? 'text-gray-500' : 'text-gray-400'}`}>
+                          <span className={`text-xs ${darkMode ? 'text-muted-light' : 'text-muted-dark'}`}>
                             {room.mediaRegion}
                           </span>
                         </div>
-                        <div className={`mt-1 text-sm ${darkMode ? 'text-gray-400' : 'text-gray-500'}`}>
+                        <div className={`mt-1 text-sm ${darkMode ? 'text-muted-dark' : 'text-muted-light'}`}>
                           <span className="flex items-center gap-1">
                             <Clock size={12} />
                             Criada em {formatDate(room.createdAt)} por {room.createdBy}
@@ -1082,9 +1084,9 @@ export default function AdminPanel({ darkMode }: AdminPanelProps) {
                           <Trash2 size={18} />
                         </button>
                         {expandedRoom === room.roomId ? (
-                          <ChevronUp size={20} className={darkMode ? 'text-gray-400' : 'text-gray-500'} />
+                          <ChevronUp size={20} className={darkMode ? 'text-muted-dark' : 'text-muted-light'} />
                         ) : (
-                          <ChevronDown size={20} className={darkMode ? 'text-gray-400' : 'text-gray-500'} />
+                          <ChevronDown size={20} className={darkMode ? 'text-muted-dark' : 'text-muted-light'} />
                         )}
                       </div>
                     </div>
@@ -1092,8 +1094,8 @@ export default function AdminPanel({ darkMode }: AdminPanelProps) {
 
                   {/* Expanded: Attendees List */}
                   {expandedRoom === room.roomId && room.attendees.length > 0 && (
-                    <div className={`px-6 pb-4 border-t ${darkMode ? 'border-gray-700' : 'border-gray-200'}`}>
-                      <p className={`text-sm font-medium mt-3 mb-2 ${darkMode ? 'text-gray-300' : 'text-gray-700'}`}>
+                    <div className={`px-6 pb-4 border-t ${darkMode ? 'border-border-dark' : 'border-border-light'}`}>
+                      <p className={`text-sm font-medium mt-3 mb-2 ${darkMode ? 'text-foreground-dark' : 'text-muted-light'}`}>
                         Participantes:
                       </p>
                       <div className="space-y-2">
@@ -1101,18 +1103,18 @@ export default function AdminPanel({ darkMode }: AdminPanelProps) {
                           <div 
                             key={attendee.attendeeId}
                             className={`flex items-center justify-between p-2 rounded-lg ${
-                              darkMode ? 'bg-gray-700/50' : 'bg-gray-100'
+                              darkMode ? 'bg-white/5' : 'bg-black/5'
                             }`}
                           >
                             <div className="flex items-center gap-2">
                               <div className={`w-8 h-8 rounded-full flex items-center justify-center ${
-                                darkMode ? 'bg-gray-600' : 'bg-gray-300'
+                                darkMode ? 'bg-white/10' : 'bg-black/10'
                               }`}>
                                 <Users size={14} />
                               </div>
                               <div>
                                 <p className="text-sm font-medium">{attendee.name}</p>
-                                <p className={`text-xs ${darkMode ? 'text-gray-500' : 'text-gray-400'}`}>
+                                <p className={`text-xs ${darkMode ? 'text-muted-light' : 'text-muted-dark'}`}>
                                   {attendee.odUserId}
                                 </p>
                               </div>
@@ -1143,8 +1145,8 @@ export default function AdminPanel({ darkMode }: AdminPanelProps) {
 
         {/* Admins Tab */}
         {activeTab === 'admins' && (
-          <div className={`rounded-xl ${darkMode ? 'bg-gray-800' : 'bg-white'} shadow-lg overflow-hidden`}>
-            <div className={`px-6 py-4 border-b ${darkMode ? 'border-gray-700' : 'border-gray-200'}`}>
+          <div className={`rounded-xl ${darkMode ? 'bg-card-dark' : 'bg-white'} shadow-lg overflow-hidden`}>
+            <div className={`px-6 py-4 border-b ${darkMode ? 'border-border-dark' : 'border-border-light'}`}>
               <h2 className="text-lg font-semibold flex items-center gap-2">
                 <Shield size={20} />
                 Gerenciar Administradores
@@ -1153,7 +1155,7 @@ export default function AdminPanel({ darkMode }: AdminPanelProps) {
 
             {/* Add Admin Form */}
             {adminUsers?.canManageAdmins && (
-              <div className={`px-6 py-4 border-b ${darkMode ? 'border-gray-700' : 'border-gray-200'}`}>
+              <div className={`px-6 py-4 border-b ${darkMode ? 'border-border-dark' : 'border-border-light'}`}>
                 <div className="flex gap-2">
                   <input
                     type="text"
@@ -1162,8 +1164,8 @@ export default function AdminPanel({ darkMode }: AdminPanelProps) {
                     placeholder="Email ou login do novo admin"
                     className={`flex-1 px-4 py-2 rounded-lg border ${
                       darkMode 
-                        ? 'bg-gray-700 border-gray-600 text-white placeholder-gray-400' 
-                        : 'bg-white border-gray-300 text-gray-900'
+                        ? 'bg-white/5 border-border-dark text-white placeholder-muted-dark' 
+                        : 'bg-white border-border-light text-foreground-light'
                     }`}
                     onKeyDown={(e) => e.key === 'Enter' && handleAddAdmin()}
                   />
@@ -1184,7 +1186,7 @@ export default function AdminPanel({ darkMode }: AdminPanelProps) {
             )}
 
             {/* Admin List */}
-            <div className="divide-y divide-gray-700">
+            <div className="divide-y divide-border-dark">
               {adminUsers?.admins.map(admin => {
                 const isSuperAdmin = adminUsers.superAdmins.includes(admin.toLowerCase());
                 const isCurrentUser = admin.toLowerCase() === adminUsers.currentUser?.toLowerCase();
@@ -1194,14 +1196,14 @@ export default function AdminPanel({ darkMode }: AdminPanelProps) {
                   <div 
                     key={admin}
                     className={`px-6 py-3 flex items-center justify-between ${
-                      darkMode ? 'hover:bg-gray-700/50' : 'hover:bg-gray-50'
+                      darkMode ? 'hover:bg-white/10/50' : 'hover:bg-black/3'
                     }`}
                   >
                     <div className="flex items-center gap-3">
                       <div className={`w-10 h-10 rounded-full flex items-center justify-center ${
                         isSuperAdmin 
                           ? 'bg-yellow-500/20 text-yellow-500' 
-                          : darkMode ? 'bg-gray-600' : 'bg-gray-200'
+                          : darkMode ? 'bg-white/10' : 'bg-black/5'
                       }`}>
                         {isSuperAdmin ? <Crown size={18} /> : <Users size={18} />}
                       </div>
@@ -1216,7 +1218,7 @@ export default function AdminPanel({ darkMode }: AdminPanelProps) {
                             </span>
                           )}
                         </p>
-                        <p className={`text-xs ${darkMode ? 'text-gray-500' : 'text-gray-400'}`}>
+                        <p className={`text-xs ${darkMode ? 'text-muted-light' : 'text-muted-dark'}`}>
                           {isSuperAdmin ? 'Super Administrador' : 'Administrador'}
                         </p>
                       </div>
@@ -1253,8 +1255,8 @@ export default function AdminPanel({ darkMode }: AdminPanelProps) {
 
         {/* Schedule Tab */}
         {activeTab === 'schedule' && (
-          <div className={`rounded-xl ${darkMode ? 'bg-gray-800' : 'bg-white'} shadow-lg overflow-hidden`}>
-            <div className={`px-6 py-4 border-b ${darkMode ? 'border-gray-700' : 'border-gray-200'} flex items-center justify-between`}>
+          <div className={`rounded-xl ${darkMode ? 'bg-card-dark' : 'bg-white'} shadow-lg overflow-hidden`}>
+            <div className={`px-6 py-4 border-b ${darkMode ? 'border-border-dark' : 'border-border-light'} flex items-center justify-between`}>
               <h2 className="text-lg font-semibold flex items-center gap-2">
                 <Calendar size={20} />
                 Agendamentos ({scheduledMeetings.length})
@@ -1272,10 +1274,10 @@ export default function AdminPanel({ darkMode }: AdminPanelProps) {
 
             {/* Schedule Form */}
             {showScheduleForm && (
-              <div className={`px-6 py-4 border-b ${darkMode ? 'border-gray-700 bg-gray-700/30' : 'border-gray-200 bg-gray-50'}`}>
+              <div className={`px-6 py-4 border-b ${darkMode ? 'border-border-dark bg-white/5' : 'border-border-light bg-black/3'}`}>
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                   <div>
-                    <label className={`block text-sm font-medium mb-1 ${darkMode ? 'text-gray-300' : 'text-gray-700'}`}>
+                    <label className={`block text-sm font-medium mb-1 ${darkMode ? 'text-foreground-dark' : 'text-muted-light'}`}>
                       Título *
                     </label>
                     <input
@@ -1285,13 +1287,13 @@ export default function AdminPanel({ darkMode }: AdminPanelProps) {
                       placeholder="Reunião de Equipe"
                       className={`w-full px-4 py-2 rounded-lg border ${
                         darkMode 
-                          ? 'bg-gray-700 border-gray-600 text-white placeholder-gray-400' 
-                          : 'bg-white border-gray-300 text-gray-900'
+                          ? 'bg-white/5 border-border-dark text-white placeholder-muted-dark' 
+                          : 'bg-white border-border-light text-foreground-light'
                       }`}
                     />
                   </div>
                   <div>
-                    <label className={`block text-sm font-medium mb-1 ${darkMode ? 'text-gray-300' : 'text-gray-700'}`}>
+                    <label className={`block text-sm font-medium mb-1 ${darkMode ? 'text-foreground-dark' : 'text-muted-light'}`}>
                       Data e Hora *
                     </label>
                     <input
@@ -1300,13 +1302,13 @@ export default function AdminPanel({ darkMode }: AdminPanelProps) {
                       onChange={(e) => setScheduleForm(prev => ({ ...prev, scheduledAt: e.target.value }))}
                       className={`w-full px-4 py-2 rounded-lg border ${
                         darkMode 
-                          ? 'bg-gray-700 border-gray-600 text-white' 
-                          : 'bg-white border-gray-300 text-gray-900'
+                          ? 'bg-white/5 border-border-dark text-white' 
+                          : 'bg-white border-border-light text-foreground-light'
                       }`}
                     />
                   </div>
                   <div>
-                    <label className={`block text-sm font-medium mb-1 ${darkMode ? 'text-gray-300' : 'text-gray-700'}`}>
+                    <label className={`block text-sm font-medium mb-1 ${darkMode ? 'text-foreground-dark' : 'text-muted-light'}`}>
                       Duração (minutos)
                     </label>
                     <input
@@ -1317,13 +1319,13 @@ export default function AdminPanel({ darkMode }: AdminPanelProps) {
                       max={480}
                       className={`w-full px-4 py-2 rounded-lg border ${
                         darkMode 
-                          ? 'bg-gray-700 border-gray-600 text-white' 
-                          : 'bg-white border-gray-300 text-gray-900'
+                          ? 'bg-white/5 border-border-dark text-white' 
+                          : 'bg-white border-border-light text-foreground-light'
                       }`}
                     />
                   </div>
                   <div>
-                    <label className={`block text-sm font-medium mb-1 ${darkMode ? 'text-gray-300' : 'text-gray-700'}`}>
+                    <label className={`block text-sm font-medium mb-1 ${darkMode ? 'text-foreground-dark' : 'text-muted-light'}`}>
                       Participantes (emails separados por vírgula)
                     </label>
                     <input
@@ -1333,13 +1335,13 @@ export default function AdminPanel({ darkMode }: AdminPanelProps) {
                       placeholder="user1@email.com, user2@email.com"
                       className={`w-full px-4 py-2 rounded-lg border ${
                         darkMode 
-                          ? 'bg-gray-700 border-gray-600 text-white placeholder-gray-400' 
-                          : 'bg-white border-gray-300 text-gray-900'
+                          ? 'bg-white/5 border-border-dark text-white placeholder-muted-dark' 
+                          : 'bg-white border-border-light text-foreground-light'
                       }`}
                     />
                   </div>
                   <div className="md:col-span-2">
-                    <label className={`block text-sm font-medium mb-1 ${darkMode ? 'text-gray-300' : 'text-gray-700'}`}>
+                    <label className={`block text-sm font-medium mb-1 ${darkMode ? 'text-foreground-dark' : 'text-muted-light'}`}>
                       Descrição
                     </label>
                     <textarea
@@ -1349,8 +1351,8 @@ export default function AdminPanel({ darkMode }: AdminPanelProps) {
                       rows={2}
                       className={`w-full px-4 py-2 rounded-lg border ${
                         darkMode 
-                          ? 'bg-gray-700 border-gray-600 text-white placeholder-gray-400' 
-                          : 'bg-white border-gray-300 text-gray-900'
+                          ? 'bg-white/5 border-border-dark text-white placeholder-muted-dark' 
+                          : 'bg-white border-border-light text-foreground-light'
                       }`}
                     />
                   </div>
@@ -1359,7 +1361,7 @@ export default function AdminPanel({ darkMode }: AdminPanelProps) {
                   <button
                     onClick={() => setShowScheduleForm(false)}
                     className={`px-4 py-2 rounded-lg ${
-                      darkMode ? 'bg-gray-600 hover:bg-gray-500' : 'bg-gray-200 hover:bg-gray-300'
+                      darkMode ? 'bg-white/10 hover:bg-black/30' : 'bg-black/5 hover:bg-black/10'
                     }`}
                   >
                     Cancelar
@@ -1381,13 +1383,13 @@ export default function AdminPanel({ darkMode }: AdminPanelProps) {
             {/* Scheduled Meetings List */}
             {scheduledMeetings.length === 0 ? (
               <div className="p-8 text-center">
-                <Calendar size={48} className={`mx-auto mb-4 ${darkMode ? 'text-gray-600' : 'text-gray-300'}`} />
-                <p className={darkMode ? 'text-gray-400' : 'text-gray-500'}>Nenhuma reunião agendada</p>
+                <Calendar size={48} className={`mx-auto mb-4 ${darkMode ? 'text-muted-light' : 'text-foreground-dark'}`} />
+                <p className={darkMode ? 'text-muted-dark' : 'text-muted-light'}>Nenhuma reunião agendada</p>
               </div>
             ) : (
-              <div className="divide-y divide-gray-700">
+              <div className="divide-y divide-border-dark">
                 {scheduledMeetings.map(meeting => (
-                  <div key={meeting.scheduleId} className={`px-6 py-4 ${darkMode ? 'hover:bg-gray-700/50' : 'hover:bg-gray-50'}`}>
+                  <div key={meeting.scheduleId} className={`px-6 py-4 ${darkMode ? 'hover:bg-white/10/50' : 'hover:bg-black/3'}`}>
                     <div className="flex items-center justify-between">
                       <div className="flex-1">
                         <div className="flex items-center gap-3">
@@ -1402,7 +1404,7 @@ export default function AdminPanel({ darkMode }: AdminPanelProps) {
                             {meeting.status === 'scheduled' ? 'Agendada' : meeting.status === 'completed' ? 'Concluída' : 'Cancelada'}
                           </span>
                         </div>
-                        <div className={`mt-1 text-sm ${darkMode ? 'text-gray-400' : 'text-gray-500'}`}>
+                        <div className={`mt-1 text-sm ${darkMode ? 'text-muted-dark' : 'text-muted-light'}`}>
                           <span className="flex items-center gap-1">
                             <Clock size={12} />
                             {new Date(meeting.scheduledAt).toLocaleString('pt-BR')} • {meeting.duration} min
@@ -1411,7 +1413,7 @@ export default function AdminPanel({ darkMode }: AdminPanelProps) {
                             <p className="mt-1">{meeting.description}</p>
                           )}
                         </div>
-                        <div className={`mt-2 text-xs ${darkMode ? 'text-gray-500' : 'text-gray-400'}`}>
+                        <div className={`mt-2 text-xs ${darkMode ? 'text-muted-light' : 'text-muted-dark'}`}>
                           Sala: <span className="font-mono">{meeting.roomId}</span>
                         </div>
                       </div>
@@ -1419,7 +1421,7 @@ export default function AdminPanel({ darkMode }: AdminPanelProps) {
                         <button
                           onClick={() => copyToClipboard(meeting.meetingUrl)}
                           className={`p-2 rounded-lg transition ${
-                            darkMode ? 'hover:bg-gray-600 text-gray-400' : 'hover:bg-gray-200 text-gray-500'
+                            darkMode ? 'hover:bg-white/15 text-muted-dark' : 'hover:bg-black/5 text-muted-light'
                           }`}
                           title="Copiar link"
                         >
@@ -1459,8 +1461,8 @@ export default function AdminPanel({ darkMode }: AdminPanelProps) {
 
         {/* API Keys Tab */}
         {activeTab === 'apikeys' && (
-          <div className={`rounded-xl ${darkMode ? 'bg-gray-800' : 'bg-white'} shadow-lg overflow-hidden`}>
-            <div className={`px-6 py-4 border-b ${darkMode ? 'border-gray-700' : 'border-gray-200'} flex items-center justify-between`}>
+          <div className={`rounded-xl ${darkMode ? 'bg-card-dark' : 'bg-white'} shadow-lg overflow-hidden`}>
+            <div className={`px-6 py-4 border-b ${darkMode ? 'border-border-dark' : 'border-border-light'} flex items-center justify-between`}>
               <h2 className="text-lg font-semibold flex items-center gap-2">
                 <Key size={20} />
                 API Keys ({apiKeys.filter(k => k.isActive).length} ativas)
@@ -1491,7 +1493,7 @@ export default function AdminPanel({ darkMode }: AdminPanelProps) {
 
             {/* New API Key Form */}
             {showApiKeyForm && (
-              <div className={`px-6 py-4 border-b ${darkMode ? 'border-gray-700 bg-gray-700/30' : 'border-gray-200 bg-gray-50'}`}>
+              <div className={`px-6 py-4 border-b ${darkMode ? 'border-border-dark bg-white/5' : 'border-border-light bg-black/3'}`}>
                 <div className="flex gap-2">
                   <input
                     type="text"
@@ -1500,8 +1502,8 @@ export default function AdminPanel({ darkMode }: AdminPanelProps) {
                     placeholder="Nome da chave (ex: Integração CRM)"
                     className={`flex-1 px-4 py-2 rounded-lg border ${
                       darkMode 
-                        ? 'bg-gray-700 border-gray-600 text-white placeholder-gray-400' 
-                        : 'bg-white border-gray-300 text-gray-900'
+                        ? 'bg-white/5 border-border-dark text-white placeholder-muted-dark' 
+                        : 'bg-white border-border-light text-foreground-light'
                     }`}
                     onKeyDown={(e) => e.key === 'Enter' && handleCreateApiKey()}
                   />
@@ -1529,19 +1531,19 @@ export default function AdminPanel({ darkMode }: AdminPanelProps) {
                     </p>
                     <div className="flex items-center gap-2 mt-2">
                       <code className={`px-3 py-1 rounded font-mono text-sm ${
-                        darkMode ? 'bg-gray-700 text-green-300' : 'bg-white text-green-700'
+                        darkMode ? 'bg-white/5 text-green-300' : 'bg-white text-green-700'
                       }`}>
                         {showApiKey ? newApiKey : '••••••••••••••••••••••••••••••••'}
                       </code>
                       <button
                         onClick={() => setShowApiKey(!showApiKey)}
-                        className={`p-1 rounded ${darkMode ? 'hover:bg-gray-600' : 'hover:bg-gray-200'}`}
+                        className={`p-1 rounded ${darkMode ? 'hover:bg-white/15' : 'hover:bg-black/5'}`}
                       >
                         {showApiKey ? <EyeOff size={16} /> : <Eye size={16} />}
                       </button>
                       <button
                         onClick={() => copyToClipboard(newApiKey)}
-                        className={`p-1 rounded ${darkMode ? 'hover:bg-gray-600' : 'hover:bg-gray-200'}`}
+                        className={`p-1 rounded ${darkMode ? 'hover:bg-white/15' : 'hover:bg-black/5'}`}
                       >
                         <Copy size={16} />
                       </button>
@@ -1550,7 +1552,7 @@ export default function AdminPanel({ darkMode }: AdminPanelProps) {
                   <button
                     onClick={() => { setNewApiKey(null); setShowApiKey(false); }}
                     className={`px-3 py-1 rounded text-sm ${
-                      darkMode ? 'bg-gray-600 hover:bg-gray-500' : 'bg-gray-200 hover:bg-gray-300'
+                      darkMode ? 'bg-white/10 hover:bg-black/30' : 'bg-black/5 hover:bg-black/10'
                     }`}
                   >
                     Fechar
@@ -1562,16 +1564,16 @@ export default function AdminPanel({ darkMode }: AdminPanelProps) {
             {/* API Keys List */}
             {apiKeys.length === 0 ? (
               <div className="p-8 text-center">
-                <Key size={48} className={`mx-auto mb-4 ${darkMode ? 'text-gray-600' : 'text-gray-300'}`} />
-                <p className={darkMode ? 'text-gray-400' : 'text-gray-500'}>Nenhuma API Key criada</p>
-                <p className={`text-sm mt-2 ${darkMode ? 'text-gray-500' : 'text-gray-400'}`}>
+                <Key size={48} className={`mx-auto mb-4 ${darkMode ? 'text-muted-light' : 'text-foreground-dark'}`} />
+                <p className={darkMode ? 'text-muted-dark' : 'text-muted-light'}>Nenhuma API Key criada</p>
+                <p className={`text-sm mt-2 ${darkMode ? 'text-muted-light' : 'text-muted-dark'}`}>
                   Crie uma chave para integrar sistemas externos
                 </p>
               </div>
             ) : (
-              <div className="divide-y divide-gray-700">
+              <div className="divide-y divide-border-dark">
                 {apiKeys.map(key => (
-                  <div key={key.keyId} className={`px-6 py-4 ${darkMode ? 'hover:bg-gray-700/50' : 'hover:bg-gray-50'} ${!key.isActive ? 'opacity-50' : ''}`}>
+                  <div key={key.keyId} className={`px-6 py-4 ${darkMode ? 'hover:bg-white/10/50' : 'hover:bg-black/3'} ${!key.isActive ? 'opacity-50' : ''}`}>
                     <div className="flex items-center justify-between">
                       <div className="flex-1">
                         <div className="flex items-center gap-3">
@@ -1584,14 +1586,14 @@ export default function AdminPanel({ darkMode }: AdminPanelProps) {
                             {key.isActive ? 'Ativa' : 'Revogada'}
                           </span>
                         </div>
-                        <div className={`mt-1 text-sm ${darkMode ? 'text-gray-400' : 'text-gray-500'}`}>
+                        <div className={`mt-1 text-sm ${darkMode ? 'text-muted-dark' : 'text-muted-light'}`}>
                           <span>Criada em {new Date(key.createdAt).toLocaleDateString('pt-BR')} por {key.createdBy}</span>
                           {key.lastUsed && (
                             <span className="ml-3">• Último uso: {new Date(key.lastUsed).toLocaleDateString('pt-BR')}</span>
                           )}
                           <span className="ml-3">• {key.usageCount} requisições</span>
                         </div>
-                        <div className={`mt-1 text-xs ${darkMode ? 'text-gray-500' : 'text-gray-400'}`}>
+                        <div className={`mt-1 text-xs ${darkMode ? 'text-muted-light' : 'text-muted-dark'}`}>
                           ID: <span className="font-mono">{key.keyId}</span>
                         </div>
                       </div>
@@ -1614,14 +1616,14 @@ export default function AdminPanel({ darkMode }: AdminPanelProps) {
             )}
 
             {/* API Documentation Info */}
-            <div className={`px-6 py-4 ${darkMode ? 'bg-blue-900/20 border-t border-gray-700' : 'bg-blue-50 border-t border-gray-200'}`}>
+            <div className={`px-6 py-4 ${darkMode ? 'bg-blue-900/20 border-t border-border-dark' : 'bg-blue-50 border-t border-border-light'}`}>
               <h3 className={`text-sm font-semibold mb-2 ${darkMode ? 'text-blue-300' : 'text-blue-700'}`}>
                 Como usar a API
               </h3>
-              <p className={`text-sm ${darkMode ? 'text-gray-400' : 'text-gray-600'}`}>
-                Adicione o header <code className={`px-1 rounded ${darkMode ? 'bg-gray-700' : 'bg-gray-200'}`}>X-API-Key</code> com sua chave em todas as requisições.
+              <p className={`text-sm ${darkMode ? 'text-muted-dark' : 'text-muted-light'}`}>
+                Adicione o header <code className={`px-1 rounded ${darkMode ? 'bg-white/5' : 'bg-black/5'}`}>X-API-Key</code> com sua chave em todas as requisições.
               </p>
-              <pre className={`mt-2 p-3 rounded-lg text-xs overflow-x-auto ${darkMode ? 'bg-gray-700' : 'bg-gray-100'}`}>
+              <pre className={`mt-2 p-3 rounded-lg text-xs overflow-x-auto ${darkMode ? 'bg-white/5' : 'bg-black/5'}`}>
 {`curl -X POST ${CHIME_API_URL}/api/v1/meetings/schedule \\
   -H "Content-Type: application/json" \\
   -H "X-API-Key: sua-chave-aqui" \\
@@ -1633,8 +1635,8 @@ export default function AdminPanel({ darkMode }: AdminPanelProps) {
 
         {/* Backgrounds Tab */}
         {activeTab === 'backgrounds' && (
-          <div className={`rounded-xl ${darkMode ? 'bg-gray-800' : 'bg-white'} shadow-lg overflow-hidden`}>
-            <div className={`px-6 py-4 border-b ${darkMode ? 'border-gray-700' : 'border-gray-200'} flex items-center justify-between`}>
+          <div className={`rounded-xl ${darkMode ? 'bg-card-dark' : 'bg-white'} shadow-lg overflow-hidden`}>
+            <div className={`px-6 py-4 border-b ${darkMode ? 'border-border-dark' : 'border-border-light'} flex items-center justify-between`}>
               <h2 className="text-lg font-semibold flex items-center gap-2">
                 <Image size={20} />
                 Backgrounds Personalizados ({customBackgrounds.filter(b => b.isActive).length} ativos)
@@ -1652,7 +1654,7 @@ export default function AdminPanel({ darkMode }: AdminPanelProps) {
 
             {/* Add Background Form */}
             {showBackgroundForm && (
-              <div className={`px-6 py-4 border-b ${darkMode ? 'border-gray-700 bg-gray-700/30' : 'border-gray-200 bg-gray-50'}`}>
+              <div className={`px-6 py-4 border-b ${darkMode ? 'border-border-dark bg-white/5' : 'border-border-light bg-black/3'}`}>
                 {/* Mode Toggle */}
                 <div className="flex gap-2 mb-4">
                   <button
@@ -1660,7 +1662,7 @@ export default function AdminPanel({ darkMode }: AdminPanelProps) {
                     className={`px-4 py-2 rounded-lg text-sm font-medium transition ${
                       uploadMode === 'file'
                         ? darkMode ? 'bg-blue-600 text-white' : 'bg-blue-500 text-white'
-                        : darkMode ? 'bg-gray-600 text-gray-300' : 'bg-gray-200 text-gray-700'
+                        : darkMode ? 'bg-white/10 text-foreground-dark' : 'bg-black/5 text-muted-light'
                     }`}
                   >
                     📁 Upload de Arquivo
@@ -1670,7 +1672,7 @@ export default function AdminPanel({ darkMode }: AdminPanelProps) {
                     className={`px-4 py-2 rounded-lg text-sm font-medium transition ${
                       uploadMode === 'url'
                         ? darkMode ? 'bg-blue-600 text-white' : 'bg-blue-500 text-white'
-                        : darkMode ? 'bg-gray-600 text-gray-300' : 'bg-gray-200 text-gray-700'
+                        : darkMode ? 'bg-white/10 text-foreground-dark' : 'bg-black/5 text-muted-light'
                     }`}
                   >
                     🔗 URL Externa
@@ -1679,7 +1681,7 @@ export default function AdminPanel({ darkMode }: AdminPanelProps) {
 
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                   <div>
-                    <label className={`block text-sm font-medium mb-1 ${darkMode ? 'text-gray-300' : 'text-gray-700'}`}>
+                    <label className={`block text-sm font-medium mb-1 ${darkMode ? 'text-foreground-dark' : 'text-muted-light'}`}>
                       Nome *
                     </label>
                     <input
@@ -1689,15 +1691,15 @@ export default function AdminPanel({ darkMode }: AdminPanelProps) {
                       placeholder="Ex: Sala de Reuniões"
                       className={`w-full px-4 py-2 rounded-lg border ${
                         darkMode 
-                          ? 'bg-gray-700 border-gray-600 text-white placeholder-gray-400' 
-                          : 'bg-white border-gray-300 text-gray-900'
+                          ? 'bg-white/5 border-border-dark text-white placeholder-muted-dark' 
+                          : 'bg-white border-border-light text-foreground-light'
                       }`}
                     />
                   </div>
 
                   {uploadMode === 'file' ? (
                     <div>
-                      <label className={`block text-sm font-medium mb-1 ${darkMode ? 'text-gray-300' : 'text-gray-700'}`}>
+                      <label className={`block text-sm font-medium mb-1 ${darkMode ? 'text-foreground-dark' : 'text-muted-light'}`}>
                         Imagem * (JPEG, PNG, WebP, GIF - máx 5MB)
                       </label>
                       <input
@@ -1706,19 +1708,19 @@ export default function AdminPanel({ darkMode }: AdminPanelProps) {
                         onChange={handleFileSelect}
                         className={`w-full px-4 py-2 rounded-lg border ${
                           darkMode 
-                            ? 'bg-gray-700 border-gray-600 text-white file:bg-gray-600 file:text-white file:border-0 file:rounded file:px-3 file:py-1 file:mr-3' 
-                            : 'bg-white border-gray-300 text-gray-900 file:bg-gray-100 file:text-gray-700 file:border-0 file:rounded file:px-3 file:py-1 file:mr-3'
+                            ? 'bg-white/5 border-border-dark text-white file:bg-white/10 file:text-white file:border-0 file:rounded file:px-3 file:py-1 file:mr-3' 
+                            : 'bg-white border-border-light text-foreground-light file:bg-black/5 file:text-muted-light file:border-0 file:rounded file:px-3 file:py-1 file:mr-3'
                         }`}
                       />
                       {backgroundFile && (
-                        <p className={`text-xs mt-1 ${darkMode ? 'text-gray-400' : 'text-gray-500'}`}>
+                        <p className={`text-xs mt-1 ${darkMode ? 'text-muted-dark' : 'text-muted-light'}`}>
                           {backgroundFile.name} ({(backgroundFile.size / 1024).toFixed(1)} KB)
                         </p>
                       )}
                     </div>
                   ) : (
                     <div>
-                      <label className={`block text-sm font-medium mb-1 ${darkMode ? 'text-gray-300' : 'text-gray-700'}`}>
+                      <label className={`block text-sm font-medium mb-1 ${darkMode ? 'text-foreground-dark' : 'text-muted-light'}`}>
                         URL da Imagem *
                       </label>
                       <div className="flex gap-2">
@@ -1733,8 +1735,8 @@ export default function AdminPanel({ darkMode }: AdminPanelProps) {
                           placeholder="https://exemplo.com/imagem.jpg"
                           className={`flex-1 px-4 py-2 rounded-lg border ${
                             darkMode 
-                              ? 'bg-gray-700 border-gray-600 text-white placeholder-gray-400' 
-                              : 'bg-white border-gray-300 text-gray-900'
+                              ? 'bg-white/5 border-border-dark text-white placeholder-muted-dark' 
+                              : 'bg-white border-border-light text-foreground-light'
                           } ${backgroundPreviewValid === false ? 'border-red-500' : backgroundPreviewValid === true ? 'border-green-500' : ''}`}
                         />
                         {backgroundValidating && (
@@ -1763,10 +1765,10 @@ export default function AdminPanel({ darkMode }: AdminPanelProps) {
                 {/* Preview */}
                 {((uploadMode === 'file' && backgroundFilePreview) || (uploadMode === 'url' && backgroundForm.url && backgroundPreviewValid === true)) && (
                   <div className="mt-4">
-                    <label className={`block text-sm font-medium mb-2 ${darkMode ? 'text-gray-300' : 'text-gray-700'}`}>
+                    <label className={`block text-sm font-medium mb-2 ${darkMode ? 'text-foreground-dark' : 'text-muted-light'}`}>
                       Preview
                     </label>
-                    <div className="w-48 h-28 rounded-lg overflow-hidden border border-gray-600">
+                    <div className="w-48 h-28 rounded-lg overflow-hidden border border-border-dark">
                       <img 
                         src={uploadMode === 'file' ? backgroundFilePreview! : backgroundForm.url} 
                         alt="Preview" 
@@ -1786,7 +1788,7 @@ export default function AdminPanel({ darkMode }: AdminPanelProps) {
                       setBackgroundPreviewValid(null);
                     }}
                     className={`px-4 py-2 rounded-lg ${
-                      darkMode ? 'bg-gray-600 hover:bg-gray-500' : 'bg-gray-200 hover:bg-gray-300'
+                      darkMode ? 'bg-white/10 hover:bg-black/30' : 'bg-black/5 hover:bg-black/10'
                     }`}
                   >
                     Cancelar
@@ -1828,9 +1830,9 @@ export default function AdminPanel({ darkMode }: AdminPanelProps) {
             {/* Backgrounds List */}
             {customBackgrounds.length === 0 ? (
               <div className="p-8 text-center">
-                <Image size={48} className={`mx-auto mb-4 ${darkMode ? 'text-gray-600' : 'text-gray-300'}`} />
-                <p className={darkMode ? 'text-gray-400' : 'text-gray-500'}>Nenhum background personalizado</p>
-                <p className={`text-sm mt-2 ${darkMode ? 'text-gray-500' : 'text-gray-400'}`}>
+                <Image size={48} className={`mx-auto mb-4 ${darkMode ? 'text-muted-light' : 'text-foreground-dark'}`} />
+                <p className={darkMode ? 'text-muted-dark' : 'text-muted-light'}>Nenhum background personalizado</p>
+                <p className={`text-sm mt-2 ${darkMode ? 'text-muted-light' : 'text-muted-dark'}`}>
                   Adicione backgrounds que ficarão disponíveis para todos os usuários autenticados
                 </p>
               </div>
@@ -1842,11 +1844,11 @@ export default function AdminPanel({ darkMode }: AdminPanelProps) {
                     className={`rounded-xl overflow-hidden border ${
                       bg.isActive 
                         ? darkMode ? 'border-green-600' : 'border-green-400'
-                        : darkMode ? 'border-gray-700' : 'border-gray-200'
+                        : darkMode ? 'border-border-dark' : 'border-border-light'
                     } ${!bg.isActive ? 'opacity-60' : ''}`}
                   >
                     {/* Image Preview */}
-                    <div className="relative h-32 bg-gray-900">
+                    <div className="relative h-32 bg-surface-dark">
                       <img 
                         src={bg.url} 
                         alt={bg.name}
@@ -1859,16 +1861,16 @@ export default function AdminPanel({ darkMode }: AdminPanelProps) {
                       <div className={`absolute top-2 right-2 px-2 py-1 rounded text-xs font-medium ${
                         bg.isActive 
                           ? 'bg-green-500 text-white' 
-                          : 'bg-gray-600 text-gray-300'
+                          : 'bg-white/10 text-foreground-dark'
                       }`}>
                         {bg.isActive ? 'Ativo' : 'Inativo'}
                       </div>
                     </div>
 
                     {/* Info */}
-                    <div className={`p-3 ${darkMode ? 'bg-gray-700/50' : 'bg-gray-50'}`}>
+                    <div className={`p-3 ${darkMode ? 'bg-white/5' : 'bg-black/3'}`}>
                       <h3 className="font-semibold truncate">{bg.name}</h3>
-                      <p className={`text-xs mt-1 ${darkMode ? 'text-gray-400' : 'text-gray-500'}`}>
+                      <p className={`text-xs mt-1 ${darkMode ? 'text-muted-dark' : 'text-muted-light'}`}>
                         Por {bg.createdBy} • {new Date(bg.createdAt).toLocaleDateString('pt-BR')}
                       </p>
 
@@ -1904,8 +1906,8 @@ export default function AdminPanel({ darkMode }: AdminPanelProps) {
             )}
 
             {/* Info */}
-            <div className={`px-6 py-4 ${darkMode ? 'bg-gray-700/30 border-t border-gray-700' : 'bg-gray-50 border-t border-gray-200'}`}>
-              <p className={`text-sm ${darkMode ? 'text-gray-400' : 'text-gray-600'}`}>
+            <div className={`px-6 py-4 ${darkMode ? 'bg-white/5 border-t border-border-dark' : 'bg-black/3 border-t border-border-light'}`}>
+              <p className={`text-sm ${darkMode ? 'text-muted-dark' : 'text-muted-light'}`}>
                 <strong>ℹ️ Como funciona:</strong> Os backgrounds ativos ficam disponíveis para todos os usuários autenticados 
                 na opção "Fundo de Tela" durante as videochamadas. Backgrounds inativos não aparecem para os usuários.
               </p>
@@ -1920,8 +1922,8 @@ export default function AdminPanel({ darkMode }: AdminPanelProps) {
 
         {/* History Tab */}
         {activeTab === 'history' && (
-          <div className={`rounded-xl ${darkMode ? 'bg-gray-800' : 'bg-white'} shadow-lg overflow-hidden`}>
-            <div className={`px-6 py-4 border-b ${darkMode ? 'border-gray-700' : 'border-gray-200'} flex items-center justify-between`}>
+          <div className={`rounded-xl ${darkMode ? 'bg-card-dark' : 'bg-white'} shadow-lg overflow-hidden`}>
+            <div className={`px-6 py-4 border-b ${darkMode ? 'border-border-dark' : 'border-border-light'} flex items-center justify-between`}>
               <h2 className="text-lg font-semibold flex items-center gap-2">
                 <History size={20} />
                 Histórico de Reuniões ({allMeetingHistory.length})
@@ -1930,7 +1932,7 @@ export default function AdminPanel({ darkMode }: AdminPanelProps) {
                 onClick={fetchAllRecordings}
                 disabled={historyLoading}
                 className={`flex items-center gap-2 px-3 py-1.5 rounded-lg text-sm ${
-                  darkMode ? 'bg-gray-700 hover:bg-gray-600' : 'bg-gray-100 hover:bg-gray-200'
+                  darkMode ? 'bg-white/5 hover:bg-white/15' : 'bg-black/5 hover:bg-black/5'
                 } ${historyLoading ? 'opacity-50' : ''}`}
               >
                 <RefreshCw size={14} className={historyLoading ? 'animate-spin' : ''} />
@@ -1939,10 +1941,10 @@ export default function AdminPanel({ darkMode }: AdminPanelProps) {
             </div>
 
             {/* Filtros */}
-            <div className={`px-6 py-4 border-b ${darkMode ? 'border-gray-700 bg-gray-700/30' : 'border-gray-200 bg-gray-50'}`}>
+            <div className={`px-6 py-4 border-b ${darkMode ? 'border-border-dark bg-white/5' : 'border-border-light bg-black/3'}`}>
               <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
                 <div>
-                  <label className={`block text-xs font-medium mb-1 ${darkMode ? 'text-gray-400' : 'text-gray-600'}`}>
+                  <label className={`block text-xs font-medium mb-1 ${darkMode ? 'text-muted-dark' : 'text-muted-light'}`}>
                     Usuário
                   </label>
                   <select
@@ -1950,8 +1952,8 @@ export default function AdminPanel({ darkMode }: AdminPanelProps) {
                     onChange={(e) => setHistoryFilters(prev => ({ ...prev, userLogin: e.target.value }))}
                     className={`w-full px-3 py-2 rounded-lg border text-sm ${
                       darkMode 
-                        ? 'bg-gray-700 border-gray-600 text-white' 
-                        : 'bg-white border-gray-300 text-gray-900'
+                        ? 'bg-white/5 border-border-dark text-white' 
+                        : 'bg-white border-border-light text-foreground-light'
                     }`}
                   >
                     <option value="">Todos os usuários</option>
@@ -1962,7 +1964,7 @@ export default function AdminPanel({ darkMode }: AdminPanelProps) {
                 </div>
                 
                 <div>
-                  <label className={`block text-xs font-medium mb-1 ${darkMode ? 'text-gray-400' : 'text-gray-600'}`}>
+                  <label className={`block text-xs font-medium mb-1 ${darkMode ? 'text-muted-dark' : 'text-muted-light'}`}>
                     Tipo de Reunião
                   </label>
                   <select
@@ -1970,8 +1972,8 @@ export default function AdminPanel({ darkMode }: AdminPanelProps) {
                     onChange={(e) => setHistoryFilters(prev => ({ ...prev, meetingType: e.target.value }))}
                     className={`w-full px-3 py-2 rounded-lg border text-sm ${
                       darkMode 
-                        ? 'bg-gray-700 border-gray-600 text-white' 
-                        : 'bg-white border-gray-300 text-gray-900'
+                        ? 'bg-white/5 border-border-dark text-white' 
+                        : 'bg-white border-border-light text-foreground-light'
                     }`}
                   >
                     <option value="">Todos os tipos</option>
@@ -1984,7 +1986,7 @@ export default function AdminPanel({ darkMode }: AdminPanelProps) {
                 </div>
                 
                 <div>
-                  <label className={`block text-xs font-medium mb-1 ${darkMode ? 'text-gray-400' : 'text-gray-600'}`}>
+                  <label className={`block text-xs font-medium mb-1 ${darkMode ? 'text-muted-dark' : 'text-muted-light'}`}>
                     Data Início
                   </label>
                   <input
@@ -1993,14 +1995,14 @@ export default function AdminPanel({ darkMode }: AdminPanelProps) {
                     onChange={(e) => setHistoryFilters(prev => ({ ...prev, startDate: e.target.value }))}
                     className={`w-full px-3 py-2 rounded-lg border text-sm ${
                       darkMode 
-                        ? 'bg-gray-700 border-gray-600 text-white' 
-                        : 'bg-white border-gray-300 text-gray-900'
+                        ? 'bg-white/5 border-border-dark text-white' 
+                        : 'bg-white border-border-light text-foreground-light'
                     }`}
                   />
                 </div>
                 
                 <div>
-                  <label className={`block text-xs font-medium mb-1 ${darkMode ? 'text-gray-400' : 'text-gray-600'}`}>
+                  <label className={`block text-xs font-medium mb-1 ${darkMode ? 'text-muted-dark' : 'text-muted-light'}`}>
                     Data Fim
                   </label>
                   <input
@@ -2009,8 +2011,8 @@ export default function AdminPanel({ darkMode }: AdminPanelProps) {
                     onChange={(e) => setHistoryFilters(prev => ({ ...prev, endDate: e.target.value }))}
                     className={`w-full px-3 py-2 rounded-lg border text-sm ${
                       darkMode 
-                        ? 'bg-gray-700 border-gray-600 text-white' 
-                        : 'bg-white border-gray-300 text-gray-900'
+                        ? 'bg-white/5 border-border-dark text-white' 
+                        : 'bg-white border-border-light text-foreground-light'
                     }`}
                   />
                 </div>
@@ -2020,7 +2022,7 @@ export default function AdminPanel({ darkMode }: AdminPanelProps) {
                 <button
                   onClick={() => setHistoryFilters({ userLogin: '', meetingType: '', startDate: '', endDate: '' })}
                   className={`px-3 py-1.5 rounded-lg text-sm ${
-                    darkMode ? 'bg-gray-600 hover:bg-gray-500' : 'bg-gray-200 hover:bg-gray-300'
+                    darkMode ? 'bg-white/10 hover:bg-black/30' : 'bg-black/5 hover:bg-black/10'
                   }`}
                 >
                   Limpar Filtros
@@ -2040,12 +2042,12 @@ export default function AdminPanel({ darkMode }: AdminPanelProps) {
             {/* Video Player Modal */}
             {playingRecording && (
               <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/80">
-                <div className={`relative w-full max-w-4xl mx-4 rounded-xl overflow-hidden ${darkMode ? 'bg-gray-900' : 'bg-white'}`}>
-                  <div className={`flex items-center justify-between px-4 py-3 border-b ${darkMode ? 'border-gray-700' : 'border-gray-200'}`}>
+                <div className={`relative w-full max-w-4xl mx-4 rounded-xl overflow-hidden ${darkMode ? 'bg-surface-dark' : 'bg-white'}`}>
+                  <div className={`flex items-center justify-between px-4 py-3 border-b ${darkMode ? 'border-border-dark' : 'border-border-light'}`}>
                     <h3 className="font-semibold">Reproduzindo Gravação</h3>
                     <button
                       onClick={() => setPlayingRecording(null)}
-                      className={`p-1.5 rounded-lg ${darkMode ? 'hover:bg-gray-700' : 'hover:bg-gray-100'}`}
+                      className={`p-1.5 rounded-lg ${darkMode ? 'hover:bg-white/10' : 'hover:bg-black/5'}`}
                     >
                       <XIcon size={20} />
                     </button>
@@ -2066,18 +2068,18 @@ export default function AdminPanel({ darkMode }: AdminPanelProps) {
             {/* Report Modal */}
             {reportModal && (
               <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/80 p-4">
-                <div className={`relative w-full max-w-4xl max-h-[90vh] overflow-y-auto rounded-xl ${darkMode ? 'bg-gray-900' : 'bg-white'}`}>
-                  <div className={`sticky top-0 flex items-center justify-between px-6 py-4 border-b ${darkMode ? 'border-gray-700 bg-gray-900' : 'border-gray-200 bg-white'}`}>
+                <div className={`relative w-full max-w-4xl max-h-[90vh] overflow-y-auto rounded-xl ${darkMode ? 'bg-surface-dark' : 'bg-white'}`}>
+                  <div className={`sticky top-0 flex items-center justify-between px-6 py-4 border-b ${darkMode ? 'border-border-dark bg-surface-dark' : 'border-border-light bg-white'}`}>
                     <h3 className="font-semibold">Relatório da Reunião</h3>
                     <button
                       onClick={() => setReportModal(null)}
-                      className={`p-1.5 rounded-lg ${darkMode ? 'hover:bg-gray-700' : 'hover:bg-gray-100'}`}
+                      className={`p-1.5 rounded-lg ${darkMode ? 'hover:bg-white/10' : 'hover:bg-black/5'}`}
                     >
                       <XIcon size={20} />
                     </button>
                   </div>
                   <div className="p-6">
-                    <div className={`mb-4 p-4 rounded-lg ${darkMode ? 'bg-gray-800' : 'bg-gray-50'}`}>
+                    <div className={`mb-4 p-4 rounded-lg ${darkMode ? 'bg-card-dark' : 'bg-black/3'}`}>
                       <p className="text-sm"><strong>Sala:</strong> {reportModal.meeting.roomId}</p>
                       <p className="text-sm"><strong>Data:</strong> {new Date(reportModal.meeting.startTime).toLocaleString('pt-BR')}</p>
                       {reportModal.meeting.meetingType && (
@@ -2093,18 +2095,19 @@ export default function AdminPanel({ darkMode }: AdminPanelProps) {
             )}
 
             {historyLoading ? (
-              <div className="p-8 text-center">
-                <RefreshCw size={32} className="mx-auto mb-4 animate-spin text-blue-500" />
-                <p className={darkMode ? 'text-gray-400' : 'text-gray-500'}>Carregando histórico...</p>
+              <div className="divide-y divide-border-dark/50 p-2 space-y-2">
+                {[...Array(5)].map((_, i) => (
+                  <SkeletonHistoryRow key={i} darkMode={darkMode} />
+                ))}
               </div>
             ) : allMeetingHistory.length === 0 ? (
               <div className="p-8 text-center">
-                <History size={48} className={`mx-auto mb-4 ${darkMode ? 'text-gray-600' : 'text-gray-300'}`} />
-                <p className={darkMode ? 'text-gray-400' : 'text-gray-500'}>Nenhuma reunião encontrada</p>
+                <History size={48} className={`mx-auto mb-4 ${darkMode ? 'text-muted-light' : 'text-foreground-dark'}`} />
+                <p className={darkMode ? 'text-muted-dark' : 'text-muted-light'}>Nenhuma reunião encontrada</p>
               </div>
             ) : (
-              <div className="divide-y divide-gray-700">
-                {allMeetingHistory.map(meeting => {
+              <div className="divide-y divide-border-dark">
+                {allMeetingHistory.map((meeting, idx) => {
                   // Buscar gravação correspondente
                   const recording = allRecordings.find(r => r.meetingId === meeting.id || r.roomId === meeting.roomId);
                   const hasTranscription = meeting.transcriptions && meeting.transcriptions.length > 0;
@@ -2113,13 +2116,14 @@ export default function AdminPanel({ darkMode }: AdminPanelProps) {
                   return (
                     <div 
                       key={meeting.id} 
-                      className={`px-6 py-4 ${darkMode ? 'hover:bg-gray-700/50' : 'hover:bg-gray-50'}`}
+                      className={`px-6 py-4 animate-fade-in-up ${darkMode ? 'hover:bg-white/10/50' : 'hover:bg-black/3'}`}
+                      style={{ animationDelay: `${Math.min(idx, 8) * 50}ms` }}
                     >
                       <div className="flex items-start justify-between gap-4">
                         <div className="flex-1">
                           <div className="flex items-center gap-2 mb-2 flex-wrap">
                             <span className={`font-mono text-sm px-2 py-1 rounded ${
-                              darkMode ? 'bg-purple-900/50 text-purple-300' : 'bg-purple-100 text-purple-700'
+                              darkMode ? 'bg-primary-900/50 text-primary-300' : 'bg-primary-50 text-primary-700'
                             }`}>
                               {meeting.roomId}
                             </span>
@@ -2132,7 +2136,7 @@ export default function AdminPanel({ darkMode }: AdminPanelProps) {
                                   ? darkMode ? 'bg-green-900/50 text-green-300' : 'bg-green-100 text-green-700'
                                   : meeting.meetingType === 'TREINAMENTO'
                                   ? darkMode ? 'bg-yellow-900/50 text-yellow-300' : 'bg-yellow-100 text-yellow-700'
-                                  : darkMode ? 'bg-gray-700 text-gray-300' : 'bg-gray-200 text-gray-700'
+                                  : darkMode ? 'bg-white/5 text-foreground-dark' : 'bg-black/5 text-muted-light'
                               }`}>
                                 {meeting.meetingType}
                               </span>
@@ -2140,7 +2144,7 @@ export default function AdminPanel({ darkMode }: AdminPanelProps) {
                             
                             {meeting.duration && (
                               <span className={`text-xs px-2 py-1 rounded flex items-center gap-1 ${
-                                darkMode ? 'bg-gray-700 text-gray-300' : 'bg-gray-200 text-gray-700'
+                                darkMode ? 'bg-white/5 text-foreground-dark' : 'bg-black/5 text-muted-light'
                               }`}>
                                 <Clock size={12} />
                                 {Math.round(meeting.duration / 60000)} min
@@ -2149,12 +2153,12 @@ export default function AdminPanel({ darkMode }: AdminPanelProps) {
                           </div>
                           
                           {meeting.meetingTopic && (
-                            <p className={`text-sm font-medium mb-1 ${darkMode ? 'text-gray-200' : 'text-gray-800'}`}>
+                            <p className={`text-sm font-medium mb-1 ${darkMode ? 'text-foreground-dark' : 'text-foreground-light'}`}>
                               {meeting.meetingTopic}
                             </p>
                           )}
                           
-                          <div className={`text-sm ${darkMode ? 'text-gray-400' : 'text-gray-600'}`}>
+                          <div className={`text-sm ${darkMode ? 'text-muted-dark' : 'text-muted-light'}`}>
                             <span className="flex items-center gap-2">
                               <Users size={14} />
                               {meeting.userLogin}
@@ -2198,8 +2202,8 @@ export default function AdminPanel({ darkMode }: AdminPanelProps) {
                                 onClick={() => handleDownloadTranscription(meeting)}
                                 className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-sm whitespace-nowrap ${
                                   darkMode 
-                                    ? 'bg-purple-600/20 text-purple-400 hover:bg-purple-600/30' 
-                                    : 'bg-purple-100 text-purple-700 hover:bg-purple-200'
+                                    ? 'bg-primary/20 text-primary-300 hover:bg-primary/30' 
+                                    : 'bg-primary-50 text-primary-700 hover:bg-primary-100'
                                 }`}
                                 title="Baixar Transcrição"
                               >
@@ -2212,8 +2216,8 @@ export default function AdminPanel({ darkMode }: AdminPanelProps) {
                                 disabled={generatingReport === meeting.id}
                                 className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-sm whitespace-nowrap ${
                                   darkMode 
-                                    ? 'bg-indigo-600/20 text-indigo-400 hover:bg-indigo-600/30' 
-                                    : 'bg-indigo-100 text-indigo-700 hover:bg-indigo-200'
+                                    ? 'bg-primary/20 text-primary-300 hover:bg-primary/30' 
+                                    : 'bg-primary-50 text-primary-700 hover:bg-primary-100'
                                 } ${generatingReport === meeting.id ? 'opacity-50' : ''}`}
                                 title="Gerar Relatório"
                               >
@@ -2297,9 +2301,9 @@ export default function AdminPanel({ darkMode }: AdminPanelProps) {
             )}
 
             {/* Info */}
-            <div className={`px-6 py-4 ${darkMode ? 'bg-gray-700/30 border-t border-gray-700' : 'bg-gray-50 border-t border-gray-200'}`}>
+            <div className={`px-6 py-4 ${darkMode ? 'bg-white/5 border-t border-border-dark' : 'bg-black/3 border-t border-border-light'}`}>
               <div className="flex items-center justify-between">
-                <p className={`text-sm ${darkMode ? 'text-gray-400' : 'text-gray-600'}`}>
+                <p className={`text-sm ${darkMode ? 'text-muted-dark' : 'text-muted-light'}`}>
                   <strong>ℹ️ Histórico:</strong> Aqui você pode ver todas as reuniões realizadas na plataforma com suas transcrições e gravações.
                   Use os botões para baixar transcrições, reproduzir/baixar gravações ou gerar relatórios com IA.
                 </p>
@@ -2321,12 +2325,12 @@ export default function AdminPanel({ darkMode }: AdminPanelProps) {
 
         {/* Server Info */}
         {stats && (
-          <div className={`mt-6 p-4 rounded-xl ${darkMode ? 'bg-gray-800' : 'bg-white'} shadow-lg`}>
+          <div className={`mt-6 p-4 rounded-xl ${darkMode ? 'bg-card-dark' : 'bg-white'} shadow-lg`}>
             <h3 className="text-sm font-semibold mb-3 flex items-center gap-2">
               <Server size={16} />
               Informações do Servidor
             </h3>
-            <div className={`grid grid-cols-2 md:grid-cols-4 gap-4 text-sm ${darkMode ? 'text-gray-400' : 'text-gray-600'}`}>
+            <div className={`grid grid-cols-2 md:grid-cols-4 gap-4 text-sm ${darkMode ? 'text-muted-dark' : 'text-muted-light'}`}>
               <div>
                 <span className="block text-xs uppercase opacity-60">Ambiente</span>
                 <span className={stats.config.isProduction ? 'text-green-500' : 'text-yellow-500'}>

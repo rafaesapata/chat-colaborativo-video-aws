@@ -73,7 +73,7 @@ export default function InterviewReportModal({
   const getSeniorityBadge = () => {
     const colors = {
       junior: darkMode ? 'bg-blue-900/50 text-blue-300' : 'bg-blue-100 text-blue-700',
-      pleno: darkMode ? 'bg-purple-900/50 text-purple-300' : 'bg-purple-100 text-purple-700',
+      pleno: darkMode ? 'bg-primary-900/50 text-primary-300' : 'bg-primary-50 text-primary-700',
       senior: darkMode ? 'bg-orange-900/50 text-orange-300' : 'bg-orange-100 text-orange-700',
     };
     return colors[report.seniorityLevel.level];
@@ -186,19 +186,19 @@ export default function InterviewReportModal({
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 backdrop-blur-sm p-4 overflow-y-auto">
       <div className={`relative w-full max-w-3xl my-8 rounded-2xl shadow-2xl overflow-hidden ${
-        darkMode ? 'bg-gray-800 text-white' : 'bg-white text-gray-900'
+        darkMode ? 'bg-card-dark text-white' : 'bg-white text-foreground-light'
       }`}>
         {/* Header */}
         <div className={`sticky top-0 z-10 p-4 border-b flex items-center justify-between ${
-          darkMode ? 'bg-gray-800 border-gray-700' : 'bg-white border-gray-200'
+          darkMode ? 'bg-card-dark border-border-dark' : 'bg-white border-border-light'
         }`}>
           <div className="flex items-center gap-3">
-            <div className={`p-2 rounded-xl ${darkMode ? 'bg-purple-900/50' : 'bg-purple-100'}`}>
-              <Briefcase size={24} className={darkMode ? 'text-purple-400' : 'text-purple-600'} />
+            <div className={`p-2 rounded-xl ${darkMode ? 'bg-primary-900/50' : 'bg-primary-50'}`}>
+              <Briefcase size={24} className={darkMode ? 'text-primary-300' : 'text-primary'} />
             </div>
             <div>
               <h2 className="text-xl font-bold">Relatório de Entrevista</h2>
-              <p className={`text-sm ${darkMode ? 'text-gray-400' : 'text-gray-500'}`}>
+              <p className={`text-sm ${darkMode ? 'text-muted-dark' : 'text-muted-light'}`}>
                 {report.topic}
               </p>
             </div>
@@ -208,8 +208,8 @@ export default function InterviewReportModal({
               onClick={handleDownloadPDF}
               className={`flex items-center gap-2 px-4 py-2 rounded-lg transition ${
                 darkMode 
-                  ? 'bg-purple-600 hover:bg-purple-700 text-white' 
-                  : 'bg-purple-600 hover:bg-purple-700 text-white'
+                  ? 'bg-primary hover:bg-primary-600 text-white' 
+                  : 'bg-primary hover:bg-primary-600 text-white'
               }`}
             >
               <Download size={18} />
@@ -218,7 +218,7 @@ export default function InterviewReportModal({
             <button
               onClick={onClose}
               className={`p-2 rounded-full transition ${
-                darkMode ? 'hover:bg-gray-700 text-gray-400' : 'hover:bg-gray-100 text-gray-500'
+                darkMode ? 'hover:bg-white/10 text-muted-dark' : 'hover:bg-black/5 text-muted-light'
               }`}
             >
               <X size={20} />
@@ -230,19 +230,19 @@ export default function InterviewReportModal({
         <div ref={reportRef} className="p-6 space-y-6 max-h-[70vh] overflow-y-auto">
           {/* Overview */}
           <div className="grid grid-cols-3 gap-4">
-            <div className={`p-4 rounded-xl text-center ${darkMode ? 'bg-gray-700/50' : 'bg-gray-100'}`}>
-              <User size={24} className={`mx-auto mb-2 ${darkMode ? 'text-gray-400' : 'text-gray-500'}`} />
-              <p className={`text-sm ${darkMode ? 'text-gray-400' : 'text-gray-500'}`}>Candidato</p>
+            <div className={`p-4 rounded-xl text-center ${darkMode ? 'bg-white/5' : 'bg-black/5'}`}>
+              <User size={24} className={`mx-auto mb-2 ${darkMode ? 'text-muted-dark' : 'text-muted-light'}`} />
+              <p className={`text-sm ${darkMode ? 'text-muted-dark' : 'text-muted-light'}`}>Candidato</p>
               <p className="font-semibold">{report.candidateName}</p>
             </div>
             <div className={`p-4 rounded-xl text-center ${getScoreBg(report.overallScore)}`}>
               <Target size={24} className={`mx-auto mb-2 ${getScoreColor(report.overallScore)}`} />
-              <p className={`text-sm ${darkMode ? 'text-gray-400' : 'text-gray-500'}`}>Score Geral</p>
+              <p className={`text-sm ${darkMode ? 'text-muted-dark' : 'text-muted-light'}`}>Score Geral</p>
               <p className={`text-2xl font-bold ${getScoreColor(report.overallScore)}`}>{report.overallScore}</p>
             </div>
-            <div className={`p-4 rounded-xl text-center ${darkMode ? 'bg-gray-700/50' : 'bg-gray-100'}`}>
-              <TrendingUp size={24} className={`mx-auto mb-2 ${darkMode ? 'text-gray-400' : 'text-gray-500'}`} />
-              <p className={`text-sm ${darkMode ? 'text-gray-400' : 'text-gray-500'}`}>Senioridade</p>
+            <div className={`p-4 rounded-xl text-center ${darkMode ? 'bg-white/5' : 'bg-black/5'}`}>
+              <TrendingUp size={24} className={`mx-auto mb-2 ${darkMode ? 'text-muted-dark' : 'text-muted-light'}`} />
+              <p className={`text-sm ${darkMode ? 'text-muted-dark' : 'text-muted-light'}`}>Senioridade</p>
               <span className={`inline-block px-3 py-1 rounded-full text-sm font-semibold ${getSeniorityBadge()}`}>
                 {report.seniorityLevel.level.toUpperCase()}
               </span>
@@ -255,7 +255,7 @@ export default function InterviewReportModal({
               {getRecommendationIcon()}
               <div>
                 <h3 className="font-semibold">{report.recommendation.title}</h3>
-                <p className={`text-sm ${darkMode ? 'text-gray-300' : 'text-gray-600'}`}>
+                <p className={`text-sm ${darkMode ? 'text-foreground-dark' : 'text-muted-light'}`}>
                   {report.recommendation.description}
                 </p>
               </div>
@@ -264,22 +264,22 @@ export default function InterviewReportModal({
 
           {/* Soft Skills */}
           <div>
-            <h3 className={`flex items-center gap-2 text-lg font-semibold mb-4 ${darkMode ? 'text-white' : 'text-gray-900'}`}>
-              <Brain size={20} className={darkMode ? 'text-purple-400' : 'text-purple-600'} />
+            <h3 className={`flex items-center gap-2 text-lg font-semibold mb-4 ${darkMode ? 'text-white' : 'text-foreground-light'}`}>
+              <Brain size={20} className={darkMode ? 'text-primary-300' : 'text-primary'} />
               Soft Skills
             </h3>
             <div className="space-y-4">
               {report.softSkills.map((skill, index) => (
                 <div key={index}>
                   <div className="flex justify-between items-center mb-1">
-                    <span className={`text-sm font-medium ${darkMode ? 'text-gray-300' : 'text-gray-700'}`}>
+                    <span className={`text-sm font-medium ${darkMode ? 'text-foreground-dark' : 'text-muted-light'}`}>
                       {skill.name}
                     </span>
                     <span className={`text-sm font-semibold ${getScoreColor(skill.score)}`}>
                       {skill.score}%
                     </span>
                   </div>
-                  <div className={`h-2 rounded-full ${darkMode ? 'bg-gray-700' : 'bg-gray-200'}`}>
+                  <div className={`h-2 rounded-full ${darkMode ? 'bg-white/5' : 'bg-black/5'}`}>
                     <div
                       className={`h-full rounded-full transition-all ${
                         skill.score >= 70 ? 'bg-green-500' : skill.score >= 50 ? 'bg-yellow-500' : 'bg-red-500'
@@ -287,7 +287,7 @@ export default function InterviewReportModal({
                       style={{ width: `${skill.score}%` }}
                     />
                   </div>
-                  <p className={`text-xs mt-1 ${darkMode ? 'text-gray-500' : 'text-gray-400'}`}>
+                  <p className={`text-xs mt-1 ${darkMode ? 'text-muted-light' : 'text-muted-dark'}`}>
                     {skill.description}
                   </p>
                 </div>
@@ -297,13 +297,13 @@ export default function InterviewReportModal({
 
           {/* Technical Analysis */}
           <div>
-            <h3 className={`flex items-center gap-2 text-lg font-semibold mb-4 ${darkMode ? 'text-white' : 'text-gray-900'}`}>
+            <h3 className={`flex items-center gap-2 text-lg font-semibold mb-4 ${darkMode ? 'text-white' : 'text-foreground-light'}`}>
               <Briefcase size={20} className={darkMode ? 'text-blue-400' : 'text-blue-600'} />
               Análise Técnica
             </h3>
-            <div className={`p-4 rounded-xl ${darkMode ? 'bg-gray-700/50' : 'bg-gray-100'}`}>
+            <div className={`p-4 rounded-xl ${darkMode ? 'bg-white/5' : 'bg-black/5'}`}>
               <div className="flex justify-between items-center mb-2">
-                <span className={darkMode ? 'text-gray-300' : 'text-gray-700'}>
+                <span className={darkMode ? 'text-foreground-dark' : 'text-muted-light'}>
                   Área: <strong>{report.technicalAnalysis.area}</strong>
                 </span>
                 <span className={`font-semibold ${getScoreColor(report.technicalAnalysis.score)}`}>
@@ -315,14 +315,14 @@ export default function InterviewReportModal({
               {report.technicalAnalysis.alignment !== undefined && (
                 <div className="mb-3">
                   <div className="flex justify-between items-center mb-1">
-                    <span className={`text-sm ${darkMode ? 'text-gray-400' : 'text-gray-500'}`}>
+                    <span className={`text-sm ${darkMode ? 'text-muted-dark' : 'text-muted-light'}`}>
                       Alinhamento com a vaga
                     </span>
                     <span className={`text-sm font-semibold ${getScoreColor(report.technicalAnalysis.alignment)}`}>
                       {report.technicalAnalysis.alignment}%
                     </span>
                   </div>
-                  <div className={`h-2 rounded-full ${darkMode ? 'bg-gray-600' : 'bg-gray-300'}`}>
+                  <div className={`h-2 rounded-full ${darkMode ? 'bg-white/10' : 'bg-black/10'}`}>
                     <div
                       className={`h-full rounded-full transition-all ${
                         report.technicalAnalysis.alignment >= 70 ? 'bg-green-500' : 
@@ -334,14 +334,14 @@ export default function InterviewReportModal({
                 </div>
               )}
               
-              <p className={`text-sm ${darkMode ? 'text-gray-400' : 'text-gray-500'}`}>
+              <p className={`text-sm ${darkMode ? 'text-muted-dark' : 'text-muted-light'}`}>
                 {report.technicalAnalysis.description}
               </p>
               
               {/* Tecnologias da vaga */}
               {report.jobTechnologies && report.jobTechnologies.length > 0 && (
                 <div className="mt-3">
-                  <p className={`text-xs mb-2 ${darkMode ? 'text-gray-500' : 'text-gray-400'}`}>
+                  <p className={`text-xs mb-2 ${darkMode ? 'text-muted-light' : 'text-muted-dark'}`}>
                     Tecnologias requeridas pela vaga:
                   </p>
                   <div className="flex flex-wrap gap-2">
@@ -353,7 +353,7 @@ export default function InterviewReportModal({
                           className={`px-2 py-1 rounded text-xs ${
                             isRelevant
                               ? darkMode ? 'bg-green-900/50 text-green-300 border border-green-700' : 'bg-green-100 text-green-700 border border-green-300'
-                              : darkMode ? 'bg-gray-600 text-gray-400' : 'bg-gray-200 text-gray-500'
+                              : darkMode ? 'bg-white/10 text-muted-dark' : 'bg-black/5 text-muted-light'
                           }`}
                         >
                           {isRelevant ? '✓ ' : ''}{tech}
@@ -367,7 +367,7 @@ export default function InterviewReportModal({
               {/* Tecnologias mencionadas pelo candidato */}
               {report.technicalAnalysis.mentionedTechnologies.length > 0 && (
                 <div className="mt-3">
-                  <p className={`text-xs mb-2 ${darkMode ? 'text-gray-500' : 'text-gray-400'}`}>
+                  <p className={`text-xs mb-2 ${darkMode ? 'text-muted-light' : 'text-muted-dark'}`}>
                     Tecnologias mencionadas pelo candidato:
                   </p>
                   <div className="flex flex-wrap gap-2">
@@ -421,8 +421,8 @@ export default function InterviewReportModal({
 
           {/* Summary */}
           {report.summary && (
-            <div className={`p-4 rounded-xl ${darkMode ? 'bg-gray-700/30' : 'bg-gray-50'}`}>
-              <p className={`text-sm ${darkMode ? 'text-gray-300' : 'text-gray-600'}`}>
+            <div className={`p-4 rounded-xl ${darkMode ? 'bg-white/5' : 'bg-black/3'}`}>
+              <p className={`text-sm ${darkMode ? 'text-foreground-dark' : 'text-muted-light'}`}>
                 {report.summary}
               </p>
             </div>
@@ -430,8 +430,8 @@ export default function InterviewReportModal({
 
           {/* Score Breakdown */}
           {report.scoreBreakdown && (
-            <div className={`p-4 rounded-xl ${darkMode ? 'bg-indigo-900/20' : 'bg-indigo-50'}`}>
-              <h4 className={`font-semibold mb-3 text-sm ${darkMode ? 'text-indigo-300' : 'text-indigo-700'}`}>
+            <div className={`p-4 rounded-xl ${darkMode ? 'bg-primary-900/20' : 'bg-primary-50'}`}>
+              <h4 className={`font-semibold mb-3 text-sm ${darkMode ? 'text-primary-300' : 'text-primary-700'}`}>
                 Composição do Score
               </h4>
               <div className="grid grid-cols-2 gap-3">
@@ -442,7 +442,7 @@ export default function InterviewReportModal({
                   { label: 'Comunicação', score: report.scoreBreakdown.communicationScore, weight: report.scoreBreakdown.weights.communication },
                 ].map((item, i) => (
                   <div key={i} className="flex items-center justify-between">
-                    <span className={`text-xs ${darkMode ? 'text-gray-400' : 'text-gray-500'}`}>
+                    <span className={`text-xs ${darkMode ? 'text-muted-dark' : 'text-muted-light'}`}>
                       {item.label} ({item.weight}%)
                     </span>
                     <span className={`text-sm font-semibold ${getScoreColor(item.score)}`}>
@@ -451,8 +451,8 @@ export default function InterviewReportModal({
                   </div>
                 ))}
               </div>
-              <div className={`mt-2 pt-2 border-t ${darkMode ? 'border-indigo-800' : 'border-indigo-200'} flex justify-between`}>
-                <span className={`text-xs font-medium ${darkMode ? 'text-gray-300' : 'text-gray-600'}`}>Score Final (ponderado)</span>
+              <div className={`mt-2 pt-2 border-t ${darkMode ? 'border-primary-800' : 'border-primary-200'} flex justify-between`}>
+                <span className={`text-xs font-medium ${darkMode ? 'text-foreground-dark' : 'text-muted-light'}`}>Score Final (ponderado)</span>
                 <span className={`text-sm font-bold ${getScoreColor(report.overallScore)}`}>{report.overallScore}</span>
               </div>
             </div>
@@ -468,19 +468,19 @@ export default function InterviewReportModal({
               <div className="space-y-3">
                 {report.evidence.technical && (
                   <div>
-                    <p className={`text-xs font-medium ${darkMode ? 'text-gray-400' : 'text-gray-500'}`}>Técnico:</p>
+                    <p className={`text-xs font-medium ${darkMode ? 'text-muted-dark' : 'text-muted-light'}`}>Técnico:</p>
                     <p className={`text-sm italic ${darkMode ? 'text-cyan-200' : 'text-cyan-800'}`}>"{report.evidence.technical}"</p>
                   </div>
                 )}
                 {report.evidence.experience && (
                   <div>
-                    <p className={`text-xs font-medium ${darkMode ? 'text-gray-400' : 'text-gray-500'}`}>Experiência:</p>
+                    <p className={`text-xs font-medium ${darkMode ? 'text-muted-dark' : 'text-muted-light'}`}>Experiência:</p>
                     <p className={`text-sm italic ${darkMode ? 'text-cyan-200' : 'text-cyan-800'}`}>"{report.evidence.experience}"</p>
                   </div>
                 )}
                 {report.evidence.communication && (
                   <div>
-                    <p className={`text-xs font-medium ${darkMode ? 'text-gray-400' : 'text-gray-500'}`}>Comunicação:</p>
+                    <p className={`text-xs font-medium ${darkMode ? 'text-muted-dark' : 'text-muted-light'}`}>Comunicação:</p>
                     <p className={`text-sm italic ${darkMode ? 'text-cyan-200' : 'text-cyan-800'}`}>"{report.evidence.communication}"</p>
                   </div>
                 )}
@@ -490,16 +490,16 @@ export default function InterviewReportModal({
 
           {/* Soft Skills Evidence */}
           {report.softSkills.some(s => s.evidence) && (
-            <div className={`p-4 rounded-xl ${darkMode ? 'bg-purple-900/20' : 'bg-purple-50'}`}>
-              <h4 className={`font-semibold mb-3 flex items-center gap-2 text-sm ${darkMode ? 'text-purple-300' : 'text-purple-700'}`}>
+            <div className={`p-4 rounded-xl ${darkMode ? 'bg-primary-900/20' : 'bg-primary-50'}`}>
+              <h4 className={`font-semibold mb-3 flex items-center gap-2 text-sm ${darkMode ? 'text-primary-300' : 'text-primary-700'}`}>
                 <MessageSquare size={18} />
                 Evidências por Soft Skill
               </h4>
               <div className="space-y-2">
                 {report.softSkills.filter(s => s.evidence).map((skill, i) => (
                   <div key={i}>
-                    <p className={`text-xs font-medium ${darkMode ? 'text-gray-400' : 'text-gray-500'}`}>{skill.name}:</p>
-                    <p className={`text-sm italic ${darkMode ? 'text-purple-200' : 'text-purple-800'}`}>"{skill.evidence}"</p>
+                    <p className={`text-xs font-medium ${darkMode ? 'text-muted-dark' : 'text-muted-light'}`}>{skill.name}:</p>
+                    <p className={`text-sm italic ${darkMode ? 'text-primary-200' : 'text-primary-800'}`}>"{skill.evidence}"</p>
                   </div>
                 ))}
               </div>
@@ -508,13 +508,13 @@ export default function InterviewReportModal({
 
           {/* Recommendation Details */}
           {report.recommendation.details && report.recommendation.details.length > 0 && (
-            <div className={`p-3 rounded-lg ${darkMode ? 'bg-gray-700/30' : 'bg-gray-50'}`}>
-              <p className={`text-xs font-medium mb-2 ${darkMode ? 'text-gray-400' : 'text-gray-500'}`}>
+            <div className={`p-3 rounded-lg ${darkMode ? 'bg-white/5' : 'bg-black/3'}`}>
+              <p className={`text-xs font-medium mb-2 ${darkMode ? 'text-muted-dark' : 'text-muted-light'}`}>
                 Detalhes da avaliação:
               </p>
               <ul className="space-y-1">
                 {report.recommendation.details.map((detail, i) => (
-                  <li key={i} className={`text-xs ${darkMode ? 'text-gray-400' : 'text-gray-500'}`}>
+                  <li key={i} className={`text-xs ${darkMode ? 'text-muted-dark' : 'text-muted-light'}`}>
                     • {detail}
                   </li>
                 ))}
@@ -524,7 +524,7 @@ export default function InterviewReportModal({
 
           {/* Calibration Section */}
           {meetingId && userLogin && (
-            <div className={`p-4 rounded-xl border ${darkMode ? 'bg-gray-700/30 border-gray-600' : 'bg-gray-50 border-gray-200'}`}>
+            <div className={`p-4 rounded-xl border ${darkMode ? 'bg-white/5 border-border-dark' : 'bg-black/3 border-border-light'}`}>
               {!showCalibration && !calibrationSent ? (
                 <button
                   onClick={() => setShowCalibration(true)}
@@ -539,26 +539,26 @@ export default function InterviewReportModal({
                 </p>
               ) : (
                 <div className="space-y-3">
-                  <h4 className={`font-semibold text-sm flex items-center gap-2 ${darkMode ? 'text-gray-300' : 'text-gray-700'}`}>
+                  <h4 className={`font-semibold text-sm flex items-center gap-2 ${darkMode ? 'text-foreground-dark' : 'text-muted-light'}`}>
                     <Shield size={16} /> Calibração do Entrevistador
                   </h4>
                   <label className="flex items-center gap-2">
                     <input type="checkbox" checked={calibration.agreedWithScore}
                       onChange={e => setCalibration(c => ({ ...c, agreedWithScore: e.target.checked }))} />
-                    <span className={`text-sm ${darkMode ? 'text-gray-300' : 'text-gray-600'}`}>Concordo com o score ({report.overallScore})</span>
+                    <span className={`text-sm ${darkMode ? 'text-foreground-dark' : 'text-muted-light'}`}>Concordo com o score ({report.overallScore})</span>
                   </label>
                   {!calibration.agreedWithScore && (
                     <input type="number" min={0} max={100} placeholder="Score sugerido (0-100)"
-                      className={`w-full px-3 py-1.5 rounded text-sm ${darkMode ? 'bg-gray-600 text-white' : 'bg-white border'}`}
+                      className={`w-full px-3 py-1.5 rounded text-sm ${darkMode ? 'bg-white/10 text-white' : 'bg-white border'}`}
                       onChange={e => setCalibration(c => ({ ...c, suggestedScore: Number(e.target.value) }))} />
                   )}
                   <label className="flex items-center gap-2">
                     <input type="checkbox" checked={calibration.agreedWithDecision}
                       onChange={e => setCalibration(c => ({ ...c, agreedWithDecision: e.target.checked }))} />
-                    <span className={`text-sm ${darkMode ? 'text-gray-300' : 'text-gray-600'}`}>Concordo com a decisão ({report.recommendation.decision})</span>
+                    <span className={`text-sm ${darkMode ? 'text-foreground-dark' : 'text-muted-light'}`}>Concordo com a decisão ({report.recommendation.decision})</span>
                   </label>
                   <textarea placeholder="Comentários adicionais..." rows={2}
-                    className={`w-full px-3 py-1.5 rounded text-sm ${darkMode ? 'bg-gray-600 text-white' : 'bg-white border'}`}
+                    className={`w-full px-3 py-1.5 rounded text-sm ${darkMode ? 'bg-white/10 text-white' : 'bg-white border'}`}
                     onChange={e => setCalibration(c => ({ ...c, comments: e.target.value }))} />
                   <div className="flex gap-2">
                     <button onClick={handleSubmitCalibration}
@@ -566,7 +566,7 @@ export default function InterviewReportModal({
                       Enviar
                     </button>
                     <button onClick={() => setShowCalibration(false)}
-                      className={`px-4 py-1.5 rounded text-sm ${darkMode ? 'bg-gray-600 text-gray-300' : 'bg-gray-200 text-gray-600'}`}>
+                      className={`px-4 py-1.5 rounded text-sm ${darkMode ? 'bg-white/10 text-foreground-dark' : 'bg-black/5 text-muted-light'}`}>
                       Cancelar
                     </button>
                   </div>
@@ -576,7 +576,7 @@ export default function InterviewReportModal({
           )}
 
           {/* Footer */}
-          <div className={`text-center text-xs pt-4 border-t ${darkMode ? 'border-gray-700 text-gray-500' : 'border-gray-200 text-gray-400'}`}>
+          <div className={`text-center text-xs pt-4 border-t ${darkMode ? 'border-border-dark text-muted-light' : 'border-border-light text-muted-dark'}`}>
             <p>Relatório gerado em {new Date(report.generatedAt).toLocaleString('pt-BR')}</p>
             <p>
               {report.candidateResponseCount !== undefined 

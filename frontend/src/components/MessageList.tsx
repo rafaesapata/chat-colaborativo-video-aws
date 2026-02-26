@@ -34,11 +34,11 @@ export default function MessageList({ messages, currentUserId, speakingUsers }: 
   const getUserColor = (userId: string) => {
     const colors = [
       'bg-blue-500',
-      'bg-purple-500',
+      'bg-primary',
       'bg-green-500',
       'bg-orange-500',
       'bg-pink-500',
-      'bg-indigo-500',
+      'bg-primary-500',
     ];
     const index = userId.charCodeAt(userId.length - 1) % colors.length;
     return colors[index];
@@ -47,7 +47,7 @@ export default function MessageList({ messages, currentUserId, speakingUsers }: 
   return (
     <div className="flex-1 overflow-y-auto p-6 space-y-4 bg-slate-50">
       {messages.length === 0 && (
-        <div className="flex flex-col items-center justify-center h-full text-gray-400">
+        <div className="flex flex-col items-center justify-center h-full text-muted-dark">
           <svg className="w-16 h-16 mb-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
             <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 12h.01M12 12h.01M16 12h.01M21 12c0 4.418-4.03 8-9 8a9.863 9.863 0 01-4.255-.949L3 20l1.395-3.72C3.512 15.042 3 13.574 3 12c0-4.418 4.03-8 9-8s9 3.582 9 8z" />
           </svg>
@@ -84,10 +84,10 @@ export default function MessageList({ messages, currentUserId, speakingUsers }: 
             {/* Message Content */}
             <div className={`flex-1 max-w-lg ${isOwn ? 'items-end' : 'items-start'} flex flex-col`}>
               <div className="flex items-center gap-2 mb-1">
-                <span className="text-sm font-semibold text-gray-700">
+                <span className="text-sm font-semibold text-muted-light">
                   {isOwn ? 'Você' : message.userName}
                 </span>
-                <span className="text-xs text-gray-400">
+                <span className="text-xs text-muted-dark">
                   {formatTime(message.timestamp)}
                 </span>
               </div>
@@ -95,7 +95,7 @@ export default function MessageList({ messages, currentUserId, speakingUsers }: 
                 className={`px-4 py-2.5 rounded-2xl shadow-sm ${
                   isOwn
                     ? 'bg-blue-600 text-white rounded-tr-sm'
-                    : 'bg-white text-gray-800 rounded-tl-sm'
+                    : 'bg-white text-foreground-light rounded-tl-sm'
                 }`}
               >
                 <p className="text-sm leading-relaxed whitespace-pre-wrap break-words">

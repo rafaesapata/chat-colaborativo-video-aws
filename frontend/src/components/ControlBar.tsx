@@ -125,7 +125,7 @@ export default function ControlBar({
       >
         <div className={`flex items-center ${isMobile ? 'gap-1 px-2.5 py-1.5' : 'gap-1.5 px-4 py-2'} rounded-xl shadow-lg backdrop-blur-xl ${
           darkMode 
-            ? 'bg-gray-900/40 border border-white/10' 
+            ? 'bg-surface-dark/40 border border-white/10' 
             : 'bg-white/30 border border-white/20'
         }`}
         style={{ 
@@ -140,7 +140,7 @@ export default function ControlBar({
                 ? 'bg-red-500/90 text-white'
                 : darkMode
                 ? 'bg-white/10 text-white hover:bg-white/20'
-                : 'bg-black/5 text-gray-700 hover:bg-black/10'
+                : 'bg-black/5 text-muted-light hover:bg-black/10'
             }`}
             title={isMuted ? 'Ativar microfone' : 'Desativar microfone'}
           >
@@ -155,7 +155,7 @@ export default function ControlBar({
                 ? 'bg-red-500/90 text-white'
                 : darkMode
                 ? 'bg-white/10 text-white hover:bg-white/20'
-                : 'bg-black/5 text-gray-700 hover:bg-black/10'
+                : 'bg-black/5 text-muted-light hover:bg-black/10'
             }`}
             title={isVideoOff ? 'Ativar câmera' : 'Desativar câmera'}
           >
@@ -173,7 +173,7 @@ export default function ControlBar({
                     : 'bg-blue-500/90 text-white'
                   : darkMode
                   ? 'bg-white/10 text-white hover:bg-white/20'
-                  : 'bg-black/5 text-gray-700 hover:bg-black/10'
+                  : 'bg-black/5 text-muted-light hover:bg-black/10'
               }`}
               title={isSpeakerMode ? 'Alto-falante ativo' : 'Fone de ouvido'}
             >
@@ -190,7 +190,7 @@ export default function ControlBar({
                   ? 'bg-blue-500/90 text-white'
                   : darkMode
                   ? 'bg-white/10 text-white hover:bg-white/20'
-                  : 'bg-black/5 text-gray-700 hover:bg-black/10'
+                  : 'bg-black/5 text-muted-light hover:bg-black/10'
               }`}
               title="Configurações"
             >
@@ -202,7 +202,7 @@ export default function ControlBar({
               <div 
                 className={`absolute bottom-full left-1/2 -translate-x-1/2 mb-3 rounded-xl shadow-xl overflow-hidden ${
                   darkMode 
-                    ? 'bg-gray-900/40 border border-white/10' 
+                    ? 'bg-surface-dark/40 border border-white/10' 
                     : 'bg-white/30 border border-white/20'
                 }`}
                 style={{ 
@@ -213,12 +213,12 @@ export default function ControlBar({
               >
                 <div className={`px-2.5 py-1.5 border-b ${darkMode ? 'border-white/10' : 'border-black/10'}`}>
                   <div className="flex items-center justify-between">
-                    <span className={`text-[10px] font-semibold ${darkMode ? 'text-white/70' : 'text-gray-600'}`}>
+                    <span className={`text-[10px] font-semibold ${darkMode ? 'text-white/70' : 'text-muted-light'}`}>
                       Configurações
                     </span>
                     <button 
                       onClick={() => setShowSettingsMenu(false)}
-                      className={`p-0.5 rounded hover:bg-white/10 ${darkMode ? 'text-white/70' : 'text-gray-500'}`}
+                      className={`p-0.5 rounded hover:bg-white/10 ${darkMode ? 'text-white/70' : 'text-muted-light'}`}
                     >
                       <X size={12} />
                     </button>
@@ -233,7 +233,7 @@ export default function ControlBar({
                       className={`w-full px-2.5 py-2 flex items-center gap-2.5 transition-colors ${
                         darkMode 
                           ? 'hover:bg-white/10 text-white' 
-                          : 'hover:bg-black/5 text-gray-700'
+                          : 'hover:bg-black/5 text-muted-light'
                       }`}
                     >
                       <div className={`w-6 h-6 rounded-md flex items-center justify-center ${
@@ -244,14 +244,14 @@ export default function ControlBar({
                         <Monitor size={13} />
                       </div>
                       <div className="flex-1 text-left">
-                        <div className={`text-xs font-medium ${darkMode ? 'text-white' : 'text-gray-900'}`}>
+                        <div className={`text-xs font-medium ${darkMode ? 'text-white' : 'text-foreground-light'}`}>
                           Compartilhar Tela
                         </div>
-                        <div className={`text-[10px] ${darkMode ? 'text-white/50' : 'text-gray-500'}`}>
+                        <div className={`text-[10px] ${darkMode ? 'text-white/50' : 'text-muted-light'}`}>
                           {isScreenSharing ? 'Compartilhando' : 'Desativado'}
                         </div>
                       </div>
-                      <div className={`w-1.5 h-1.5 rounded-full ${isScreenSharing ? 'bg-blue-500' : darkMode ? 'bg-white/30' : 'bg-gray-400'}`} />
+                      <div className={`w-1.5 h-1.5 rounded-full ${isScreenSharing ? 'bg-blue-500' : darkMode ? 'bg-white/30' : 'bg-black/15'}`} />
                     </button>
                   )}
 
@@ -262,25 +262,25 @@ export default function ControlBar({
                       className={`w-full px-2.5 py-2 flex items-center gap-2.5 transition-colors ${
                         darkMode 
                           ? 'hover:bg-white/10 text-white' 
-                          : 'hover:bg-black/5 text-gray-700'
+                          : 'hover:bg-black/5 text-muted-light'
                       }`}
                     >
                       <div className={`w-6 h-6 rounded-md flex items-center justify-center ${
                         hasBackgroundEffect 
-                          ? 'bg-purple-500/90 text-white' 
+                          ? 'bg-primary/90 text-white' 
                           : darkMode ? 'bg-white/10' : 'bg-black/10'
                       }`}>
                         <Image size={13} />
                       </div>
                       <div className="flex-1 text-left">
-                        <div className={`text-xs font-medium ${darkMode ? 'text-white' : 'text-gray-900'}`}>
+                        <div className={`text-xs font-medium ${darkMode ? 'text-white' : 'text-foreground-light'}`}>
                           Fundo de Tela
                         </div>
-                        <div className={`text-[10px] ${darkMode ? 'text-white/50' : 'text-gray-500'}`}>
+                        <div className={`text-[10px] ${darkMode ? 'text-white/50' : 'text-muted-light'}`}>
                           {hasBackgroundEffect ? 'Efeito ativo' : 'Sem efeito'}
                         </div>
                       </div>
-                      <div className={`w-1.5 h-1.5 rounded-full ${hasBackgroundEffect ? 'bg-purple-500' : darkMode ? 'bg-white/30' : 'bg-gray-400'}`} />
+                      <div className={`w-1.5 h-1.5 rounded-full ${hasBackgroundEffect ? 'bg-primary' : darkMode ? 'bg-white/30' : 'bg-black/15'}`} />
                     </button>
                   )}
 
@@ -291,7 +291,7 @@ export default function ControlBar({
                       className={`w-full px-2.5 py-2 flex items-center gap-2.5 transition-colors ${
                         darkMode 
                           ? 'hover:bg-white/10 text-white' 
-                          : 'hover:bg-black/5 text-gray-700'
+                          : 'hover:bg-black/5 text-muted-light'
                       }`}
                     >
                       <div className={`w-6 h-6 rounded-md flex items-center justify-center ${
@@ -302,14 +302,14 @@ export default function ControlBar({
                         {isTranscriptionActive ? <FileText size={13} /> : <FileTextIcon size={13} />}
                       </div>
                       <div className="flex-1 text-left">
-                        <div className={`text-xs font-medium ${darkMode ? 'text-white' : 'text-gray-900'}`}>
+                        <div className={`text-xs font-medium ${darkMode ? 'text-white' : 'text-foreground-light'}`}>
                           Transcrição
                         </div>
-                        <div className={`text-[10px] ${darkMode ? 'text-white/50' : 'text-gray-500'}`}>
+                        <div className={`text-[10px] ${darkMode ? 'text-white/50' : 'text-muted-light'}`}>
                           {isTranscriptionActive ? 'Ativa' : 'Desativada'}
                         </div>
                       </div>
-                      <div className={`w-1.5 h-1.5 rounded-full ${isTranscriptionActive ? 'bg-green-500' : darkMode ? 'bg-white/30' : 'bg-gray-400'}`} />
+                      <div className={`w-1.5 h-1.5 rounded-full ${isTranscriptionActive ? 'bg-green-500' : darkMode ? 'bg-white/30' : 'bg-black/15'}`} />
                     </button>
                   )}
 
@@ -321,7 +321,7 @@ export default function ControlBar({
                         className={`w-full px-2.5 py-2 flex items-center gap-2.5 transition-colors ${
                           darkMode 
                             ? 'hover:bg-white/10 text-white' 
-                            : 'hover:bg-black/5 text-gray-700'
+                            : 'hover:bg-black/5 text-muted-light'
                         }`}
                       >
                         <div className={`w-6 h-6 rounded-md flex items-center justify-center ${
@@ -330,10 +330,10 @@ export default function ControlBar({
                           <Headphones size={13} />
                         </div>
                         <div className="flex-1 text-left">
-                          <div className={`text-xs font-medium ${darkMode ? 'text-white' : 'text-gray-900'}`}>
+                          <div className={`text-xs font-medium ${darkMode ? 'text-white' : 'text-foreground-light'}`}>
                             Dispositivos
                           </div>
-                          <div className={`text-[10px] ${darkMode ? 'text-white/50' : 'text-gray-500'}`}>
+                          <div className={`text-[10px] ${darkMode ? 'text-white/50' : 'text-muted-light'}`}>
                             Câmera, Mic, Áudio
                           </div>
                         </div>
@@ -348,7 +348,7 @@ export default function ControlBar({
                           {/* Câmera */}
                           {videoInputDevices.length > 0 && onChangeVideoInput && (
                             <div className="mb-2">
-                              <label className={`block text-[10px] font-medium mb-1 ${darkMode ? 'text-white/60' : 'text-gray-500'}`}>
+                              <label className={`block text-[10px] font-medium mb-1 ${darkMode ? 'text-white/60' : 'text-muted-light'}`}>
                                 Câmera
                               </label>
                               <select
@@ -356,8 +356,8 @@ export default function ControlBar({
                                 onChange={(e) => onChangeVideoInput(e.target.value)}
                                 className={`w-full px-2 py-1.5 rounded text-xs ${
                                   darkMode 
-                                    ? 'bg-gray-800 border-gray-700 text-white' 
-                                    : 'bg-white border-gray-200 text-gray-900'
+                                    ? 'bg-card-dark border-border-dark text-white' 
+                                    : 'bg-white border-border-light text-foreground-light'
                                 } border`}
                               >
                                 {videoInputDevices.map(device => (
@@ -372,7 +372,7 @@ export default function ControlBar({
                           {/* Microfone */}
                           {audioInputDevices.length > 0 && onChangeAudioInput && (
                             <div className="mb-2">
-                              <label className={`block text-[10px] font-medium mb-1 ${darkMode ? 'text-white/60' : 'text-gray-500'}`}>
+                              <label className={`block text-[10px] font-medium mb-1 ${darkMode ? 'text-white/60' : 'text-muted-light'}`}>
                                 Microfone
                               </label>
                               <select
@@ -380,8 +380,8 @@ export default function ControlBar({
                                 onChange={(e) => onChangeAudioInput(e.target.value)}
                                 className={`w-full px-2 py-1.5 rounded text-xs ${
                                   darkMode 
-                                    ? 'bg-gray-800 border-gray-700 text-white' 
-                                    : 'bg-white border-gray-200 text-gray-900'
+                                    ? 'bg-card-dark border-border-dark text-white' 
+                                    : 'bg-white border-border-light text-foreground-light'
                                 } border`}
                               >
                                 {audioInputDevices.map(device => (
@@ -396,7 +396,7 @@ export default function ControlBar({
                           {/* Saída de Áudio */}
                           {audioOutputDevices.length > 0 && onChangeAudioOutput && (
                             <div>
-                              <label className={`block text-[10px] font-medium mb-1 ${darkMode ? 'text-white/60' : 'text-gray-500'}`}>
+                              <label className={`block text-[10px] font-medium mb-1 ${darkMode ? 'text-white/60' : 'text-muted-light'}`}>
                                 Saída de Áudio
                               </label>
                               <select
@@ -404,8 +404,8 @@ export default function ControlBar({
                                 onChange={(e) => onChangeAudioOutput(e.target.value)}
                                 className={`w-full px-2 py-1.5 rounded text-xs ${
                                   darkMode 
-                                    ? 'bg-gray-800 border-gray-700 text-white' 
-                                    : 'bg-white border-gray-200 text-gray-900'
+                                    ? 'bg-card-dark border-border-dark text-white' 
+                                    : 'bg-white border-border-light text-foreground-light'
                                 } border`}
                               >
                                 {audioOutputDevices.map(device => (
@@ -453,8 +453,8 @@ export default function ControlBar({
               isRecording
                 ? 'bg-red-500 text-white border border-red-400 animate-pulse'
                 : darkMode 
-                  ? 'bg-gray-900/60 text-white border border-white/10' 
-                  : 'bg-white/40 text-gray-700 border border-white/30'
+                  ? 'bg-surface-dark/60 text-white border border-white/10' 
+                  : 'bg-white/40 text-muted-light border border-white/30'
             }`}
             style={{ 
               backdropFilter: 'blur(20px)',
@@ -477,8 +477,8 @@ export default function ControlBar({
             onClick={onToggleTranscriptionPanel}
             className={`relative ${roundButtonSize} rounded-full flex items-center justify-center transition-all duration-150 hover:scale-105 active:scale-95 shadow-lg backdrop-blur-xl ${
               darkMode 
-                ? 'bg-gray-900/60 text-white border border-white/10' 
-                : 'bg-white/40 text-gray-700 border border-white/30'
+                ? 'bg-surface-dark/60 text-white border border-white/10' 
+                : 'bg-white/40 text-muted-light border border-white/30'
             }`}
             style={{ 
               backdropFilter: 'blur(20px)',
@@ -490,7 +490,7 @@ export default function ControlBar({
             
             {/* Transcription Badge */}
             {transcriptionCount > 0 && (
-              <div className={`absolute -top-1 -right-1 ${isMobile ? 'w-4 h-4 text-[10px]' : 'w-5 h-5 text-xs'} bg-purple-500 text-white rounded-full flex items-center justify-center font-medium`}>
+              <div className={`absolute -top-1 -right-1 ${isMobile ? 'w-4 h-4 text-[10px]' : 'w-5 h-5 text-xs'} bg-primary text-white rounded-full flex items-center justify-center font-medium`}>
                 {transcriptionCount > 9 ? '9+' : transcriptionCount}
               </div>
             )}
@@ -502,8 +502,8 @@ export default function ControlBar({
           onClick={onToggleChat}
           className={`relative ${roundButtonSize} rounded-full flex items-center justify-center transition-all duration-150 hover:scale-105 active:scale-95 shadow-lg backdrop-blur-xl ${
             darkMode 
-              ? 'bg-gray-900/60 text-white border border-white/10' 
-              : 'bg-white/40 text-gray-700 border border-white/30'
+              ? 'bg-surface-dark/60 text-white border border-white/10' 
+              : 'bg-white/40 text-muted-light border border-white/30'
           }`}
           style={{ 
             backdropFilter: 'blur(20px)',

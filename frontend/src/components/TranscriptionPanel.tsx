@@ -43,7 +43,7 @@ export default function TranscriptionPanel({
         className={`fixed right-0 top-0 h-full z-50 transition-transform duration-350 cubic-bezier(0.4, 0, 0.2, 1) backdrop-blur-xl flex flex-col ${
           isOpen ? 'translate-x-0' : 'translate-x-full'
         } ${isMobile ? 'w-full' : 'w-96'} ${darkMode 
-          ? 'bg-gray-900/40 border-l border-white/10' 
+          ? 'bg-surface-dark/40 border-l border-white/10' 
           : 'bg-white/40 border-l border-white/20'
         }`}
         style={{ 
@@ -56,7 +56,7 @@ export default function TranscriptionPanel({
           darkMode ? 'border-white/10' : 'border-black/5'
         }`}>
           <div className="flex items-center gap-2">
-            <h2 className={`${isMobile ? 'text-base' : 'text-lg'} font-semibold ${darkMode ? 'text-white' : 'text-gray-900'}`}>
+            <h2 className={`${isMobile ? 'text-base' : 'text-lg'} font-semibold ${darkMode ? 'text-white' : 'text-foreground-light'}`}>
               Transcrições
             </h2>
             {isRecording && (
@@ -74,12 +74,12 @@ export default function TranscriptionPanel({
               disabled={!isSpeechRecognitionSupported}
               className={`${isMobile ? 'px-2 py-1 text-xs' : 'px-3 py-1.5 text-sm'} rounded-lg font-medium transition flex items-center gap-1.5 ${
                 !isSpeechRecognitionSupported
-                  ? 'bg-gray-100 text-gray-400 cursor-not-allowed'
+                  ? 'bg-black/5 text-muted-dark cursor-not-allowed'
                   : isTranscriptionEnabled
                   ? 'bg-red-100 text-red-700 hover:bg-red-200'
                   : darkMode
-                  ? 'bg-gray-700 text-gray-300 hover:bg-gray-600'
-                  : 'bg-gray-100 text-gray-700 hover:bg-gray-200'
+                  ? 'bg-white/5 text-foreground-dark hover:bg-white/15'
+                  : 'bg-black/5 text-muted-light hover:bg-black/5'
               }`}
               title={
                 !isSpeechRecognitionSupported
@@ -97,7 +97,7 @@ export default function TranscriptionPanel({
             <button
               onClick={onClose}
               className={`${isMobile ? 'w-9 h-9' : 'w-10 h-10'} rounded-lg flex items-center justify-center transition-all duration-150 hover:rotate-90 ${
-                darkMode ? 'hover:bg-gray-700 text-gray-400' : 'hover:bg-gray-100 text-gray-500'
+                darkMode ? 'hover:bg-white/10 text-muted-dark' : 'hover:bg-black/5 text-muted-light'
               }`}
             >
               <X size={isMobile ? 18 : 20} />
@@ -130,7 +130,7 @@ export default function TranscriptionPanel({
               </div>
             </div>
           ) : (
-            <div className={`${isMobile ? 'text-[10px]' : 'text-xs'} ${darkMode ? 'text-gray-400' : 'text-gray-500'}`}>
+            <div className={`${isMobile ? 'text-[10px]' : 'text-xs'} ${darkMode ? 'text-muted-dark' : 'text-muted-light'}`}>
               <p className="mb-1">
                 🎤 {isTranscriptionEnabled ? 'Transcrição ativa' : 'Transcrição desativada'}
               </p>

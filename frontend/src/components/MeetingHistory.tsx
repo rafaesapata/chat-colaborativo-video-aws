@@ -1,10 +1,11 @@
-import { useState, useEffect } from 'react';
-import { X, Clock, Users, FileText, Trash2, Download, ChevronDown, ChevronUp, Play, Video, Brain } from 'lucide-react';
+import { useState, useEffect, useMemo } from 'react';
+import { X, Clock, Users, FileText, Trash2, Download, ChevronDown, ChevronUp, Play, Video, Brain, Search } from 'lucide-react';
 import { meetingHistoryService, MeetingRecord, RecordingFragment } from '../services/meetingHistoryService';
 import { getRecordingPlaybackUrl } from '../hooks/useRecording';
 import { interviewAIService, InterviewContext, InterviewReport } from '../services/interviewAIService';
 import InterviewReportModal from './InterviewReportModal';
 import MeetingReportModal, { MeetingReportData } from './MeetingReportModal';
+import { SkeletonMeetingCard } from './Skeleton';
 
 interface MeetingHistoryProps {
   isOpen: boolean;
@@ -15,6 +16,7 @@ interface MeetingHistoryProps {
 
 export default function MeetingHistory({ isOpen, onClose, userLogin, darkMode }: MeetingHistoryProps) {
   const [meetings, setMeetings] = useState<MeetingRecord[]>([]);
+  const [loading, setLoading] = useState(false);
   const [expandedMeeting, setExpandedMeeting] = useState<string | null>(null);
   const [playingVideo, setPlayingVideo] = useState<string | null>(null);
   const [videoUrl, setVideoUrl] = useState<string | null>(null);
@@ -28,11 +30,25 @@ export default function MeetingHistory({ isOpen, onClose, userLogin, darkMode }:
   const [showMeetingReportModal, setShowMeetingReportModal] = useState(false);
   const [currentMeetingReport, setCurrentMeetingReport] = useState<MeetingReportData | null>(null);
   const [currentMeetingReportRoomId, setCurrentMeetingReportRoomId] = useState<string | undefined>(undefined);
+  const [searchQuery, setSearchQuery] = useState('');
+
+  const filteredMeetings = useMemo(() => {
+    if (!searchQuery.trim()) return meetings;
+    const q = searchQuery.toLowerCase().trim();
+    return meetings.filter(m =>
+      m.roomId.toLowerCase().includes(q) ||
+      m.roomName?.toLowerCase().includes(q) ||
+      m.meetingTopic?.toLowerCase().includes(q) ||
+      m.participants.some(p => p.toLowerCase().includes(q)) ||
+      formatDate(m.startTime).toLowerCase().includes(q)
+    );
+  }, [meetings, searchQuery]);
 
   useEffect(() => {
     if (isOpen && userLogin) {
       console.log('[MeetingHistory] Carregando histórico do backend para:', userLogin);
-      setMeetings([]); // Limpar enquanto carrega
+      setLoading(true);
+      setMeetings([]);
       meetingHistoryService.getHistoryAsync(userLogin, true)
         .then((history: MeetingRecord[]) => {
           console.log('[MeetingHistory] Reuniões carregadas do backend:', history.length);
@@ -40,7 +56,8 @@ export default function MeetingHistory({ isOpen, onClose, userLogin, darkMode }:
         })
         .catch((err: Error) => {
           console.error('[MeetingHistory] Erro ao carregar histórico:', err);
-        });
+        })
+        .finally(() => setLoading(false));
     }
   }, [isOpen, userLogin]);
 
@@ -263,45 +280,91 @@ export default function MeetingHistory({ isOpen, onClose, userLogin, darkMode }:
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 backdrop-blur-sm p-4">
-      <div className={`relative w-full max-w-4xl max-h-[85vh] rounded-2xl shadow-2xl overflow-hidden ${
-        darkMode ? 'bg-gray-800 text-white' : 'bg-white text-gray-900'
+      <div className={`relative w-full max-w-6xl max-h-[90vh] rounded-2xl shadow-2xl overflow-hidden animate-fade-in-scale ${
+        darkMode ? 'bg-card-dark text-white' : 'bg-white text-foreground-light'
       }`}>
         {/* Header */}
-        <div className={`sticky top-0 z-10 flex items-center justify-between p-4 border-b ${
-          darkMode ? 'bg-gray-800 border-gray-700' : 'bg-white border-gray-200'
+        <div className={`sticky top-0 z-10 flex flex-col gap-3 p-4 border-b ${
+          darkMode ? 'bg-card-dark border-border-dark' : 'bg-white border-border-light'
         }`}>
-          <h2 className="text-xl font-bold flex items-center gap-2">
-            <Clock size={24} className={darkMode ? 'text-purple-400' : 'text-indigo-600'} />
-            Histórico de Reuniões
-          </h2>
-          <button
-            onClick={onClose}
-            className={`p-2 rounded-full transition hover:rotate-90 ${
-              darkMode ? 'hover:bg-gray-700 text-gray-400' : 'hover:bg-gray-100 text-gray-500'
-            }`}
-          >
-            <X size={20} />
-          </button>
+          <div className="flex items-center justify-between">
+            <h2 className="text-xl font-bold flex items-center gap-2">
+              <Clock size={24} className={darkMode ? 'text-primary-300' : 'text-primary'} />
+              Histórico de Reuniões
+            </h2>
+            <button
+              onClick={onClose}
+              className={`p-2 rounded-full transition hover:rotate-90 ${
+                darkMode ? 'hover:bg-white/10 text-muted-dark' : 'hover:bg-black/5 text-muted-light'
+              }`}
+            >
+              <X size={20} />
+            </button>
+          </div>
+          {/* Search */}
+          <div className="relative">
+            <Search size={16} className={`absolute left-3 top-1/2 -translate-y-1/2 ${
+              darkMode ? 'text-muted-dark' : 'text-muted-dark'
+            }`} />
+            <input
+              type="text"
+              placeholder="Buscar por código, participante, data..."
+              value={searchQuery}
+              onChange={(e) => setSearchQuery(e.target.value)}
+              className={`w-full pl-9 pr-4 py-2 rounded-lg text-sm border outline-none transition ${
+                darkMode
+                  ? 'bg-white/5 border-border-dark text-white placeholder-muted-dark focus:border-primary'
+                  : 'bg-black/3 border-border-light text-foreground-light placeholder-muted-dark focus:border-primary'
+              }`}
+            />
+            {searchQuery && (
+              <button
+                onClick={() => setSearchQuery('')}
+                className={`absolute right-3 top-1/2 -translate-y-1/2 p-0.5 rounded-full ${
+                  darkMode ? 'text-muted-dark hover:text-white' : 'text-muted-dark hover:text-muted-light'
+                }`}
+              >
+                <X size={14} />
+              </button>
+            )}
+          </div>
         </div>
 
         {/* Content */}
-        <div className="overflow-y-auto max-h-[calc(85vh-80px)] p-4">
-          {meetings.length === 0 ? (
-            <div className={`text-center py-12 ${darkMode ? 'text-gray-400' : 'text-gray-500'}`}>
-              <Clock size={48} className="mx-auto mb-4 opacity-50" />
-              <p className="text-lg font-medium">Nenhuma reunião encontrada</p>
-              <p className="text-sm mt-1">Suas reuniões com transcrições aparecerão aqui</p>
+        <div className="overflow-y-auto max-h-[calc(90vh-130px)] p-4">
+          {loading ? (
+            <div className="space-y-3">
+              {[...Array(4)].map((_, i) => (
+                <SkeletonMeetingCard key={i} darkMode={darkMode} />
+              ))}
+            </div>
+          ) : filteredMeetings.length === 0 ? (
+            <div className={`text-center py-12 ${darkMode ? 'text-muted-dark' : 'text-muted-light'}`}>
+              {searchQuery ? (
+                <>
+                  <Search size={48} className="mx-auto mb-4 opacity-50" />
+                  <p className="text-lg font-medium">Nenhum resultado para "{searchQuery}"</p>
+                  <p className="text-sm mt-1">Tente buscar por outro termo</p>
+                </>
+              ) : (
+                <>
+                  <Clock size={48} className="mx-auto mb-4 opacity-50" />
+                  <p className="text-lg font-medium">Nenhuma reunião encontrada</p>
+                  <p className="text-sm mt-1">Suas reuniões com transcrições aparecerão aqui</p>
+                </>
+              )}
             </div>
           ) : (
             <div className="space-y-3">
-              {meetings.map(meeting => (
+              {filteredMeetings.map((meeting, idx) => (
                 <div
                   key={meeting.id}
-                  className={`rounded-xl border overflow-hidden transition-all ${
+                  className={`rounded-xl border overflow-hidden transition-all animate-fade-in-up ${
                     darkMode 
-                      ? 'bg-gray-700/50 border-gray-600 hover:border-purple-500/50' 
-                      : 'bg-gray-50 border-gray-200 hover:border-indigo-300'
+                      ? 'bg-white/5 border-border-dark hover:border-primary/50' 
+                      : 'bg-black/3 border-border-light hover:border-primary-300'
                   }`}
+                  style={{ animationDelay: `${Math.min(idx, 8) * 50}ms` }}
                 >
                   {/* Meeting Header */}
                   <div
@@ -314,7 +377,7 @@ export default function MeetingHistory({ isOpen, onClose, userLogin, darkMode }:
                       <div className="flex-1">
                         <div className="flex items-center gap-2 mb-1">
                           <span className={`font-mono text-sm px-2 py-0.5 rounded ${
-                            darkMode ? 'bg-purple-900/50 text-purple-300' : 'bg-indigo-100 text-indigo-700'
+                            darkMode ? 'bg-primary-900/50 text-primary-300' : 'bg-primary-50 text-primary-700'
                           }`}>
                             {meeting.roomId}
                           </span>
@@ -342,11 +405,11 @@ export default function MeetingHistory({ isOpen, onClose, userLogin, darkMode }:
                             </span>
                           )}
                         </div>
-                        <p className={`text-sm ${darkMode ? 'text-gray-300' : 'text-gray-600'}`}>
+                        <p className={`text-sm ${darkMode ? 'text-foreground-dark' : 'text-muted-light'}`}>
                           {formatDate(meeting.startTime)}
                         </p>
                         <div className={`flex items-center gap-4 mt-2 text-xs ${
-                          darkMode ? 'text-gray-400' : 'text-gray-500'
+                          darkMode ? 'text-muted-dark' : 'text-muted-light'
                         }`}>
                           <span className="flex items-center gap-1">
                             <Clock size={12} />
@@ -388,8 +451,8 @@ export default function MeetingHistory({ isOpen, onClose, userLogin, darkMode }:
                               disabled={generatingReport === meeting.id}
                               className={`p-2 rounded-lg transition ${
                                 darkMode 
-                                  ? 'hover:bg-purple-900/50 text-purple-400 hover:text-purple-300' 
-                                  : 'hover:bg-purple-100 text-purple-500 hover:text-purple-600'
+                                  ? 'hover:bg-primary-900/50 text-primary-300 hover:text-primary-300' 
+                                  : 'hover:bg-primary-50 text-primary hover:text-primary'
                               } ${generatingReport === meeting.id ? 'opacity-50 animate-pulse' : ''}`}
                               title="Gerar relatório com IA"
                             >
@@ -402,8 +465,8 @@ export default function MeetingHistory({ isOpen, onClose, userLogin, darkMode }:
                               }}
                               className={`p-2 rounded-lg transition ${
                                 darkMode 
-                                  ? 'hover:bg-gray-600 text-gray-400 hover:text-white' 
-                                  : 'hover:bg-gray-200 text-gray-500 hover:text-gray-700'
+                                  ? 'hover:bg-white/15 text-muted-dark hover:text-white' 
+                                  : 'hover:bg-black/5 text-muted-light hover:text-muted-light'
                               }`}
                               title="Exportar transcrições"
                             >
@@ -418,17 +481,17 @@ export default function MeetingHistory({ isOpen, onClose, userLogin, darkMode }:
                           }}
                           className={`p-2 rounded-lg transition ${
                             darkMode 
-                              ? 'hover:bg-red-900/50 text-gray-400 hover:text-red-400' 
-                              : 'hover:bg-red-100 text-gray-500 hover:text-red-600'
+                              ? 'hover:bg-red-900/50 text-muted-dark hover:text-red-400' 
+                              : 'hover:bg-red-100 text-muted-light hover:text-red-600'
                           }`}
                           title="Excluir"
                         >
                           <Trash2 size={16} />
                         </button>
                         {expandedMeeting === meeting.id ? (
-                          <ChevronUp size={20} className={darkMode ? 'text-gray-400' : 'text-gray-500'} />
+                          <ChevronUp size={20} className={darkMode ? 'text-muted-dark' : 'text-muted-light'} />
                         ) : (
-                          <ChevronDown size={20} className={darkMode ? 'text-gray-400' : 'text-gray-500'} />
+                          <ChevronDown size={20} className={darkMode ? 'text-muted-dark' : 'text-muted-light'} />
                         )}
                       </div>
                     </div>
@@ -436,33 +499,33 @@ export default function MeetingHistory({ isOpen, onClose, userLogin, darkMode }:
 
                   {/* Expanded Transcriptions */}
                   {expandedMeeting === meeting.id && meeting.transcriptions.length > 0 && (
-                    <div className={`border-t p-4 ${darkMode ? 'border-gray-600' : 'border-gray-200'}`}>
+                    <div className={`border-t p-4 ${darkMode ? 'border-border-dark' : 'border-border-light'}`}>
                       <h4 className={`text-sm font-semibold mb-3 ${
-                        darkMode ? 'text-gray-300' : 'text-gray-700'
+                        darkMode ? 'text-foreground-dark' : 'text-muted-light'
                       }`}>
                         Transcrições
                       </h4>
                       <div className={`max-h-60 overflow-y-auto space-y-2 rounded-lg p-3 ${
-                        darkMode ? 'bg-gray-800' : 'bg-white'
+                        darkMode ? 'bg-card-dark' : 'bg-white'
                       }`}>
                         {meeting.transcriptions
                           .sort((a, b) => a.timestamp - b.timestamp)
                           .map(t => (
                             <div key={t.id} className="text-sm">
                               <span className={`font-medium ${
-                                darkMode ? 'text-purple-400' : 'text-indigo-600'
+                                darkMode ? 'text-primary-300' : 'text-primary'
                               }`}>
                                 {t.speaker}
                               </span>
                               <span className={`text-xs ml-2 ${
-                                darkMode ? 'text-gray-500' : 'text-gray-400'
+                                darkMode ? 'text-muted-light' : 'text-muted-dark'
                               }`}>
                                 {new Date(t.timestamp).toLocaleTimeString('pt-BR', {
                                   hour: '2-digit',
                                   minute: '2-digit'
                                 })}
                               </span>
-                              <p className={darkMode ? 'text-gray-300' : 'text-gray-600'}>
+                              <p className={darkMode ? 'text-foreground-dark' : 'text-muted-light'}>
                                 {t.text}
                               </p>
                             </div>
@@ -480,7 +543,7 @@ export default function MeetingHistory({ isOpen, onClose, userLogin, darkMode }:
         {playingVideo && videoUrl && (
           <div className="fixed inset-0 z-[60] flex items-center justify-center bg-black/80 backdrop-blur-sm p-4">
             <div className={`relative w-full max-w-4xl rounded-2xl shadow-2xl overflow-hidden ${
-              darkMode ? 'bg-gray-900' : 'bg-black'
+              darkMode ? 'bg-surface-dark' : 'bg-black'
             }`}>
               <button
                 onClick={handleCloseVideo}

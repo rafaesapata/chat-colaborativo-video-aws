@@ -118,7 +118,7 @@ export default function ScopeAssistantPanel({
       case 'must-have': return darkMode ? 'bg-red-900/50 text-red-300 border-red-700' : 'bg-red-100 text-red-700 border-red-300';
       case 'should-have': return darkMode ? 'bg-yellow-900/50 text-yellow-300 border-yellow-700' : 'bg-yellow-100 text-yellow-700 border-yellow-300';
       case 'nice-to-have': return darkMode ? 'bg-green-900/50 text-green-300 border-green-700' : 'bg-green-100 text-green-700 border-green-300';
-      default: return darkMode ? 'bg-gray-700 text-gray-300 border-gray-600' : 'bg-gray-100 text-gray-700 border-gray-300';
+      default: return darkMode ? 'bg-white/5 text-foreground-dark border-border-dark' : 'bg-black/5 text-muted-light border-border-light';
     }
   };
 
@@ -136,7 +136,7 @@ export default function ScopeAssistantPanel({
     switch (status) {
       case 'confirmed': return <Check size={12} className="text-green-500" />;
       case 'clarified': return <HelpCircle size={12} className="text-yellow-500" />;
-      default: return <AlertCircle size={12} className="text-gray-400" />;
+      default: return <AlertCircle size={12} className="text-muted-dark" />;
     }
   };
 
@@ -180,12 +180,12 @@ export default function ScopeAssistantPanel({
       {/* Content */}
       {!isMinimized && (
         <div className={`rounded-b-xl overflow-hidden ${
-          darkMode ? 'bg-gray-800/95 border border-t-0 border-teal-700/50' : 'bg-white/95 border border-t-0 border-teal-300'
+          darkMode ? 'bg-card-dark/95 border border-t-0 border-teal-700/50' : 'bg-white/95 border border-t-0 border-teal-300'
         }`}>
           {/* Progress Bar */}
-          <div className={`px-3 py-2 border-b ${darkMode ? 'border-gray-700' : 'border-gray-200'}`}>
+          <div className={`px-3 py-2 border-b ${darkMode ? 'border-border-dark' : 'border-border-light'}`}>
             <div className="flex items-center justify-between mb-1">
-              <span className={`text-xs ${darkMode ? 'text-gray-400' : 'text-gray-500'}`}>
+              <span className={`text-xs ${darkMode ? 'text-muted-dark' : 'text-muted-light'}`}>
                 Completude do Escopo
               </span>
               <span className={`text-xs font-bold ${
@@ -194,7 +194,7 @@ export default function ScopeAssistantPanel({
                 {completeness}%
               </span>
             </div>
-            <div className={`h-2 rounded-full overflow-hidden ${darkMode ? 'bg-gray-700' : 'bg-gray-200'}`}>
+            <div className={`h-2 rounded-full overflow-hidden ${darkMode ? 'bg-white/5' : 'bg-black/5'}`}>
               <div
                 className={`h-full transition-all duration-500 ${
                   completeness >= 70 ? 'bg-green-500' : completeness >= 40 ? 'bg-yellow-500' : 'bg-red-500'
@@ -205,9 +205,9 @@ export default function ScopeAssistantPanel({
           </div>
 
           {/* Objective */}
-          <div className={`px-3 py-2 border-b ${darkMode ? 'border-gray-700 bg-gray-700/30' : 'border-gray-200 bg-gray-50'}`}>
+          <div className={`px-3 py-2 border-b ${darkMode ? 'border-border-dark bg-white/5' : 'border-border-light bg-black/3'}`}>
             <div className="flex items-center justify-between mb-1">
-              <span className={`text-xs font-medium ${darkMode ? 'text-gray-300' : 'text-gray-600'}`}>
+              <span className={`text-xs font-medium ${darkMode ? 'text-foreground-dark' : 'text-muted-light'}`}>
                 📎 Objetivo do Projeto
               </span>
               {!editingObjective && (
@@ -226,7 +226,7 @@ export default function ScopeAssistantPanel({
                   value={tempObjective}
                   onChange={(e) => setTempObjective(e.target.value)}
                   className={`flex-1 text-xs px-2 py-1 rounded ${
-                    darkMode ? 'bg-gray-700 text-white border-gray-600' : 'bg-white border-gray-300'
+                    darkMode ? 'bg-white/5 text-white border-border-dark' : 'bg-white border-border-light'
                   } border`}
                   placeholder="Descreva o objetivo..."
                   autoFocus
@@ -239,14 +239,14 @@ export default function ScopeAssistantPanel({
                 </button>
               </div>
             ) : (
-              <p className={`text-xs ${darkMode ? 'text-gray-400' : 'text-gray-500'} ${!objective ? 'italic' : ''}`}>
+              <p className={`text-xs ${darkMode ? 'text-muted-dark' : 'text-muted-light'} ${!objective ? 'italic' : ''}`}>
                 {objective || 'Aguardando detecção automática...'}
               </p>
             )}
           </div>
 
           {/* Tabs */}
-          <div className={`flex border-b ${darkMode ? 'border-gray-700' : 'border-gray-200'}`}>
+          <div className={`flex border-b ${darkMode ? 'border-border-dark' : 'border-border-light'}`}>
             {[
               { key: 'requirements', label: 'Requisitos', count: requirements.length },
               { key: 'suggestions', label: 'Sugestões', count: suggestions.filter(s => !s.isRead).length },
@@ -258,7 +258,7 @@ export default function ScopeAssistantPanel({
                 className={`flex-1 px-2 py-2 text-xs font-medium transition ${
                   activeTab === tab.key
                     ? darkMode ? 'text-teal-400 border-b-2 border-teal-400' : 'text-teal-600 border-b-2 border-teal-600'
-                    : darkMode ? 'text-gray-400 hover:text-gray-300' : 'text-gray-500 hover:text-gray-700'
+                    : darkMode ? 'text-muted-dark hover:text-foreground-dark' : 'text-muted-light hover:text-muted-light'
                 }`}
               >
                 {tab.label}
@@ -266,7 +266,7 @@ export default function ScopeAssistantPanel({
                   <span className={`ml-1 px-1.5 py-0.5 rounded-full text-[10px] ${
                     activeTab === tab.key
                       ? darkMode ? 'bg-teal-900 text-teal-300' : 'bg-teal-100 text-teal-700'
-                      : darkMode ? 'bg-gray-700 text-gray-400' : 'bg-gray-200 text-gray-600'
+                      : darkMode ? 'bg-white/5 text-muted-dark' : 'bg-black/5 text-muted-light'
                   }`}>
                     {tab.count}
                   </span>
@@ -279,7 +279,7 @@ export default function ScopeAssistantPanel({
           <div className="max-h-[35vh] overflow-y-auto">
             {/* Analyzing indicator */}
             {isAnalyzing && (
-              <div className={`p-3 flex items-center gap-2 ${darkMode ? 'text-gray-400' : 'text-gray-500'}`}>
+              <div className={`p-3 flex items-center gap-2 ${darkMode ? 'text-muted-dark' : 'text-muted-light'}`}>
                 <div className="flex gap-1">
                   <span className="w-2 h-2 rounded-full bg-teal-500 animate-bounce" style={{ animationDelay: '0ms' }} />
                   <span className="w-2 h-2 rounded-full bg-teal-500 animate-bounce" style={{ animationDelay: '150ms' }} />
@@ -293,7 +293,7 @@ export default function ScopeAssistantPanel({
             {activeTab === 'requirements' && (
               <div className="p-2 space-y-2">
                 {requirements.length === 0 ? (
-                  <div className={`p-4 text-center ${darkMode ? 'text-gray-500' : 'text-gray-400'}`}>
+                  <div className={`p-4 text-center ${darkMode ? 'text-muted-light' : 'text-muted-dark'}`}>
                     <Layers size={24} className="mx-auto mb-2 opacity-50" />
                     <p className="text-xs">Aguardando requisitos...</p>
                     <p className="text-[10px] mt-1">Fale sobre funcionalidades do sistema</p>
@@ -303,7 +303,7 @@ export default function ScopeAssistantPanel({
                     <div
                       key={req.id}
                       className={`p-2 rounded-lg border ${
-                        darkMode ? 'bg-gray-700/50 border-gray-600' : 'bg-gray-50 border-gray-200'
+                        darkMode ? 'bg-white/5 border-border-dark' : 'bg-black/3 border-border-light'
                       }`}
                     >
                       <div className="flex items-start gap-2">
@@ -311,11 +311,11 @@ export default function ScopeAssistantPanel({
                         <div className="flex-1 min-w-0">
                           <div className="flex items-center gap-1 mb-1">
                             {getStatusIcon(req.status)}
-                            <span className={`text-xs font-medium ${darkMode ? 'text-gray-200' : 'text-gray-800'}`}>
+                            <span className={`text-xs font-medium ${darkMode ? 'text-foreground-dark' : 'text-foreground-light'}`}>
                               {req.title}
                             </span>
                           </div>
-                          <p className={`text-[10px] line-clamp-2 ${darkMode ? 'text-gray-400' : 'text-gray-500'}`}>
+                          <p className={`text-[10px] line-clamp-2 ${darkMode ? 'text-muted-dark' : 'text-muted-light'}`}>
                             {req.description}
                           </p>
                           <div className="flex items-center gap-1 mt-2">
@@ -380,7 +380,7 @@ export default function ScopeAssistantPanel({
             {activeTab === 'suggestions' && (
               <div className="p-2 space-y-2">
                 {suggestions.filter(s => !s.isRead).length === 0 ? (
-                  <div className={`p-4 text-center ${darkMode ? 'text-gray-500' : 'text-gray-400'}`}>
+                  <div className={`p-4 text-center ${darkMode ? 'text-muted-light' : 'text-muted-dark'}`}>
                     <Sparkles size={24} className="mx-auto mb-2 opacity-50" />
                     <p className="text-xs">Nenhuma sugestão no momento</p>
                   </div>
@@ -393,7 +393,7 @@ export default function ScopeAssistantPanel({
                           ? darkMode ? 'bg-orange-900/30 border-orange-700' : 'bg-orange-50 border-orange-200'
                           : sug.type === 'question'
                           ? darkMode ? 'bg-blue-900/30 border-blue-700' : 'bg-blue-50 border-blue-200'
-                          : darkMode ? 'bg-gray-700/50 border-gray-600' : 'bg-gray-50 border-gray-200'
+                          : darkMode ? 'bg-white/5 border-border-dark' : 'bg-black/3 border-border-light'
                       }`}
                     >
                       <div className="flex items-start gap-2">
@@ -401,12 +401,12 @@ export default function ScopeAssistantPanel({
                           {sug.type === 'warning' ? '⚠️' : sug.type === 'question' ? '❓' : sug.type === 'recommendation' ? '💡' : '📝'}
                         </span>
                         <div className="flex-1">
-                          <p className={`text-xs ${darkMode ? 'text-gray-200' : 'text-gray-700'}`}>{sug.text}</p>
-                          <p className={`text-[10px] mt-1 ${darkMode ? 'text-gray-500' : 'text-gray-400'}`}>{sug.context}</p>
+                          <p className={`text-xs ${darkMode ? 'text-foreground-dark' : 'text-muted-light'}`}>{sug.text}</p>
+                          <p className={`text-[10px] mt-1 ${darkMode ? 'text-muted-light' : 'text-muted-dark'}`}>{sug.context}</p>
                         </div>
                         <button
                           onClick={() => onDismissSuggestion(sug.id)}
-                          className={`p-1 rounded ${darkMode ? 'hover:bg-gray-600' : 'hover:bg-gray-200'}`}
+                          className={`p-1 rounded ${darkMode ? 'hover:bg-white/15' : 'hover:bg-black/5'}`}
                         >
                           <X size={12} />
                         </button>
@@ -421,7 +421,7 @@ export default function ScopeAssistantPanel({
             {activeTab === 'features' && (
               <div className="p-2 space-y-2">
                 {features.length === 0 ? (
-                  <div className={`p-4 text-center ${darkMode ? 'text-gray-500' : 'text-gray-400'}`}>
+                  <div className={`p-4 text-center ${darkMode ? 'text-muted-light' : 'text-muted-dark'}`}>
                     <FileText size={24} className="mx-auto mb-2 opacity-50" />
                     <p className="text-xs">Nenhuma feature definida</p>
                     <p className="text-[10px] mt-1">Adicione requisitos e agrupe em features</p>
@@ -430,11 +430,11 @@ export default function ScopeAssistantPanel({
                   features.map((feat) => (
                     <div
                       key={feat.id}
-                      className={`p-2 rounded-lg border ${darkMode ? 'bg-gray-700/50 border-gray-600' : 'bg-gray-50 border-gray-200'}`}
+                      className={`p-2 rounded-lg border ${darkMode ? 'bg-white/5 border-border-dark' : 'bg-black/3 border-border-light'}`}
                     >
                       <div className="flex items-center gap-2 mb-1">
                         <ChevronRight size={12} className={darkMode ? 'text-teal-400' : 'text-teal-600'} />
-                        <span className={`text-xs font-medium ${darkMode ? 'text-gray-200' : 'text-gray-800'}`}>
+                        <span className={`text-xs font-medium ${darkMode ? 'text-foreground-dark' : 'text-foreground-light'}`}>
                           {feat.name}
                         </span>
                         <span className={`text-[10px] px-1.5 py-0.5 rounded ${
@@ -447,7 +447,7 @@ export default function ScopeAssistantPanel({
                           {feat.complexity === 'high' ? 'Alta' : feat.complexity === 'medium' ? 'Média' : 'Baixa'}
                         </span>
                       </div>
-                      <p className={`text-[10px] ${darkMode ? 'text-gray-400' : 'text-gray-500'}`}>
+                      <p className={`text-[10px] ${darkMode ? 'text-muted-dark' : 'text-muted-light'}`}>
                         {feat.requirements.length} requisito(s)
                       </p>
                     </div>

@@ -39,7 +39,7 @@ export default function VideoCall({
   };
 
   return (
-    <div className="flex-1 bg-gray-900 relative">
+    <div className="flex-1 bg-surface-dark relative">
       {/* Indicador de qualidade */}
       <div className="absolute top-4 right-4 z-10 bg-black bg-opacity-70 px-3 py-2 rounded-lg text-white text-sm">
         Qualidade: {qualityLabels[videoQuality]}
@@ -64,7 +64,7 @@ export default function VideoCall({
           return (
             <div 
               key={userId} 
-              className={`relative bg-gray-800 rounded-lg overflow-hidden transition-all duration-200 ${
+              className={`relative bg-card-dark rounded-lg overflow-hidden transition-all duration-200 ${
                 isSpeaking ? 'ring-4 ring-green-500 shadow-lg shadow-green-500/50' : ''
               }`}
             >
@@ -97,7 +97,7 @@ export default function VideoCall({
         })}
         
         {remoteStreams.size === 0 && (
-          <div className="col-span-2 flex items-center justify-center text-gray-400">
+          <div className="col-span-2 flex items-center justify-center text-muted-dark">
             <div className="text-center">
               <svg className="w-24 h-24 mx-auto mb-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 10l4.553-2.276A1 1 0 0121 8.618v6.764a1 1 0 01-1.447.894L15 14M5 18h8a2 2 0 002-2V8a2 2 0 00-2-2H5a2 2 0 00-2 2v8a2 2 0 002 2z" />
@@ -109,8 +109,8 @@ export default function VideoCall({
       </div>
 
       {/* Vídeo local (picture-in-picture) */}
-      <div className={`absolute bottom-4 right-4 w-48 h-36 bg-gray-800 rounded-lg overflow-hidden shadow-lg transition-all duration-200 ${
-        speakingUsers.has('local') ? 'ring-4 ring-green-500 shadow-green-500/50' : 'border-2 border-gray-700'
+      <div className={`absolute bottom-4 right-4 w-48 h-36 bg-card-dark rounded-lg overflow-hidden shadow-lg transition-all duration-200 ${
+        speakingUsers.has('local') ? 'ring-4 ring-green-500 shadow-green-500/50' : 'border-2 border-border-dark'
       }`}>
         <video
           ref={localVideoRef}
@@ -126,8 +126,8 @@ export default function VideoCall({
           <span>Você</span>
         </div>
         {!isVideoEnabled && (
-          <div className="absolute inset-0 bg-gray-900 flex items-center justify-center">
-            <svg className="w-12 h-12 text-gray-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+          <div className="absolute inset-0 bg-surface-dark flex items-center justify-center">
+            <svg className="w-12 h-12 text-muted-light" fill="none" stroke="currentColor" viewBox="0 0 24 24">
               <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M18.364 18.364A9 9 0 005.636 5.636m12.728 12.728A9 9 0 015.636 5.636m12.728 12.728L5.636 5.636" />
             </svg>
           </div>
@@ -139,7 +139,7 @@ export default function VideoCall({
         <button
           onClick={onToggleAudio}
           className={`p-4 rounded-full ${
-            isAudioEnabled ? 'bg-gray-700 hover:bg-gray-600' : 'bg-red-600 hover:bg-red-700'
+            isAudioEnabled ? 'bg-white/5 hover:bg-white/15' : 'bg-red-600 hover:bg-red-700'
           } text-white transition shadow-lg`}
           title={isAudioEnabled ? 'Desligar microfone' : 'Ligar microfone'}
         >
@@ -158,7 +158,7 @@ export default function VideoCall({
         <button
           onClick={onToggleVideo}
           className={`p-4 rounded-full ${
-            isVideoEnabled ? 'bg-gray-700 hover:bg-gray-600' : 'bg-red-600 hover:bg-red-700'
+            isVideoEnabled ? 'bg-white/5 hover:bg-white/15' : 'bg-red-600 hover:bg-red-700'
           } text-white transition shadow-lg`}
           title={isVideoEnabled ? 'Desligar câmera' : 'Ligar câmera'}
         >

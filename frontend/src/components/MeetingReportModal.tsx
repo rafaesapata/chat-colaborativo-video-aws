@@ -270,10 +270,10 @@ export default function MeetingReportModal({ isOpen, onClose, report, roomId }: 
   return (
     <div className="fixed inset-0 z-[100] flex items-center justify-center bg-black/70 backdrop-blur-sm" onClick={onClose}>
       <div
-        className="relative w-[95vw] max-w-[1000px] h-[90vh] rounded-2xl overflow-hidden border border-gray-700 bg-[#0F1117] shadow-2xl flex flex-col"
+        className="relative w-[95vw] max-w-[1000px] h-[90vh] rounded-2xl overflow-hidden border border-border-dark bg-[#0F1117] shadow-2xl flex flex-col"
         onClick={e => e.stopPropagation()}
       >
-        <div className="flex items-center justify-between px-6 py-4 border-b border-gray-700/50 bg-[#181B25]">
+        <div className="flex items-center justify-between px-6 py-4 border-b border-border-dark/50 bg-[#181B25]">
           <h3 className="text-white font-semibold text-lg">Relatório da Reunião</h3>
           <div className="flex items-center gap-3">
             <button
@@ -285,7 +285,7 @@ export default function MeetingReportModal({ isOpen, onClose, report, roomId }: 
             </button>
             <button
               onClick={onClose}
-              className="p-2 rounded-lg hover:bg-gray-700/50 text-gray-400 hover:text-white transition"
+              className="p-2 rounded-lg hover:bg-white/10/50 text-muted-dark hover:text-white transition"
             >
               <X size={20} />
             </button>

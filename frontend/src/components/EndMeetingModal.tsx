@@ -29,17 +29,17 @@ export default function EndMeetingModal({
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 backdrop-blur-sm p-4">
       <div className={`relative w-full max-w-md rounded-2xl shadow-2xl overflow-hidden ${
-        darkMode ? 'bg-gray-800 text-white' : 'bg-white text-gray-900'
+        darkMode ? 'bg-card-dark text-white' : 'bg-white text-foreground-light'
       }`}>
         {/* Header */}
-        <div className={`p-4 border-b ${darkMode ? 'border-gray-700' : 'border-gray-200'}`}>
+        <div className={`p-4 border-b ${darkMode ? 'border-border-dark' : 'border-border-light'}`}>
           <div className="flex items-center justify-between">
             <h2 className="text-xl font-bold">Encerrar Reunião</h2>
             <button
               onClick={onClose}
               disabled={isGeneratingReport}
               className={`p-2 rounded-full transition ${
-                darkMode ? 'hover:bg-gray-700 text-gray-400' : 'hover:bg-gray-100 text-gray-500'
+                darkMode ? 'hover:bg-white/10 text-muted-dark' : 'hover:bg-black/5 text-muted-light'
               } ${isGeneratingReport ? 'opacity-50 cursor-not-allowed' : ''}`}
             >
               <X size={20} />
@@ -51,17 +51,17 @@ export default function EndMeetingModal({
         <div className="p-6 space-y-4">
           {isGeneratingReport ? (
             <div className="text-center py-8">
-              <Loader2 size={48} className="mx-auto mb-4 animate-spin text-purple-500" />
-              <h3 className={`text-lg font-semibold mb-2 ${darkMode ? 'text-white' : 'text-gray-900'}`}>
+              <Loader2 size={48} className="mx-auto mb-4 animate-spin text-primary" />
+              <h3 className={`text-lg font-semibold mb-2 ${darkMode ? 'text-white' : 'text-foreground-light'}`}>
                 Gerando Relatório...
               </h3>
-              <p className={`text-sm ${darkMode ? 'text-gray-400' : 'text-gray-500'}`}>
+              <p className={`text-sm ${darkMode ? 'text-muted-dark' : 'text-muted-light'}`}>
                 A IA está analisando a entrevista e gerando o relatório do candidato.
               </p>
             </div>
           ) : (
             <>
-              <p className={`text-sm ${darkMode ? 'text-gray-300' : 'text-gray-600'}`}>
+              <p className={`text-sm ${darkMode ? 'text-foreground-dark' : 'text-muted-light'}`}>
                 O que você deseja fazer?
               </p>
 
@@ -70,8 +70,8 @@ export default function EndMeetingModal({
                 onClick={onLeave}
                 className={`w-full p-4 rounded-xl border-2 transition-all text-left flex items-start gap-4 ${
                   darkMode
-                    ? 'border-gray-700 hover:border-gray-600 hover:bg-gray-700/50'
-                    : 'border-gray-200 hover:border-gray-300 hover:bg-gray-50'
+                    ? 'border-border-dark hover:border-border-dark hover:bg-white/10/50'
+                    : 'border-border-light hover:border-border-light hover:bg-black/3'
                 }`}
               >
                 <div className={`p-3 rounded-xl ${
@@ -80,10 +80,10 @@ export default function EndMeetingModal({
                   <LogOut size={24} className={darkMode ? 'text-blue-400' : 'text-blue-600'} />
                 </div>
                 <div className="flex-1">
-                  <h3 className={`font-semibold mb-1 ${darkMode ? 'text-white' : 'text-gray-900'}`}>
+                  <h3 className={`font-semibold mb-1 ${darkMode ? 'text-white' : 'text-foreground-light'}`}>
                     Apenas Sair
                   </h3>
-                  <p className={`text-sm ${darkMode ? 'text-gray-400' : 'text-gray-500'}`}>
+                  <p className={`text-sm ${darkMode ? 'text-muted-dark' : 'text-muted-light'}`}>
                     Você sai da reunião, mas ela continua ativa para outros participantes.
                   </p>
                 </div>
@@ -105,13 +105,13 @@ export default function EndMeetingModal({
                     <Power size={24} className={darkMode ? 'text-red-400' : 'text-red-600'} />
                   </div>
                   <div className="flex-1">
-                    <h3 className={`font-semibold mb-1 ${darkMode ? 'text-white' : 'text-gray-900'}`}>
+                    <h3 className={`font-semibold mb-1 ${darkMode ? 'text-white' : 'text-foreground-light'}`}>
                       Encerrar Sala
                     </h3>
-                    <p className={`text-sm ${darkMode ? 'text-gray-400' : 'text-gray-500'}`}>
+                    <p className={`text-sm ${darkMode ? 'text-muted-dark' : 'text-muted-light'}`}>
                       A sala será encerrada para todos. Novos participantes não poderão entrar.
                       {isInterview && (
-                        <span className={`block mt-1 ${darkMode ? 'text-purple-400' : 'text-purple-600'}`}>
+                        <span className={`block mt-1 ${darkMode ? 'text-primary-300' : 'text-primary'}`}>
                           ✨ Um relatório da entrevista será gerado automaticamente.
                         </span>
                       )}
@@ -125,13 +125,13 @@ export default function EndMeetingModal({
 
         {/* Footer */}
         {!isGeneratingReport && (
-          <div className={`p-4 border-t ${darkMode ? 'border-gray-700' : 'border-gray-200'}`}>
+          <div className={`p-4 border-t ${darkMode ? 'border-border-dark' : 'border-border-light'}`}>
             <button
               onClick={onClose}
               className={`w-full py-2 rounded-lg text-sm font-medium transition ${
                 darkMode 
-                  ? 'text-gray-400 hover:text-gray-200 hover:bg-gray-700' 
-                  : 'text-gray-500 hover:text-gray-700 hover:bg-gray-100'
+                  ? 'text-muted-dark hover:text-foreground-dark hover:bg-white/10' 
+                  : 'text-muted-light hover:text-muted-light hover:bg-black/5'
               }`}
             >
               Cancelar

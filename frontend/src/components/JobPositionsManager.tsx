@@ -11,6 +11,7 @@ import {
   updateJobPosition,
   deleteJobPosition,
 } from '../services/jobPositionService';
+import { SkeletonJobCard } from './Skeleton';
 
 interface JobPositionsManagerProps {
   darkMode: boolean;
@@ -153,19 +154,26 @@ export default function JobPositionsManager({
 
   if (loading) {
     return (
-      <div className={`rounded-xl ${darkMode ? 'bg-gray-800' : 'bg-white'} shadow-lg p-8 text-center`}>
-        <div className="animate-spin w-8 h-8 border-2 border-purple-500 border-t-transparent rounded-full mx-auto mb-4" />
-        <p className={darkMode ? 'text-gray-400' : 'text-gray-500'}>Carregando vagas...</p>
+      <div className={`rounded-xl ${darkMode ? 'bg-card-dark' : 'bg-white'} shadow-lg overflow-hidden`}>
+        <div className={`px-6 py-4 border-b ${darkMode ? 'border-border-dark' : 'border-border-light'} flex items-center gap-2`}>
+          <Briefcase size={20} className="text-primary" />
+          <div className={`h-5 w-28 rounded ${darkMode ? 'bg-white/5' : 'bg-black/5'} animate-skeleton-shimmer bg-gradient-to-r ${darkMode ? 'from-white/5 via-white/10 to-white/5' : 'from-black/5 via-black/3 to-black/5'} bg-[length:200%_100%]`} />
+        </div>
+        <div className="p-4 space-y-3">
+          {[...Array(3)].map((_, i) => (
+            <SkeletonJobCard key={i} darkMode={darkMode} />
+          ))}
+        </div>
       </div>
     );
   }
 
   return (
-    <div className={`rounded-xl ${darkMode ? 'bg-gray-800' : 'bg-white'} shadow-lg overflow-hidden`}>
+    <div className={`rounded-xl ${darkMode ? 'bg-card-dark' : 'bg-white'} shadow-lg overflow-hidden`}>
       {/* Header */}
-      <div className={`px-6 py-4 border-b ${darkMode ? 'border-gray-700' : 'border-gray-200'} flex items-center justify-between`}>
+      <div className={`px-6 py-4 border-b ${darkMode ? 'border-border-dark' : 'border-border-light'} flex items-center justify-between`}>
         <h2 className="text-lg font-semibold flex items-center gap-2">
-          <Briefcase size={20} className="text-purple-500" />
+          <Briefcase size={20} className="text-primary" />
           Minhas Vagas
         </h2>
         <div className="flex items-center gap-2">
@@ -174,7 +182,7 @@ export default function JobPositionsManager({
               resetForm();
               setIsCreating(true);
             }}
-            className="flex items-center gap-2 px-4 py-1.5 rounded-lg text-sm bg-purple-600 hover:bg-purple-700 text-white transition"
+            className="flex items-center gap-2 px-4 py-1.5 rounded-lg text-sm bg-primary hover:bg-primary-600 text-white transition"
           >
             <Plus size={16} />
             Nova Vaga
@@ -182,7 +190,7 @@ export default function JobPositionsManager({
           {onClose && (
             <button
               onClick={onClose}
-              className={`p-2 rounded-lg ${darkMode ? 'hover:bg-gray-700' : 'hover:bg-gray-100'}`}
+              className={`p-2 rounded-lg ${darkMode ? 'hover:bg-white/10' : 'hover:bg-black/5'}`}
             >
               <X size={20} />
             </button>
@@ -211,16 +219,16 @@ export default function JobPositionsManager({
         {positions.length > 0 && !isCreating && !editingId && (
           <div className="mb-4">
             <div className={`flex items-center gap-2 px-3 py-2 rounded-lg ${
-              darkMode ? 'bg-gray-700' : 'bg-gray-100'
+              darkMode ? 'bg-white/5' : 'bg-black/5'
             }`}>
-              <Search size={18} className={darkMode ? 'text-gray-400' : 'text-gray-500'} />
+              <Search size={18} className={darkMode ? 'text-muted-dark' : 'text-muted-light'} />
               <input
                 type="text"
                 value={searchTerm}
                 onChange={(e) => setSearchTerm(e.target.value)}
                 placeholder="Buscar vagas..."
                 className={`flex-1 bg-transparent outline-none text-sm ${
-                  darkMode ? 'text-white placeholder-gray-400' : 'text-gray-900 placeholder-gray-500'
+                  darkMode ? 'text-white placeholder-muted-dark' : 'text-foreground-light placeholder-muted-light'
                 }`}
               />
             </div>
@@ -229,15 +237,15 @@ export default function JobPositionsManager({
 
         {/* Form (Create/Edit) */}
         {(isCreating || editingId) && (
-          <div className={`mb-6 p-4 rounded-xl ${darkMode ? 'bg-gray-700/50' : 'bg-gray-50'}`}>
-            <h3 className={`text-sm font-semibold mb-4 ${darkMode ? 'text-gray-200' : 'text-gray-700'}`}>
+          <div className={`mb-6 p-4 rounded-xl ${darkMode ? 'bg-white/5' : 'bg-black/3'}`}>
+            <h3 className={`text-sm font-semibold mb-4 ${darkMode ? 'text-foreground-dark' : 'text-muted-light'}`}>
               {isCreating ? 'Nova Vaga' : 'Editar Vaga'}
             </h3>
             
             <div className="space-y-4">
               {/* Title */}
               <div>
-                <label className={`block text-xs font-medium mb-1 ${darkMode ? 'text-gray-400' : 'text-gray-600'}`}>
+                <label className={`block text-xs font-medium mb-1 ${darkMode ? 'text-muted-dark' : 'text-muted-light'}`}>
                   Título da Vaga *
                 </label>
                 <input
@@ -247,16 +255,16 @@ export default function JobPositionsManager({
                   placeholder="Ex: Desenvolvedor Full Stack Senior"
                   className={`w-full px-3 py-2 rounded-lg text-sm ${
                     darkMode 
-                      ? 'bg-gray-600 text-white placeholder-gray-400 border-gray-500' 
-                      : 'bg-white text-gray-900 placeholder-gray-400 border-gray-200'
-                  } border focus:ring-2 focus:ring-purple-500 focus:border-transparent`}
+                      ? 'bg-white/10 text-white placeholder-muted-dark border-border-dark' 
+                      : 'bg-white text-foreground-light placeholder-muted-dark border-border-light'
+                  } border focus:ring-2 focus:ring-primary focus:border-transparent`}
                 />
               </div>
 
               {/* Level & Department */}
               <div className="grid grid-cols-2 gap-4">
                 <div>
-                  <label className={`block text-xs font-medium mb-1 ${darkMode ? 'text-gray-400' : 'text-gray-600'}`}>
+                  <label className={`block text-xs font-medium mb-1 ${darkMode ? 'text-muted-dark' : 'text-muted-light'}`}>
                     Nível
                   </label>
                   <select
@@ -264,9 +272,9 @@ export default function JobPositionsManager({
                     onChange={(e) => setFormData({ ...formData, level: e.target.value as any })}
                     className={`w-full px-3 py-2 rounded-lg text-sm ${
                       darkMode 
-                        ? 'bg-gray-600 text-white border-gray-500' 
-                        : 'bg-white text-gray-900 border-gray-200'
-                    } border focus:ring-2 focus:ring-purple-500 focus:border-transparent`}
+                        ? 'bg-white/10 text-white border-border-dark' 
+                        : 'bg-white text-foreground-light border-border-light'
+                    } border focus:ring-2 focus:ring-primary focus:border-transparent`}
                   >
                     {LEVELS.map(level => (
                       <option key={level.value} value={level.value}>{level.label}</option>
@@ -274,7 +282,7 @@ export default function JobPositionsManager({
                   </select>
                 </div>
                 <div>
-                  <label className={`block text-xs font-medium mb-1 ${darkMode ? 'text-gray-400' : 'text-gray-600'}`}>
+                  <label className={`block text-xs font-medium mb-1 ${darkMode ? 'text-muted-dark' : 'text-muted-light'}`}>
                     Departamento
                   </label>
                   <input
@@ -284,16 +292,16 @@ export default function JobPositionsManager({
                     placeholder="Ex: Tecnologia"
                     className={`w-full px-3 py-2 rounded-lg text-sm ${
                       darkMode 
-                        ? 'bg-gray-600 text-white placeholder-gray-400 border-gray-500' 
-                        : 'bg-white text-gray-900 placeholder-gray-400 border-gray-200'
-                    } border focus:ring-2 focus:ring-purple-500 focus:border-transparent`}
+                        ? 'bg-white/10 text-white placeholder-muted-dark border-border-dark' 
+                        : 'bg-white text-foreground-light placeholder-muted-dark border-border-light'
+                    } border focus:ring-2 focus:ring-primary focus:border-transparent`}
                   />
                 </div>
               </div>
 
               {/* Description */}
               <div>
-                <label className={`block text-xs font-medium mb-1 ${darkMode ? 'text-gray-400' : 'text-gray-600'}`}>
+                <label className={`block text-xs font-medium mb-1 ${darkMode ? 'text-muted-dark' : 'text-muted-light'}`}>
                   Descrição da Vaga *
                 </label>
                 <textarea
@@ -303,15 +311,15 @@ export default function JobPositionsManager({
                   rows={4}
                   className={`w-full px-3 py-2 rounded-lg text-sm resize-none ${
                     darkMode 
-                      ? 'bg-gray-600 text-white placeholder-gray-400 border-gray-500' 
-                      : 'bg-white text-gray-900 placeholder-gray-400 border-gray-200'
-                  } border focus:ring-2 focus:ring-purple-500 focus:border-transparent`}
+                      ? 'bg-white/10 text-white placeholder-muted-dark border-border-dark' 
+                      : 'bg-white text-foreground-light placeholder-muted-dark border-border-light'
+                  } border focus:ring-2 focus:ring-primary focus:border-transparent`}
                 />
               </div>
 
               {/* Requirements */}
               <div>
-                <label className={`block text-xs font-medium mb-1 ${darkMode ? 'text-gray-400' : 'text-gray-600'}`}>
+                <label className={`block text-xs font-medium mb-1 ${darkMode ? 'text-muted-dark' : 'text-muted-light'}`}>
                   Requisitos Técnicos
                 </label>
                 <textarea
@@ -321,9 +329,9 @@ export default function JobPositionsManager({
                   rows={3}
                   className={`w-full px-3 py-2 rounded-lg text-sm resize-none ${
                     darkMode 
-                      ? 'bg-gray-600 text-white placeholder-gray-400 border-gray-500' 
-                      : 'bg-white text-gray-900 placeholder-gray-400 border-gray-200'
-                  } border focus:ring-2 focus:ring-purple-500 focus:border-transparent`}
+                      ? 'bg-white/10 text-white placeholder-muted-dark border-border-dark' 
+                      : 'bg-white text-foreground-light placeholder-muted-dark border-border-light'
+                  } border focus:ring-2 focus:ring-primary focus:border-transparent`}
                 />
               </div>
 
@@ -332,7 +340,7 @@ export default function JobPositionsManager({
                 <button
                   onClick={resetForm}
                   className={`px-4 py-2 rounded-lg text-sm ${
-                    darkMode ? 'hover:bg-gray-600' : 'hover:bg-gray-200'
+                    darkMode ? 'hover:bg-white/15' : 'hover:bg-black/5'
                   }`}
                 >
                   Cancelar
@@ -340,7 +348,7 @@ export default function JobPositionsManager({
                 <button
                   onClick={isCreating ? handleCreate : handleUpdate}
                   disabled={saving || !formData.title.trim() || !formData.description.trim()}
-                  className="flex items-center gap-2 px-4 py-2 rounded-lg text-sm bg-purple-600 hover:bg-purple-700 text-white disabled:opacity-50 disabled:cursor-not-allowed"
+                  className="flex items-center gap-2 px-4 py-2 rounded-lg text-sm bg-primary hover:bg-primary-600 text-white disabled:opacity-50 disabled:cursor-not-allowed"
                 >
                   <Save size={16} />
                   {saving ? 'Salvando...' : 'Salvar'}
@@ -354,7 +362,7 @@ export default function JobPositionsManager({
         {!isCreating && !editingId && (
           <>
             {filteredPositions.length === 0 ? (
-              <div className={`text-center py-12 ${darkMode ? 'text-gray-400' : 'text-gray-500'}`}>
+              <div className={`text-center py-12 ${darkMode ? 'text-muted-dark' : 'text-muted-light'}`}>
                 <Briefcase size={48} className="mx-auto mb-4 opacity-30" />
                 <p className="text-lg font-medium mb-2">
                   {searchTerm ? 'Nenhuma vaga encontrada' : 'Nenhuma vaga cadastrada'}
@@ -367,14 +375,15 @@ export default function JobPositionsManager({
               </div>
             ) : (
               <div className="space-y-3">
-                {filteredPositions.map((position) => (
+                {filteredPositions.map((position, idx) => (
                   <div
                     key={position.id}
-                    className={`rounded-xl border transition-all ${
+                    className={`rounded-xl border transition-all animate-fade-in-up ${
                       darkMode 
-                        ? 'bg-gray-700/30 border-gray-600 hover:border-gray-500' 
-                        : 'bg-gray-50 border-gray-200 hover:border-gray-300'
+                        ? 'bg-white/5 border-border-dark hover:border-border-dark' 
+                        : 'bg-black/3 border-border-light hover:border-border-light'
                     }`}
+                    style={{ animationDelay: `${Math.min(idx, 8) * 50}ms` }}
                   >
                     {/* Header */}
                     <div 
@@ -383,17 +392,17 @@ export default function JobPositionsManager({
                     >
                       <div className="flex-1">
                         <div className="flex items-center gap-2">
-                          <h4 className={`font-medium ${darkMode ? 'text-white' : 'text-gray-900'}`}>
+                          <h4 className={`font-medium ${darkMode ? 'text-white' : 'text-foreground-light'}`}>
                             {position.title}
                           </h4>
                           <span className={`text-xs px-2 py-0.5 rounded-full ${
-                            darkMode ? 'bg-purple-900/50 text-purple-300' : 'bg-purple-100 text-purple-700'
+                            darkMode ? 'bg-primary-900/50 text-primary-300' : 'bg-primary-50 text-primary-700'
                           }`}>
                             {getLevelLabel(position.level)}
                           </span>
                         </div>
                         {position.department && (
-                          <p className={`text-sm ${darkMode ? 'text-gray-400' : 'text-gray-500'}`}>
+                          <p className={`text-sm ${darkMode ? 'text-muted-dark' : 'text-muted-light'}`}>
                             {position.department}
                           </p>
                         )}
@@ -405,7 +414,7 @@ export default function JobPositionsManager({
                             startEdit(position);
                           }}
                           className={`p-2 rounded-lg transition ${
-                            darkMode ? 'hover:bg-gray-600' : 'hover:bg-gray-200'
+                            darkMode ? 'hover:bg-white/15' : 'hover:bg-black/5'
                           }`}
                         >
                           <Edit2 size={16} />
@@ -422,36 +431,36 @@ export default function JobPositionsManager({
                           <Trash2 size={16} />
                         </button>
                         {expandedId === position.id ? (
-                          <ChevronUp size={20} className={darkMode ? 'text-gray-400' : 'text-gray-500'} />
+                          <ChevronUp size={20} className={darkMode ? 'text-muted-dark' : 'text-muted-light'} />
                         ) : (
-                          <ChevronDown size={20} className={darkMode ? 'text-gray-400' : 'text-gray-500'} />
+                          <ChevronDown size={20} className={darkMode ? 'text-muted-dark' : 'text-muted-light'} />
                         )}
                       </div>
                     </div>
 
                     {/* Expanded Content */}
                     {expandedId === position.id && (
-                      <div className={`px-4 pb-4 pt-0 border-t ${darkMode ? 'border-gray-600' : 'border-gray-200'}`}>
+                      <div className={`px-4 pb-4 pt-0 border-t ${darkMode ? 'border-border-dark' : 'border-border-light'}`}>
                         <div className="pt-4 space-y-3">
                           <div>
-                            <h5 className={`text-xs font-semibold mb-1 ${darkMode ? 'text-gray-400' : 'text-gray-600'}`}>
+                            <h5 className={`text-xs font-semibold mb-1 ${darkMode ? 'text-muted-dark' : 'text-muted-light'}`}>
                               Descrição
                             </h5>
-                            <p className={`text-sm whitespace-pre-wrap ${darkMode ? 'text-gray-300' : 'text-gray-700'}`}>
+                            <p className={`text-sm whitespace-pre-wrap ${darkMode ? 'text-foreground-dark' : 'text-muted-light'}`}>
                               {position.description}
                             </p>
                           </div>
                           {position.requirements && (
                             <div>
-                              <h5 className={`text-xs font-semibold mb-1 ${darkMode ? 'text-gray-400' : 'text-gray-600'}`}>
+                              <h5 className={`text-xs font-semibold mb-1 ${darkMode ? 'text-muted-dark' : 'text-muted-light'}`}>
                                 Requisitos
                               </h5>
-                              <p className={`text-sm whitespace-pre-wrap ${darkMode ? 'text-gray-300' : 'text-gray-700'}`}>
+                              <p className={`text-sm whitespace-pre-wrap ${darkMode ? 'text-foreground-dark' : 'text-muted-light'}`}>
                                 {position.requirements}
                               </p>
                             </div>
                           )}
-                          <p className={`text-xs ${darkMode ? 'text-gray-500' : 'text-gray-400'}`}>
+                          <p className={`text-xs ${darkMode ? 'text-muted-light' : 'text-muted-dark'}`}>
                             Criada em {new Date(position.createdAt).toLocaleDateString('pt-BR')}
                           </p>
                         </div>
@@ -465,8 +474,8 @@ export default function JobPositionsManager({
         )}
 
         {/* Info */}
-        <div className={`mt-6 p-4 rounded-lg ${darkMode ? 'bg-purple-900/20 border-purple-800' : 'bg-purple-50 border-purple-200'} border`}>
-          <p className={`text-sm ${darkMode ? 'text-purple-300' : 'text-purple-700'}`}>
+        <div className={`mt-6 p-4 rounded-lg ${darkMode ? 'bg-primary-900/20 border-primary-800' : 'bg-primary-50 border-primary-200'} border`}>
+          <p className={`text-sm ${darkMode ? 'text-primary-300' : 'text-primary-700'}`}>
             <strong>💡 Dica:</strong> Cadastre suas vagas aqui e selecione-as rapidamente ao iniciar uma entrevista. 
             A descrição será usada pela IA para gerar perguntas relevantes.
           </p>

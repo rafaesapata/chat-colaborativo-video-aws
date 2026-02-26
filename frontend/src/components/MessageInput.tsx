@@ -48,7 +48,7 @@ export default function MessageInput({ onSendMessage, disabled }: MessageInputPr
   };
 
   return (
-    <div className="border-t border-gray-200 bg-white">
+    <div className="border-t border-border-light bg-white">
       {/* AI Suggestions */}
       {showSuggestions && message.length === 0 && (
         <div className="px-6 pt-4 pb-2">
@@ -56,7 +56,7 @@ export default function MessageInput({ onSendMessage, disabled }: MessageInputPr
             <svg className="w-4 h-4 text-blue-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
               <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 10V3L4 14h7v7l9-11h-7z" />
             </svg>
-            <span className="text-xs font-semibold text-gray-600">Sugestões Inteligentes</span>
+            <span className="text-xs font-semibold text-muted-light">Sugestões Inteligentes</span>
           </div>
           <div className="flex flex-wrap gap-2">
             {AI_SUGGESTIONS.map((suggestion, index) => (
@@ -88,25 +88,25 @@ export default function MessageInput({ onSendMessage, disabled }: MessageInputPr
               placeholder="Digite sua mensagem..."
               disabled={disabled}
               rows={1}
-              className="w-full px-4 py-3 pr-24 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent resize-none text-sm disabled:bg-gray-100 disabled:cursor-not-allowed"
+              className="w-full px-4 py-3 pr-24 border border-border-light rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent resize-none text-sm disabled:bg-black/5 disabled:cursor-not-allowed"
               style={{ minHeight: '48px', maxHeight: '120px' }}
             />
             <div className="absolute right-2 bottom-2 flex items-center gap-1">
               <button
                 type="button"
-                className="p-2 hover:bg-gray-100 rounded-lg transition"
+                className="p-2 hover:bg-black/5 rounded-lg transition"
                 title="Anexar arquivo"
               >
-                <svg className="w-5 h-5 text-gray-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <svg className="w-5 h-5 text-muted-light" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                   <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15.172 7l-6.586 6.586a2 2 0 102.828 2.828l6.414-6.586a4 4 0 00-5.656-5.656l-6.415 6.585a6 6 0 108.486 8.486L20.5 13" />
                 </svg>
               </button>
               <button
                 type="button"
-                className="p-2 hover:bg-gray-100 rounded-lg transition"
+                className="p-2 hover:bg-black/5 rounded-lg transition"
                 title="Adicionar emoji"
               >
-                <svg className="w-5 h-5 text-gray-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <svg className="w-5 h-5 text-muted-light" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                   <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M14.828 14.828a4 4 0 01-5.656 0M9 10h.01M15 10h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
                 </svg>
               </button>
@@ -123,7 +123,7 @@ export default function MessageInput({ onSendMessage, disabled }: MessageInputPr
             </svg>
           </button>
         </div>
-        <p className="text-xs text-gray-400 mt-2">
+        <p className="text-xs text-muted-dark mt-2">
           Pressione Enter para enviar, Shift+Enter para nova linha
         </p>
       </form>

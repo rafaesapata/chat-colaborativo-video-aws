@@ -24,7 +24,7 @@ export default function AudioControls({ isRecording, onStartRecording, onStopRec
             ⏹️ Parar Gravação
           </button>
         )}
-        <div className="text-xs text-gray-500 text-center">
+        <div className="text-xs text-muted-light text-center">
           {isRecording ? 'Gravando com transcrição em tempo real...' : 'Clique para começar a falar'}
         </div>
       </div>

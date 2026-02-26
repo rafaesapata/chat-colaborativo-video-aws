@@ -107,7 +107,7 @@ export default function WebSocketTest() {
       case 'connected': return 'text-green-600';
       case 'connecting': return 'text-yellow-600';
       case 'error': return 'text-red-600';
-      default: return 'text-gray-600';
+      default: return 'text-muted-light';
     }
   };
 
@@ -121,7 +121,7 @@ export default function WebSocketTest() {
   };
 
   return (
-    <div className="fixed top-4 left-4 bg-white border border-gray-300 rounded-lg shadow-lg p-4 max-w-md z-50">
+    <div className="fixed top-4 left-4 bg-white border border-border-light rounded-lg shadow-lg p-4 max-w-md z-50">
       <div className="flex items-center justify-between mb-4">
         <h3 className="font-bold text-lg">🧪 Teste WebSocket</h3>
         <div className={`font-semibold ${getStatusColor()}`}>
@@ -163,9 +163,9 @@ export default function WebSocketTest() {
 
       <div className="border-t pt-4">
         <h4 className="font-semibold mb-2">Log de Mensagens:</h4>
-        <div className="max-h-40 overflow-y-auto bg-gray-50 p-2 rounded text-xs font-mono">
+        <div className="max-h-40 overflow-y-auto bg-black/3 p-2 rounded text-xs font-mono">
           {messages.length === 0 ? (
-            <div className="text-gray-500">Nenhuma mensagem ainda...</div>
+            <div className="text-muted-light">Nenhuma mensagem ainda...</div>
           ) : (
             messages.map((msg, index) => (
               <div key={index} className="mb-1">
@@ -176,7 +176,7 @@ export default function WebSocketTest() {
         </div>
       </div>
 
-      <div className="mt-4 text-xs text-gray-500">
+      <div className="mt-4 text-xs text-muted-light">
         <div><strong>URL:</strong> {import.meta.env.VITE_WEBSOCKET_URL}</div>
         <div><strong>Formato esperado:</strong> user_[a-z0-9]{9}</div>
       </div>

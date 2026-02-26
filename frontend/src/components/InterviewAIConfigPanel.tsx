@@ -84,19 +84,19 @@ export default function InterviewAIConfigPanel({ darkMode, userLogin }: Intervie
 
   if (loading) {
     return (
-      <div className={`rounded-xl ${darkMode ? 'bg-gray-800' : 'bg-white'} shadow-lg p-8 text-center`}>
+      <div className={`rounded-xl ${darkMode ? 'bg-card-dark' : 'bg-white'} shadow-lg p-8 text-center`}>
         <div className="animate-spin w-8 h-8 border-2 border-blue-500 border-t-transparent rounded-full mx-auto mb-4" />
-        <p className={darkMode ? 'text-gray-400' : 'text-gray-500'}>Carregando configurações...</p>
+        <p className={darkMode ? 'text-muted-dark' : 'text-muted-light'}>Carregando configurações...</p>
       </div>
     );
   }
 
   return (
-    <div className={`rounded-xl ${darkMode ? 'bg-gray-800' : 'bg-white'} shadow-lg overflow-hidden`}>
+    <div className={`rounded-xl ${darkMode ? 'bg-card-dark' : 'bg-white'} shadow-lg overflow-hidden`}>
       {/* Header */}
-      <div className={`px-6 py-4 border-b ${darkMode ? 'border-gray-700' : 'border-gray-200'} flex items-center justify-between`}>
+      <div className={`px-6 py-4 border-b ${darkMode ? 'border-border-dark' : 'border-border-light'} flex items-center justify-between`}>
         <h2 className="text-lg font-semibold flex items-center gap-2">
-          <Brain size={20} className="text-purple-500" />
+          <Brain size={20} className="text-primary" />
           Configurações da IA de Entrevista
         </h2>
         <div className="flex items-center gap-2">
@@ -104,7 +104,7 @@ export default function InterviewAIConfigPanel({ darkMode, userLogin }: Intervie
             onClick={handleReset}
             disabled={saving}
             className={`flex items-center gap-2 px-3 py-1.5 rounded-lg text-sm ${
-              darkMode ? 'bg-gray-700 hover:bg-gray-600' : 'bg-gray-100 hover:bg-gray-200'
+              darkMode ? 'bg-white/5 hover:bg-white/15' : 'bg-black/5 hover:bg-black/5'
             } ${saving ? 'opacity-50' : ''}`}
           >
             <RotateCcw size={14} />
@@ -116,7 +116,7 @@ export default function InterviewAIConfigPanel({ darkMode, userLogin }: Intervie
             className={`flex items-center gap-2 px-4 py-1.5 rounded-lg text-sm ${
               hasChanges
                 ? 'bg-green-600 hover:bg-green-700 text-white'
-                : darkMode ? 'bg-gray-700 text-gray-500' : 'bg-gray-200 text-gray-400'
+                : darkMode ? 'bg-white/5 text-muted-light' : 'bg-black/5 text-muted-dark'
             } ${saving ? 'opacity-50' : ''}`}
           >
             <Save size={14} />
@@ -141,7 +141,7 @@ export default function InterviewAIConfigPanel({ darkMode, userLogin }: Intervie
       <div className="p-6 space-y-8">
         {/* Timing Section */}
         <section>
-          <h3 className={`text-sm font-semibold mb-4 flex items-center gap-2 ${darkMode ? 'text-gray-300' : 'text-gray-700'}`}>
+          <h3 className={`text-sm font-semibold mb-4 flex items-center gap-2 ${darkMode ? 'text-foreground-dark' : 'text-muted-light'}`}>
             <Clock size={16} className="text-blue-500" />
             Timing e Frequência
           </h3>
@@ -240,7 +240,7 @@ export default function InterviewAIConfigPanel({ darkMode, userLogin }: Intervie
 
         {/* Evaluation Section */}
         <section>
-          <h3 className={`text-sm font-semibold mb-4 flex items-center gap-2 ${darkMode ? 'text-gray-300' : 'text-gray-700'}`}>
+          <h3 className={`text-sm font-semibold mb-4 flex items-center gap-2 ${darkMode ? 'text-foreground-dark' : 'text-muted-light'}`}>
             <Gauge size={16} className="text-orange-500" />
             Avaliação de Respostas
           </h3>
@@ -294,7 +294,7 @@ export default function InterviewAIConfigPanel({ darkMode, userLogin }: Intervie
 
         {/* Thresholds Section */}
         <section>
-          <h3 className={`text-sm font-semibold mb-4 flex items-center gap-2 ${darkMode ? 'text-gray-300' : 'text-gray-700'}`}>
+          <h3 className={`text-sm font-semibold mb-4 flex items-center gap-2 ${darkMode ? 'text-foreground-dark' : 'text-muted-light'}`}>
             <Settings size={16} className="text-green-500" />
             Thresholds de Qualidade
           </h3>
@@ -337,7 +337,7 @@ export default function InterviewAIConfigPanel({ darkMode, userLogin }: Intervie
 
         {/* Detecção de Perguntas Section */}
         <section>
-          <h3 className={`text-sm font-semibold mb-4 flex items-center gap-2 ${darkMode ? 'text-gray-300' : 'text-gray-700'}`}>
+          <h3 className={`text-sm font-semibold mb-4 flex items-center gap-2 ${darkMode ? 'text-foreground-dark' : 'text-muted-light'}`}>
             <Brain size={16} className="text-cyan-500" />
             Detecção de Perguntas
           </h3>
@@ -354,7 +354,7 @@ export default function InterviewAIConfigPanel({ darkMode, userLogin }: Intervie
               onChange={(v) => updateConfig('questionSimilarityThreshold', v)}
             />
           </div>
-          <p className={`text-xs mt-3 ${darkMode ? 'text-gray-500' : 'text-gray-400'}`}>
+          <p className={`text-xs mt-3 ${darkMode ? 'text-muted-light' : 'text-muted-dark'}`}>
             💡 Valores mais baixos detectam perguntas com mais facilidade (mais sensível). 
             Valores mais altos exigem maior correspondência entre a fala e a pergunta sugerida.
           </p>
@@ -362,8 +362,8 @@ export default function InterviewAIConfigPanel({ darkMode, userLogin }: Intervie
 
         {/* Toggles Section */}
         <section>
-          <h3 className={`text-sm font-semibold mb-4 flex items-center gap-2 ${darkMode ? 'text-gray-300' : 'text-gray-700'}`}>
-            <Brain size={16} className="text-purple-500" />
+          <h3 className={`text-sm font-semibold mb-4 flex items-center gap-2 ${darkMode ? 'text-foreground-dark' : 'text-muted-light'}`}>
+            <Brain size={16} className="text-primary" />
             Comportamento
           </h3>
           <div className="space-y-3">
@@ -385,21 +385,21 @@ export default function InterviewAIConfigPanel({ darkMode, userLogin }: Intervie
         </section>
 
         {/* ============ CONFIGURAÇÕES DE RELATÓRIO ============ */}
-        <div className={`border-t ${darkMode ? 'border-gray-700' : 'border-gray-200'} pt-6 mt-6`}>
-          <h2 className={`text-lg font-semibold mb-6 flex items-center gap-2 ${darkMode ? 'text-gray-200' : 'text-gray-800'}`}>
-            <FileText size={20} className="text-indigo-500" />
+        <div className={`border-t ${darkMode ? 'border-border-dark' : 'border-border-light'} pt-6 mt-6`}>
+          <h2 className={`text-lg font-semibold mb-6 flex items-center gap-2 ${darkMode ? 'text-foreground-dark' : 'text-foreground-light'}`}>
+            <FileText size={20} className="text-primary" />
             Configurações de Relatório de Entrevista
           </h2>
         </div>
 
         {/* Modelo de IA */}
         <section>
-          <h3 className={`text-sm font-semibold mb-4 flex items-center gap-2 ${darkMode ? 'text-gray-300' : 'text-gray-700'}`}>
-            <Brain size={16} className="text-purple-500" />
+          <h3 className={`text-sm font-semibold mb-4 flex items-center gap-2 ${darkMode ? 'text-foreground-dark' : 'text-muted-light'}`}>
+            <Brain size={16} className="text-primary" />
             Modelo de IA
           </h3>
           <div className="space-y-2">
-            <label className={`block text-sm ${darkMode ? 'text-gray-400' : 'text-gray-600'}`}>
+            <label className={`block text-sm ${darkMode ? 'text-muted-dark' : 'text-muted-light'}`}>
               Selecione o modelo Bedrock para geração de perguntas e relatórios
             </label>
             <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
@@ -413,16 +413,16 @@ export default function InterviewAIConfigPanel({ darkMode, userLogin }: Intervie
                   onClick={() => updateConfig('aiModelId', model.id)}
                   className={`p-3 rounded-lg border-2 text-left transition-all ${
                     config.aiModelId === model.id
-                      ? 'border-purple-500 bg-purple-500/10'
-                      : darkMode ? 'border-gray-600 hover:border-gray-500' : 'border-gray-200 hover:border-gray-300'
+                      ? 'border-primary bg-primary/10'
+                      : darkMode ? 'border-border-dark hover:border-border-dark' : 'border-border-light hover:border-border-light'
                   }`}
                 >
-                  <div className={`font-medium text-sm ${darkMode ? 'text-gray-200' : 'text-gray-800'}`}>
+                  <div className={`font-medium text-sm ${darkMode ? 'text-foreground-dark' : 'text-foreground-light'}`}>
                     {model.name}
-                    {config.aiModelId === model.id && <span className="ml-2 text-purple-500">✓</span>}
+                    {config.aiModelId === model.id && <span className="ml-2 text-primary">✓</span>}
                   </div>
-                  <div className={`text-xs mt-1 ${darkMode ? 'text-gray-400' : 'text-gray-500'}`}>{model.desc}</div>
-                  <div className={`text-xs mt-1 ${darkMode ? 'text-gray-500' : 'text-gray-400'}`}>{model.cost}</div>
+                  <div className={`text-xs mt-1 ${darkMode ? 'text-muted-dark' : 'text-muted-light'}`}>{model.desc}</div>
+                  <div className={`text-xs mt-1 ${darkMode ? 'text-muted-light' : 'text-muted-dark'}`}>{model.cost}</div>
                 </button>
               ))}
             </div>
@@ -431,8 +431,8 @@ export default function InterviewAIConfigPanel({ darkMode, userLogin }: Intervie
 
         {/* Thresholds de Recomendação */}
         <section>
-          <h3 className={`text-sm font-semibold mb-4 flex items-center gap-2 ${darkMode ? 'text-gray-300' : 'text-gray-700'}`}>
-            <Scale size={16} className="text-indigo-500" />
+          <h3 className={`text-sm font-semibold mb-4 flex items-center gap-2 ${darkMode ? 'text-foreground-dark' : 'text-muted-light'}`}>
+            <Scale size={16} className="text-primary" />
             Thresholds de Recomendação
           </h3>
           <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
@@ -470,14 +470,14 @@ export default function InterviewAIConfigPanel({ darkMode, userLogin }: Intervie
               onChange={(v) => updateConfig('reportNeedsSecondInterviewThreshold', v)}
             />
           </div>
-          <p className={`text-xs mt-3 ${darkMode ? 'text-gray-500' : 'text-gray-400'}`}>
+          <p className={`text-xs mt-3 ${darkMode ? 'text-muted-light' : 'text-muted-dark'}`}>
             💡 Candidatos abaixo do threshold de "Segunda Entrevista" serão marcados como "Não Aprovado"
           </p>
         </section>
 
         {/* Pesos de Avaliação */}
         <section>
-          <h3 className={`text-sm font-semibold mb-4 flex items-center gap-2 ${darkMode ? 'text-gray-300' : 'text-gray-700'}`}>
+          <h3 className={`text-sm font-semibold mb-4 flex items-center gap-2 ${darkMode ? 'text-foreground-dark' : 'text-muted-light'}`}>
             <Gauge size={16} className="text-amber-500" />
             Pesos de Avaliação (devem somar 100%)
           </h3>
@@ -545,7 +545,7 @@ export default function InterviewAIConfigPanel({ darkMode, userLogin }: Intervie
 
         {/* Instruções Customizáveis */}
         <section>
-          <h3 className={`text-sm font-semibold mb-4 flex items-center gap-2 ${darkMode ? 'text-gray-300' : 'text-gray-700'}`}>
+          <h3 className={`text-sm font-semibold mb-4 flex items-center gap-2 ${darkMode ? 'text-foreground-dark' : 'text-muted-light'}`}>
             <MessageSquare size={16} className="text-cyan-500" />
             Instruções para a IA (Prompts Customizáveis)
           </h3>
@@ -621,9 +621,9 @@ interface ConfigSliderProps {
 
 function ConfigSlider({ darkMode, label, value, min, max, step, unit, description, onChange }: ConfigSliderProps) {
   return (
-    <div className={`p-3 rounded-lg ${darkMode ? 'bg-gray-700/50' : 'bg-gray-50'}`}>
+    <div className={`p-3 rounded-lg ${darkMode ? 'bg-white/5' : 'bg-black/3'}`}>
       <div className="flex items-center justify-between mb-1">
-        <label className={`text-sm font-medium ${darkMode ? 'text-gray-200' : 'text-gray-700'}`}>
+        <label className={`text-sm font-medium ${darkMode ? 'text-foreground-dark' : 'text-muted-light'}`}>
           {label}
         </label>
         <span className={`text-sm font-mono ${darkMode ? 'text-blue-400' : 'text-blue-600'}`}>
@@ -637,9 +637,9 @@ function ConfigSlider({ darkMode, label, value, min, max, step, unit, descriptio
         step={step}
         value={value}
         onChange={(e) => onChange(Number(e.target.value))}
-        className="w-full h-2 bg-gray-300 rounded-lg appearance-none cursor-pointer accent-blue-500"
+        className="w-full h-2 bg-black/10 rounded-lg appearance-none cursor-pointer accent-blue-500"
       />
-      <p className={`text-xs mt-1 ${darkMode ? 'text-gray-500' : 'text-gray-400'}`}>
+      <p className={`text-xs mt-1 ${darkMode ? 'text-muted-light' : 'text-muted-dark'}`}>
         {description}
       </p>
     </div>
@@ -659,22 +659,22 @@ function ConfigToggle({ darkMode, label, description, checked, onChange }: Confi
   return (
     <div 
       className={`p-3 rounded-lg flex items-center justify-between cursor-pointer ${
-        darkMode ? 'bg-gray-700/50 hover:bg-gray-700' : 'bg-gray-50 hover:bg-gray-100'
+        darkMode ? 'bg-white/5 hover:bg-white/10' : 'bg-black/3 hover:bg-black/5'
       }`}
       onClick={() => onChange(!checked)}
     >
       <div>
-        <p className={`text-sm font-medium ${darkMode ? 'text-gray-200' : 'text-gray-700'}`}>
+        <p className={`text-sm font-medium ${darkMode ? 'text-foreground-dark' : 'text-muted-light'}`}>
           {label}
         </p>
-        <p className={`text-xs ${darkMode ? 'text-gray-500' : 'text-gray-400'}`}>
+        <p className={`text-xs ${darkMode ? 'text-muted-light' : 'text-muted-dark'}`}>
           {description}
         </p>
       </div>
       <div className={`relative w-11 h-6 rounded-full transition-colors ${
         checked 
           ? 'bg-green-500' 
-          : darkMode ? 'bg-gray-600' : 'bg-gray-300'
+          : darkMode ? 'bg-white/10' : 'bg-black/10'
       }`}>
         <div className={`absolute top-0.5 left-0.5 w-5 h-5 bg-white rounded-full shadow transition-transform ${
           checked ? 'translate-x-5' : 'translate-x-0'
@@ -698,16 +698,16 @@ function ConfigTextArea({ darkMode, label, value, placeholder, description, onCh
   const [isExpanded, setIsExpanded] = useState(false);
   
   return (
-    <div className={`p-3 rounded-lg ${darkMode ? 'bg-gray-700/50' : 'bg-gray-50'}`}>
+    <div className={`p-3 rounded-lg ${darkMode ? 'bg-white/5' : 'bg-black/3'}`}>
       <div className="flex items-center justify-between mb-2">
-        <label className={`text-sm font-medium ${darkMode ? 'text-gray-200' : 'text-gray-700'}`}>
+        <label className={`text-sm font-medium ${darkMode ? 'text-foreground-dark' : 'text-muted-light'}`}>
           {label}
         </label>
         <button
           type="button"
           onClick={() => setIsExpanded(!isExpanded)}
           className={`text-xs px-2 py-1 rounded ${
-            darkMode ? 'bg-gray-600 hover:bg-gray-500 text-gray-300' : 'bg-gray-200 hover:bg-gray-300 text-gray-600'
+            darkMode ? 'bg-white/10 hover:bg-black/30 text-foreground-dark' : 'bg-black/5 hover:bg-black/10 text-muted-light'
           }`}
         >
           {isExpanded ? 'Recolher' : 'Expandir'}
@@ -720,11 +720,11 @@ function ConfigTextArea({ darkMode, label, value, placeholder, description, onCh
         rows={isExpanded ? 8 : 3}
         className={`w-full px-3 py-2 rounded-lg text-sm resize-none transition-all ${
           darkMode 
-            ? 'bg-gray-800 border-gray-600 text-gray-200 placeholder-gray-500' 
-            : 'bg-white border-gray-300 text-gray-800 placeholder-gray-400'
+            ? 'bg-card-dark border-border-dark text-foreground-dark placeholder-muted-light' 
+            : 'bg-white border-border-light text-foreground-light placeholder-muted-dark'
         } border focus:outline-none focus:ring-2 focus:ring-blue-500`}
       />
-      <p className={`text-xs mt-1 ${darkMode ? 'text-gray-500' : 'text-gray-400'}`}>
+      <p className={`text-xs mt-1 ${darkMode ? 'text-muted-light' : 'text-muted-dark'}`}>
         {description}
       </p>
     </div>

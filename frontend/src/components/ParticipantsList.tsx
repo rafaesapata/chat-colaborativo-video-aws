@@ -14,7 +14,7 @@ export default function ParticipantsList({ participants }: Props) {
           </div>
         ))}
         {participants.length === 0 && (
-          <p className="text-gray-400 text-sm italic">Nenhum participante</p>
+          <p className="text-muted-dark text-sm italic">Nenhum participante</p>
         )}
       </div>
     </div>

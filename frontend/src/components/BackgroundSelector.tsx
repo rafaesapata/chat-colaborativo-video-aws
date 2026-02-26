@@ -36,21 +36,21 @@ export default function BackgroundSelector({
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 backdrop-blur-sm p-4">
       <div className={`relative w-full max-w-md rounded-2xl shadow-2xl ${
-        darkMode ? 'bg-gray-800' : 'bg-white'
+        darkMode ? 'bg-card-dark' : 'bg-white'
       }`}>
         {/* Header */}
         <div className={`flex items-center justify-between px-6 py-4 border-b ${
-          darkMode ? 'border-gray-700' : 'border-gray-200'
+          darkMode ? 'border-border-dark' : 'border-border-light'
         }`}>
           <div className="flex items-center gap-3">
-            <div className={`p-2 rounded-lg ${darkMode ? 'bg-purple-900/50' : 'bg-purple-100'}`}>
-              <Image size={20} className="text-purple-500" />
+            <div className={`p-2 rounded-lg ${darkMode ? 'bg-primary-900/50' : 'bg-primary-50'}`}>
+              <Image size={20} className="text-primary" />
             </div>
             <div>
-              <h2 className={`font-semibold ${darkMode ? 'text-white' : 'text-gray-900'}`}>
+              <h2 className={`font-semibold ${darkMode ? 'text-white' : 'text-foreground-light'}`}>
                 Efeitos de Fundo
               </h2>
-              <p className={`text-xs ${darkMode ? 'text-gray-400' : 'text-gray-500'}`}>
+              <p className={`text-xs ${darkMode ? 'text-muted-dark' : 'text-muted-light'}`}>
                 {isAuthenticated ? 'Escolha um fundo virtual' : 'Desfoque disponível'}
               </p>
             </div>
@@ -58,7 +58,7 @@ export default function BackgroundSelector({
           <button
             onClick={onClose}
             className={`p-2 rounded-lg transition ${
-              darkMode ? 'hover:bg-gray-700 text-gray-400' : 'hover:bg-gray-100 text-gray-500'
+              darkMode ? 'hover:bg-white/10 text-muted-dark' : 'hover:bg-black/5 text-muted-light'
             }`}
           >
             <X size={20} />
@@ -90,30 +90,30 @@ export default function BackgroundSelector({
                   disabled={isProcessing}
                   className={`relative aspect-video rounded-xl overflow-hidden transition-all duration-200 ${
                     isSelected 
-                      ? 'ring-2 ring-purple-500 ring-offset-2 ' + (darkMode ? 'ring-offset-gray-800' : 'ring-offset-white')
+                      ? 'ring-2 ring-primary ring-offset-2 ' + (darkMode ? 'ring-offset-card-dark' : 'ring-offset-white')
                       : isHovered
-                      ? darkMode ? 'ring-1 ring-gray-600' : 'ring-1 ring-gray-300'
+                      ? darkMode ? 'ring-1 ring-border-dark' : 'ring-1 ring-border-light'
                       : ''
                   } ${isProcessing ? 'opacity-50 cursor-wait' : 'cursor-pointer'}`}
                 >
                   {/* Background Preview */}
                   <div className={`absolute inset-0 flex items-center justify-center ${
                     bg.type === 'none' 
-                      ? darkMode ? 'bg-gray-700' : 'bg-gray-100'
+                      ? darkMode ? 'bg-white/5' : 'bg-black/5'
                       : bg.type === 'blur'
-                      ? 'bg-gradient-to-br from-blue-500/30 to-purple-500/30 backdrop-blur-sm'
-                      : darkMode ? 'bg-gray-600' : 'bg-gray-200'
+                      ? 'bg-gradient-to-br from-blue-500/30 to-primary-glow/30 backdrop-blur-sm'
+                      : darkMode ? 'bg-white/10' : 'bg-black/5'
                   }`}>
                     {bg.preview ? (
                       <span className="text-2xl">{bg.preview}</span>
                     ) : (
-                      <X size={24} className={darkMode ? 'text-gray-500' : 'text-gray-400'} />
+                      <X size={24} className={darkMode ? 'text-muted-light' : 'text-muted-dark'} />
                     )}
                   </div>
 
                   {/* Selected Indicator */}
                   {isSelected && (
-                    <div className="absolute top-1 right-1 w-5 h-5 rounded-full bg-purple-500 flex items-center justify-center">
+                    <div className="absolute top-1 right-1 w-5 h-5 rounded-full bg-primary flex items-center justify-center">
                       <Check size={12} className="text-white" />
                     </div>
                   )}
@@ -127,7 +127,7 @@ export default function BackgroundSelector({
 
                   {/* Label */}
                   <div className={`absolute bottom-0 left-0 right-0 px-2 py-1 text-xs font-medium truncate ${
-                    darkMode ? 'bg-black/60 text-white' : 'bg-white/80 text-gray-700'
+                    darkMode ? 'bg-black/60 text-white' : 'bg-white/80 text-muted-light'
                   }`}>
                     {bg.name}
                   </div>
@@ -151,17 +151,17 @@ export default function BackgroundSelector({
         </div>
 
         {/* Footer */}
-        <div className={`px-6 py-4 border-t ${darkMode ? 'border-gray-700' : 'border-gray-200'}`}>
+        <div className={`px-6 py-4 border-t ${darkMode ? 'border-border-dark' : 'border-border-light'}`}>
           <div className="flex items-center justify-between">
-            <p className={`text-xs ${darkMode ? 'text-gray-500' : 'text-gray-400'}`}>
+            <p className={`text-xs ${darkMode ? 'text-muted-light' : 'text-muted-dark'}`}>
               Atual: {currentBackground.name}
             </p>
             <button
               onClick={onClose}
               className={`px-4 py-2 rounded-lg font-medium transition ${
                 darkMode 
-                  ? 'bg-purple-600 hover:bg-purple-700 text-white' 
-                  : 'bg-purple-500 hover:bg-purple-600 text-white'
+                  ? 'bg-primary hover:bg-primary-600 text-white' 
+                  : 'bg-primary hover:bg-primary text-white'
               }`}
             >
               Fechar

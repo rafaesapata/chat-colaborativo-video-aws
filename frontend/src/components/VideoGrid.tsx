@@ -80,7 +80,7 @@ const VideoCard = memo(function VideoCard({
   return (
     <div
       className={`relative rounded-xl overflow-hidden transition-all duration-300 group ${
-        darkMode ? 'bg-gray-800' : 'bg-gray-100'
+        darkMode ? 'bg-card-dark' : 'bg-black/5'
       } ${isSpanning || isSpotlight ? 'row-span-2 col-span-2' : ''} ${
         isSpeaking ? 'speaking-indicator' : ''
       } ${isSpotlight ? 'z-10' : ''}`}
@@ -119,11 +119,11 @@ const VideoCard = memo(function VideoCard({
         />
       ) : (
         <div className={`w-full h-full flex items-center justify-center ${
-          darkMode ? 'bg-gray-700' : 'bg-gray-300'
+          darkMode ? 'bg-white/5' : 'bg-black/10'
         }`}>
           <div className={`${isMobile ? 'w-16 h-16 text-xl' : 'w-24 h-24 text-3xl'} rounded-full flex items-center justify-center font-bold ${
-            darkMode ? 'bg-gray-600 text-white' : 'bg-gray-400 text-gray-700'
-          } ${isSpeaking ? 'ring-2 ring-green-400 ring-offset-2 ring-offset-gray-700' : ''}`}>
+            darkMode ? 'bg-white/10 text-white' : 'bg-black/15 text-muted-light'
+          } ${isSpeaking ? 'ring-2 ring-green-400 ring-offset-2 ring-offset-card-dark' : ''}`}>
             {getParticipantInitials(participant.name)}
           </div>
         </div>

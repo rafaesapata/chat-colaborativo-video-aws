@@ -25,7 +25,7 @@ export default function Sidebar({
 
   const getStatusColor = (userId: string) => {
     // Simular status - em produção viria do WebSocket
-    return userId === currentUserId ? 'bg-green-500' : 'bg-gray-400';
+    return userId === currentUserId ? 'bg-green-500' : 'bg-black/15';
   };
 
   return (

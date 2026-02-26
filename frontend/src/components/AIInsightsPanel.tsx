@@ -29,14 +29,14 @@ export default function AIInsightsPanel({ }: Props) {
         <button
           onClick={() => requestAnalysis('summary')}
           disabled={loading}
-          className="w-full bg-purple-600 text-white px-4 py-2 rounded-lg hover:bg-purple-700 transition text-sm disabled:opacity-50"
+          className="w-full bg-primary text-white px-4 py-2 rounded-lg hover:bg-primary-600 transition text-sm disabled:opacity-50"
         >
           Gerar Resumo
         </button>
         <button
           onClick={() => requestAnalysis('sentiment')}
           disabled={loading}
-          className="w-full bg-indigo-600 text-white px-4 py-2 rounded-lg hover:bg-indigo-700 transition text-sm disabled:opacity-50"
+          className="w-full bg-primary text-white px-4 py-2 rounded-lg hover:bg-primary-600 transition text-sm disabled:opacity-50"
         >
           Análise de Sentimento
         </button>
@@ -50,15 +50,15 @@ export default function AIInsightsPanel({ }: Props) {
       </div>
 
       {loading && (
-        <div className="text-center text-gray-500 text-sm">
+        <div className="text-center text-muted-light text-sm">
           Analisando com IA...
         </div>
       )}
 
       {insights && !loading && (
-        <div className="bg-gray-50 rounded-lg p-3 text-sm">
+        <div className="bg-black/3 rounded-lg p-3 text-sm">
           <h4 className="font-semibold mb-2">Resultado:</h4>
-          <p className="text-gray-700">{insights.summary}</p>
+          <p className="text-muted-light">{insights.summary}</p>
         </div>
       )}
     </div>

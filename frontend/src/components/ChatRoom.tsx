@@ -36,11 +36,11 @@ export default function ChatRoom({ messages, onSendMessage }: Props) {
           <div key={msg.messageId} className="flex flex-col">
             <div className="flex items-baseline gap-2">
               <span className="font-semibold text-blue-600">{msg.userName}</span>
-              <span className="text-xs text-gray-500">
+              <span className="text-xs text-muted-light">
                 {new Date(msg.timestamp).toLocaleTimeString()}
               </span>
             </div>
-            <div className="bg-gray-100 rounded-lg p-3 mt-1 whitespace-pre-wrap break-words">
+            <div className="bg-black/5 rounded-lg p-3 mt-1 whitespace-pre-wrap break-words">
               {msg.content}
             </div>
           </div>

@@ -190,7 +190,7 @@ export default function InterviewSuggestions({
         categoriesCovered: 0,
         status: 'insufficient' as const,
         message: 'Inicie a entrevista fazendo perguntas',
-        color: darkMode ? 'text-gray-400' : 'text-gray-500'
+        color: darkMode ? 'text-muted-dark' : 'text-muted-light'
       };
     }
     
@@ -364,13 +364,13 @@ export default function InterviewSuggestions({
       case 'technical':
         return darkMode ? 'bg-blue-900/50 text-blue-300 border-blue-700' : 'bg-blue-100 text-blue-700 border-blue-300';
       case 'behavioral':
-        return darkMode ? 'bg-purple-900/50 text-purple-300 border-purple-700' : 'bg-purple-100 text-purple-700 border-purple-300';
+        return darkMode ? 'bg-primary-900/50 text-primary-300 border-primary-700' : 'bg-primary-50 text-primary-700 border-primary-300';
       case 'experience':
         return darkMode ? 'bg-green-900/50 text-green-300 border-green-700' : 'bg-green-100 text-green-700 border-green-300';
       case 'situational':
         return darkMode ? 'bg-orange-900/50 text-orange-300 border-orange-700' : 'bg-orange-100 text-orange-700 border-orange-300';
       default:
-        return darkMode ? 'bg-gray-700 text-gray-300 border-gray-600' : 'bg-gray-100 text-gray-700 border-gray-300';
+        return darkMode ? 'bg-white/5 text-foreground-dark border-border-dark' : 'bg-black/5 text-muted-light border-border-light';
     }
   };
 
@@ -391,7 +391,7 @@ export default function InterviewSuggestions({
       case 'medium':
         return <span className="w-2 h-2 rounded-full bg-yellow-500" />;
       default:
-        return <span className="w-2 h-2 rounded-full bg-gray-400" />;
+        return <span className="w-2 h-2 rounded-full bg-black/15" />;
     }
   };
 
@@ -414,8 +414,8 @@ export default function InterviewSuggestions({
       <div
         className={`flex items-center justify-between p-3 rounded-t-xl ${
           darkMode
-            ? 'bg-gradient-to-r from-purple-900 to-indigo-900 border border-purple-700/50'
-            : 'bg-gradient-to-r from-indigo-500 to-purple-500 border border-indigo-300'
+            ? 'bg-gradient-to-r from-primary-900 to-primary-900 border border-primary-700/50'
+            : 'bg-gradient-to-r from-primary to-primary-glow border border-primary-300'
         } ${isMinimized ? 'rounded-b-xl' : ''}`}
       >
         {/* Drag Handle */}
@@ -454,12 +454,12 @@ export default function InterviewSuggestions({
       {!isMinimized && (
         <div className={`rounded-b-xl overflow-hidden ${
           darkMode
-            ? 'bg-gray-800/95 border border-t-0 border-purple-700/50'
-            : 'bg-white/95 border border-t-0 border-indigo-300'
+            ? 'bg-card-dark/95 border border-t-0 border-primary-700/50'
+            : 'bg-white/95 border border-t-0 border-primary-300'
         }`}>
           {/* Topic */}
           <div className={`px-3 py-2 text-xs border-b ${
-            darkMode ? 'bg-gray-700/50 border-gray-700 text-gray-400' : 'bg-gray-50 border-gray-200 text-gray-500'
+            darkMode ? 'bg-white/5 border-border-dark text-muted-dark' : 'bg-black/3 border-border-light text-muted-light'
           }`}>
             📋 {meetingTopic}
           </div>
@@ -467,7 +467,7 @@ export default function InterviewSuggestions({
           {/* Barra de Completude */}
           {questionsAsked.length > 0 && (
             <div className={`px-3 py-3 border-b ${
-              darkMode ? 'bg-gray-700/30 border-gray-700' : 'bg-gray-50 border-gray-200'
+              darkMode ? 'bg-white/5 border-border-dark' : 'bg-black/3 border-border-light'
             }`}>
               <div className="flex items-center justify-between mb-2">
                 <div className="flex items-center gap-2">
@@ -477,7 +477,7 @@ export default function InterviewSuggestions({
                   </span>
                   {isEvaluating && (
                     <span className={`text-[10px] px-1.5 py-0.5 rounded ${
-                      darkMode ? 'bg-purple-900/50 text-purple-300' : 'bg-purple-100 text-purple-600'
+                      darkMode ? 'bg-primary-900/50 text-primary-300' : 'bg-primary-50 text-primary'
                     } animate-shimmer`}>
                       Analisando...
                     </span>
@@ -490,7 +490,7 @@ export default function InterviewSuggestions({
               
               {/* Barra de progresso */}
               <div className={`w-full h-2 rounded-full overflow-hidden relative ${
-                darkMode ? 'bg-gray-600' : 'bg-gray-200'
+                darkMode ? 'bg-white/10' : 'bg-black/5'
               }`}>
                 <div 
                   className={`h-full transition-all duration-500 ${
@@ -509,7 +509,7 @@ export default function InterviewSuggestions({
                   {completeness.message}
                 </p>
                 <div className={`text-[10px] mt-1 flex gap-3 ${
-                  darkMode ? 'text-gray-400' : 'text-gray-500'
+                  darkMode ? 'text-muted-dark' : 'text-muted-light'
                 }`}>
                   <span>📝 {completeness.totalQuestions} perguntas</span>
                   <span>✓ {completeness.answeredQuestions} respondidas</span>
@@ -533,7 +533,7 @@ export default function InterviewSuggestions({
                 className={`p-3 border-b last:border-b-0 transition-all ${
                   suggestion.pendingDetection 
                     ? 'animate-detectedBlink ' + (darkMode ? 'border-yellow-600 bg-yellow-900/40' : 'border-yellow-400 bg-yellow-50')
-                    : darkMode ? 'border-gray-700 hover:bg-gray-700/50' : 'border-gray-100 hover:bg-gray-50'
+                    : darkMode ? 'border-border-dark hover:bg-white/10/50' : 'border-border-light hover:bg-black/3'
                 } ${index === 0 && !suggestion.pendingDetection ? 'animate-slideIn' : ''}`}
               >
                 <div className="flex items-start gap-2">
@@ -560,7 +560,7 @@ export default function InterviewSuggestions({
                     <p className={`text-sm leading-relaxed ${
                       suggestion.pendingDetection
                         ? (darkMode ? 'text-yellow-200 font-medium' : 'text-yellow-800 font-medium')
-                        : (darkMode ? 'text-gray-200' : 'text-gray-700')
+                        : (darkMode ? 'text-foreground-dark' : 'text-muted-light')
                     } ${expandedId === suggestion.id ? '' : 'line-clamp-2'}`}>
                       {suggestion.question}
                     </p>
@@ -578,7 +578,7 @@ export default function InterviewSuggestions({
                           setExpandedId(expandedId === suggestion.id ? null : suggestion.id);
                         }}
                         className={`text-xs mt-1 ${
-                          darkMode ? 'text-purple-400 hover:text-purple-300' : 'text-indigo-600 hover:text-indigo-700'
+                          darkMode ? 'text-primary-300 hover:text-primary-300' : 'text-primary hover:text-primary-700'
                         }`}
                       >
                         {expandedId === suggestion.id ? 'Ver menos' : 'Ver mais'}
@@ -605,8 +605,8 @@ export default function InterviewSuggestions({
                     onClick={() => onDismiss(suggestion.id)}
                     className={`p-1 rounded transition ${
                       darkMode
-                        ? 'text-gray-500 hover:text-gray-300 hover:bg-gray-700'
-                        : 'text-gray-400 hover:text-gray-600 hover:bg-gray-100'
+                        ? 'text-muted-light hover:text-foreground-dark hover:bg-white/10'
+                        : 'text-muted-dark hover:text-muted-light hover:bg-black/5'
                     }`}
                     title="Dispensar"
                   >
@@ -634,8 +634,8 @@ export default function InterviewSuggestions({
                   isRecentlyMarked ? 'animate-feitoBlink' : ''
                 } ${
                   darkMode 
-                    ? 'border-gray-700 bg-green-900/30' 
-                    : 'border-gray-100 bg-green-50'
+                    ? 'border-border-dark bg-green-900/30' 
+                    : 'border-border-light bg-green-50'
                 }`}
               >
                 <div className="flex items-start gap-2">
@@ -663,7 +663,7 @@ export default function InterviewSuggestions({
                       )}
                     </div>
                     <p className={`text-sm leading-relaxed line-through opacity-70 ${
-                      darkMode ? 'text-gray-400' : 'text-gray-500'
+                      darkMode ? 'text-muted-dark' : 'text-muted-light'
                     }`}>
                       {suggestion.question.length > 60 
                         ? suggestion.question.substring(0, 60) + '...' 
@@ -683,13 +683,13 @@ export default function InterviewSuggestions({
             })}
 
             {unreadSuggestions.length === 0 && recentlyMarkedSuggestions.length === 0 && (
-              <div className={`p-6 text-center ${darkMode ? 'text-gray-500' : 'text-gray-400'}`}>
+              <div className={`p-6 text-center ${darkMode ? 'text-muted-light' : 'text-muted-dark'}`}>
                 {isGenerating ? (
                   <>
                     <div className="flex justify-center gap-1 mb-2">
-                      <span className="w-2 h-2 rounded-full bg-purple-500 animate-bounce" style={{ animationDelay: '0ms' }} />
-                      <span className="w-2 h-2 rounded-full bg-purple-500 animate-bounce" style={{ animationDelay: '150ms' }} />
-                      <span className="w-2 h-2 rounded-full bg-purple-500 animate-bounce" style={{ animationDelay: '300ms' }} />
+                      <span className="w-2 h-2 rounded-full bg-primary animate-bounce" style={{ animationDelay: '0ms' }} />
+                      <span className="w-2 h-2 rounded-full bg-primary animate-bounce" style={{ animationDelay: '150ms' }} />
+                      <span className="w-2 h-2 rounded-full bg-primary animate-bounce" style={{ animationDelay: '300ms' }} />
                     </div>
                     <p className="text-sm">Gerando sugestões...</p>
                   </>
@@ -710,7 +710,7 @@ export default function InterviewSuggestions({
       {!isMinimized && (
         <div
           className={`absolute bottom-0 right-0 w-6 h-6 cursor-nwse-resize touch-none ${
-            darkMode ? 'text-purple-400/50 hover:text-purple-400' : 'text-indigo-400/50 hover:text-indigo-600'
+            darkMode ? 'text-primary-300/50 hover:text-primary-300' : 'text-primary-300/50 hover:text-primary'
           }`}
           onMouseDown={handleResizeStart}
           onTouchStart={handleResizeStart}

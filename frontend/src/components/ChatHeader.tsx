@@ -16,16 +16,16 @@ export default function ChatHeader({
   onToggleTranscription
 }: ChatHeaderProps) {
   return (
-    <header className="h-14 bg-white border-b border-gray-200 flex items-center justify-between px-6">
+    <header className="h-14 bg-white border-b border-border-light flex items-center justify-between px-6">
       <div>
         <div className="flex items-center gap-2">
-          <span className="text-xl text-gray-600">#</span>
-          <h1 className="text-lg font-semibold text-gray-800">
+          <span className="text-xl text-muted-light">#</span>
+          <h1 className="text-lg font-semibold text-foreground-light">
             {roomId.replace('room_', '')}
           </h1>
           <span className={`ml-2 w-2 h-2 rounded-full ${isConnected ? 'bg-green-500' : 'bg-red-500'}`}></span>
         </div>
-        <p className="text-xs text-gray-500 mt-0.5">
+        <p className="text-xs text-muted-light mt-0.5">
           Sala de vídeo conferência • {onlineCount} participantes online
         </p>
       </div>
@@ -36,7 +36,7 @@ export default function ChatHeader({
           className={`px-3 py-1.5 rounded-lg text-sm font-medium transition flex items-center gap-2 ${
             transcriptionEnabled
               ? 'bg-red-100 text-red-700 hover:bg-red-200'
-              : 'bg-gray-100 text-gray-700 hover:bg-gray-200'
+              : 'bg-black/5 text-muted-light hover:bg-black/5'
           }`}
           title={transcriptionEnabled ? 'Parar transcrição' : 'Iniciar transcrição'}
         >
@@ -58,10 +58,10 @@ export default function ChatHeader({
         </button>
 
         <button
-          className="p-2 hover:bg-gray-100 rounded-lg transition"
+          className="p-2 hover:bg-black/5 rounded-lg transition"
           title="Mais opções"
         >
-          <svg className="w-5 h-5 text-gray-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+          <svg className="w-5 h-5 text-muted-light" fill="none" stroke="currentColor" viewBox="0 0 24 24">
             <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 5v.01M12 12v.01M12 19v.01M12 6a1 1 0 110-2 1 1 0 010 2zm0 7a1 1 0 110-2 1 1 0 010 2zm0 7a1 1 0 110-2 1 1 0 010 2z" />
           </svg>
         </button>

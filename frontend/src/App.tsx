@@ -16,8 +16,14 @@ const JobPositionsManager = lazy(() => import('./components/JobPositionsManager'
 
 // Loading fallback
 const LoadingFallback = () => (
-  <div className="min-h-screen flex items-center justify-center bg-gradient-to-br from-gray-900 via-purple-900 to-violet-900">
-    <div className="animate-spin w-8 h-8 border-4 border-white border-t-transparent rounded-full"></div>
+  <div className="min-h-screen flex items-center justify-center mesh-bg">
+    <div className="flex flex-col items-center gap-4 animate-fade-in-scale">
+      <div className="relative w-12 h-12">
+        <div className="absolute inset-0 rounded-full border-2 border-primary/20"></div>
+        <div className="absolute inset-0 rounded-full border-2 border-transparent border-t-primary animate-spin"></div>
+      </div>
+      <p className="text-muted-dark text-sm">Carregando...</p>
+    </div>
   </div>
 );
 
@@ -160,42 +166,26 @@ function HomePage({ darkMode, onToggleDarkMode }: HomePageProps) {
   };
 
   return (
-    <div className={`min-h-screen transition-all duration-300 ${
-      darkMode 
-        ? 'bg-gradient-to-br from-gray-900 via-purple-900 to-violet-900' 
-        : 'bg-gradient-to-br from-indigo-600 via-purple-600 to-pink-600'
-    } flex items-center justify-center p-4`}>
-      <div className={`backdrop-blur-sm rounded-3xl shadow-2xl p-8 max-w-md w-full border transition-all duration-300 ${
-        darkMode 
-          ? 'bg-gray-800/95 border-gray-700/50' 
-          : 'bg-white/95 border-white/20'
-      }`}>
+    <div className="min-h-screen mesh-bg transition-all duration-300 flex items-center justify-center p-4">
+      <div className="glass-card p-8 max-w-md w-full animate-fade-in-scale">
         <div className="text-center mb-8">
-          <div className={`w-16 h-16 rounded-2xl flex items-center justify-center mx-auto mb-4 transition-all duration-300 ${
-            darkMode 
-              ? 'bg-gradient-to-r from-purple-500 to-violet-600' 
-              : 'bg-gradient-to-r from-indigo-500 to-purple-600'
-          }`}>
+          <div className="w-16 h-16 rounded-2xl flex items-center justify-center mx-auto mb-4 gradient-primary shadow-glow">
             <svg className="w-8 h-8 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
               <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 10l4.553-2.276A1 1 0 0121 8.618v6.764a1 1 0 01-1.447.894L15 14M5 18h8a2 2 0 002-2V8a2 2 0 00-2-2H5a2 2 0 00-2 2v8a2 2 0 002 2z" />
             </svg>
           </div>
           
           <div className="flex items-center justify-center gap-4 mb-4">
-            <h1 className={`text-3xl font-bold bg-gradient-to-r bg-clip-text text-transparent ${
-              darkMode 
-                ? 'from-purple-400 to-violet-400' 
-                : 'from-indigo-600 to-purple-600'
-            }`}>
+            <h1 className="text-4xl font-semibold gradient-primary-text">
               Video Chat
             </h1>
             
             <button
               onClick={onToggleDarkMode}
-              className={`p-2 rounded-lg transition-all duration-200 ${
+              className={`p-2 rounded-xl transition-all duration-200 ${
                 darkMode 
-                  ? 'bg-gray-700 hover:bg-gray-600 text-yellow-400' 
-                  : 'bg-gray-100 hover:bg-gray-200 text-gray-600'
+                  ? 'bg-white/10 hover:bg-white/15 text-amber-400' 
+                  : 'bg-black/5 hover:bg-black/10 text-muted-light'
               }`}
               title={darkMode ? 'Modo claro' : 'Modo escuro'}
             >
@@ -213,7 +203,7 @@ function HomePage({ darkMode, onToggleDarkMode }: HomePageProps) {
           
           {/* Status de autenticação */}
           {isAuthenticated && (
-            <div className={`flex items-center justify-center gap-2 mb-2 ${darkMode ? 'text-green-400' : 'text-green-600'}`}>
+            <div className={`flex items-center justify-center gap-2 mb-2 ${darkMode ? 'text-success' : 'text-success'}`}>
               <svg className="w-4 h-4" fill="currentColor" viewBox="0 0 20 20">
                 <path fillRule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zm3.707-9.293a1 1 0 00-1.414-1.414L9 10.586 7.707 9.293a1 1 0 00-1.414 1.414l2 2a1 1 0 001.414 0l4-4z" clipRule="evenodd" />
               </svg>
@@ -221,7 +211,7 @@ function HomePage({ darkMode, onToggleDarkMode }: HomePageProps) {
             </div>
           )}
           {isGuest && (
-            <div className={`flex items-center justify-center gap-2 mb-2 ${darkMode ? 'text-yellow-400' : 'text-yellow-600'}`}>
+            <div className={`flex items-center justify-center gap-2 mb-2 ${darkMode ? 'text-warning' : 'text-warning'}`}>
               <svg className="w-4 h-4" fill="currentColor" viewBox="0 0 20 20">
                 <path fillRule="evenodd" d="M10 9a3 3 0 100-6 3 3 0 000 6zm-7 9a7 7 0 1114 0H3z" clipRule="evenodd" />
               </svg>
@@ -229,7 +219,7 @@ function HomePage({ darkMode, onToggleDarkMode }: HomePageProps) {
             </div>
           )}
           
-          <p className={darkMode ? 'text-gray-300' : 'text-gray-600'}>
+          <p className={darkMode ? 'text-muted-dark' : 'text-muted-light'}>
             Conecte-se com qualquer pessoa, em qualquer lugar
           </p>
         </div>
@@ -237,11 +227,7 @@ function HomePage({ darkMode, onToggleDarkMode }: HomePageProps) {
         <div className="space-y-4">
           <button
             onClick={handleCreateClick}
-            className={`w-full py-4 rounded-xl transition-all duration-200 font-semibold text-lg flex items-center justify-center gap-3 shadow-lg hover:shadow-xl transform hover:-translate-y-0.5 ${
-              darkMode 
-                ? 'bg-gradient-to-r from-purple-600 to-violet-600 hover:from-purple-700 hover:to-violet-700 text-white' 
-                : 'bg-gradient-to-r from-indigo-600 to-purple-600 hover:from-indigo-700 hover:to-purple-700 text-white'
-            }`}
+            className="btn-primary w-full py-4 text-lg flex items-center justify-center gap-3"
           >
             <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
               <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4" />
@@ -253,53 +239,53 @@ function HomePage({ darkMode, onToggleDarkMode }: HomePageProps) {
           {showCreateModal && (
             <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 backdrop-blur-sm p-4">
               <div className={`w-full max-w-md rounded-2xl shadow-2xl ${
-                darkMode ? 'bg-gray-800' : 'bg-white'
+                darkMode ? 'bg-card-dark' : 'bg-card-light'
               }`}>
                 {showScheduleSuccess && scheduledMeetingInfo ? (
                   /* Tela de Sucesso */
                   <>
-                    <div className={`px-6 py-4 border-b ${darkMode ? 'border-gray-700' : 'border-gray-200'}`}>
+                    <div className={`px-6 py-4 border-b ${darkMode ? 'border-border-dark' : 'border-border-light'}`}>
                       <div className="flex items-center gap-3">
                         <div className="w-10 h-10 rounded-full bg-green-500 flex items-center justify-center">
                           <svg className="w-6 h-6 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                             <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
                           </svg>
                         </div>
-                        <h2 className={`text-lg font-semibold ${darkMode ? 'text-white' : 'text-gray-900'}`}>
+                        <h2 className={`text-lg font-semibold ${darkMode ? 'text-foreground-dark' : 'text-foreground-light'}`}>
                           Reunião Agendada!
                         </h2>
                       </div>
                     </div>
                     <div className="p-6 space-y-4">
-                      <div className={`p-4 rounded-xl ${darkMode ? 'bg-gray-700/50' : 'bg-gray-50'}`}>
-                        <p className={`text-sm font-medium ${darkMode ? 'text-gray-400' : 'text-gray-500'}`}>Título</p>
-                        <p className={`font-semibold ${darkMode ? 'text-white' : 'text-gray-900'}`}>{scheduledMeetingInfo.title}</p>
+                      <div className={`p-4 rounded-xl ${darkMode ? 'bg-white/5' : 'bg-black/3'}`}>
+                        <p className={`text-sm font-medium ${darkMode ? 'text-muted-dark' : 'text-muted-light'}`}>Título</p>
+                        <p className={`font-semibold ${darkMode ? 'text-foreground-dark' : 'text-foreground-light'}`}>{scheduledMeetingInfo.title}</p>
                       </div>
-                      <div className={`p-4 rounded-xl ${darkMode ? 'bg-gray-700/50' : 'bg-gray-50'}`}>
-                        <p className={`text-sm font-medium ${darkMode ? 'text-gray-400' : 'text-gray-500'}`}>Data e Hora</p>
-                        <p className={`font-semibold ${darkMode ? 'text-white' : 'text-gray-900'}`}>
+                      <div className={`p-4 rounded-xl ${darkMode ? 'bg-white/5' : 'bg-black/3'}`}>
+                        <p className={`text-sm font-medium ${darkMode ? 'text-muted-dark' : 'text-muted-light'}`}>Data e Hora</p>
+                        <p className={`font-semibold ${darkMode ? 'text-foreground-dark' : 'text-foreground-light'}`}>
                           {new Date(scheduledMeetingInfo.scheduledAt).toLocaleString('pt-BR', {
                             dateStyle: 'long',
                             timeStyle: 'short'
                           })}
                         </p>
-                        <p className={`text-sm ${darkMode ? 'text-gray-400' : 'text-gray-500'}`}>
+                        <p className={`text-sm ${darkMode ? 'text-muted-dark' : 'text-muted-light'}`}>
                           Duração: {scheduledMeetingInfo.duration} minutos
                         </p>
                       </div>
                       <div>
-                        <p className={`text-sm font-medium mb-2 ${darkMode ? 'text-gray-400' : 'text-gray-500'}`}>
+                        <p className={`text-sm font-medium mb-2 ${darkMode ? 'text-muted-dark' : 'text-muted-light'}`}>
                           Link da Reunião
                         </p>
                         <div className={`flex items-center gap-2 p-3 rounded-xl border ${
-                          darkMode ? 'bg-gray-700 border-gray-600' : 'bg-gray-50 border-gray-200'
+                          darkMode ? 'bg-white/5 border-border-dark' : 'bg-black/3 border-border-light'
                         }`}>
                           <input
                             type="text"
                             readOnly
                             value={scheduledMeetingInfo.meetingUrl}
                             className={`flex-1 bg-transparent text-sm font-mono truncate ${
-                              darkMode ? 'text-white' : 'text-gray-900'
+                              darkMode ? 'text-foreground-dark' : 'text-foreground-light'
                             }`}
                           />
                           <button
@@ -308,8 +294,8 @@ function HomePage({ darkMode, onToggleDarkMode }: HomePageProps) {
                               copied
                                 ? 'bg-green-500 text-white'
                                 : darkMode
-                                ? 'bg-purple-600 hover:bg-purple-700 text-white'
-                                : 'bg-indigo-600 hover:bg-indigo-700 text-white'
+                                ? 'bg-primary hover:bg-primary-600 text-white'
+                                : 'bg-primary hover:bg-primary-600 text-white'
                             }`}
                           >
                             {copied ? (
@@ -330,17 +316,17 @@ function HomePage({ darkMode, onToggleDarkMode }: HomePageProps) {
                           </button>
                         </div>
                       </div>
-                      <p className={`text-xs text-center ${darkMode ? 'text-gray-500' : 'text-gray-400'}`}>
+                      <p className={`text-xs text-center ${darkMode ? 'text-muted-dark/60' : 'text-muted-light/60'}`}>
                         Compartilhe este link com os participantes da reunião
                       </p>
                     </div>
-                    <div className={`px-6 py-4 border-t ${darkMode ? 'border-gray-700' : 'border-gray-200'}`}>
+                    <div className={`px-6 py-4 border-t ${darkMode ? 'border-border-dark' : 'border-border-light'}`}>
                       <button
                         onClick={handleCloseSuccess}
                         className={`w-full py-3 rounded-xl font-semibold transition-all ${
                           darkMode
-                            ? 'bg-purple-600 hover:bg-purple-700 text-white'
-                            : 'bg-indigo-600 hover:bg-indigo-700 text-white'
+                            ? 'bg-primary hover:bg-primary-600 text-white'
+                            : 'bg-primary hover:bg-primary-600 text-white'
                         }`}
                       >
                         Concluir
@@ -349,8 +335,8 @@ function HomePage({ darkMode, onToggleDarkMode }: HomePageProps) {
                   </>
                 ) : !showScheduleForm ? (
                   <>
-                    <div className={`px-6 py-4 border-b ${darkMode ? 'border-gray-700' : 'border-gray-200'}`}>
-                      <h2 className={`text-lg font-semibold ${darkMode ? 'text-white' : 'text-gray-900'}`}>
+                    <div className={`px-6 py-4 border-b ${darkMode ? 'border-border-dark' : 'border-border-light'}`}>
+                      <h2 className={`text-lg font-semibold ${darkMode ? 'text-foreground-dark' : 'text-foreground-light'}`}>
                         Como deseja criar a sala?
                       </h2>
                     </div>
@@ -359,20 +345,18 @@ function HomePage({ darkMode, onToggleDarkMode }: HomePageProps) {
                         onClick={() => { setShowCreateModal(false); createRoom(); }}
                         className={`w-full p-4 rounded-xl border-2 transition-all flex items-center gap-4 ${
                           darkMode 
-                            ? 'border-purple-600 hover:bg-purple-900/30 text-white' 
-                            : 'border-indigo-600 hover:bg-indigo-50 text-gray-900'
+                            ? 'border-primary/40 hover:bg-primary/10 text-foreground-dark' 
+                            : 'border-primary/40 hover:bg-primary-50 text-foreground-light'
                         }`}
                       >
-                        <div className={`w-12 h-12 rounded-full flex items-center justify-center ${
-                          darkMode ? 'bg-purple-600' : 'bg-indigo-600'
-                        }`}>
+                        <div className="w-12 h-12 rounded-full flex items-center justify-center gradient-primary">
                           <svg className="w-6 h-6 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                             <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 10l4.553-2.276A1 1 0 0121 8.618v6.764a1 1 0 01-1.447.894L15 14M5 18h8a2 2 0 002-2V8a2 2 0 00-2-2H5a2 2 0 00-2 2v8a2 2 0 002 2z" />
                           </svg>
                         </div>
                         <div className="text-left">
                           <p className="font-semibold">Reunião Imediata</p>
-                          <p className={`text-sm ${darkMode ? 'text-gray-400' : 'text-gray-500'}`}>
+                          <p className={`text-sm ${darkMode ? 'text-muted-dark' : 'text-muted-light'}`}>
                             Iniciar uma sala agora
                           </p>
                         </div>
@@ -382,8 +366,8 @@ function HomePage({ darkMode, onToggleDarkMode }: HomePageProps) {
                         onClick={() => setShowScheduleForm(true)}
                         className={`w-full p-4 rounded-xl border-2 transition-all flex items-center gap-4 ${
                           darkMode 
-                            ? 'border-green-600 hover:bg-green-900/30 text-white' 
-                            : 'border-green-600 hover:bg-green-50 text-gray-900'
+                            ? 'border-success/40 hover:bg-success/10 text-foreground-dark' 
+                            : 'border-success/40 hover:bg-success/10 text-foreground-light'
                         }`}
                       >
                         <div className={`w-12 h-12 rounded-full flex items-center justify-center bg-green-600`}>
@@ -393,17 +377,17 @@ function HomePage({ darkMode, onToggleDarkMode }: HomePageProps) {
                         </div>
                         <div className="text-left">
                           <p className="font-semibold">Agendar Reunião</p>
-                          <p className={`text-sm ${darkMode ? 'text-gray-400' : 'text-gray-500'}`}>
+                          <p className={`text-sm ${darkMode ? 'text-muted-dark' : 'text-muted-light'}`}>
                             Definir data e hora
                           </p>
                         </div>
                       </button>
                     </div>
-                    <div className={`px-6 py-4 border-t ${darkMode ? 'border-gray-700' : 'border-gray-200'}`}>
+                    <div className={`px-6 py-4 border-t ${darkMode ? 'border-border-dark' : 'border-border-light'}`}>
                       <button
                         onClick={() => setShowCreateModal(false)}
                         className={`w-full py-2 rounded-lg font-medium ${
-                          darkMode ? 'text-gray-400 hover:text-white' : 'text-gray-500 hover:text-gray-700'
+                          darkMode ? 'text-muted-dark hover:text-foreground-dark' : 'text-muted-light hover:text-foreground-light'
                         }`}
                       >
                         Cancelar
@@ -412,14 +396,14 @@ function HomePage({ darkMode, onToggleDarkMode }: HomePageProps) {
                   </>
                 ) : (
                   <>
-                    <div className={`px-6 py-4 border-b ${darkMode ? 'border-gray-700' : 'border-gray-200'}`}>
-                      <h2 className={`text-lg font-semibold ${darkMode ? 'text-white' : 'text-gray-900'}`}>
+                    <div className={`px-6 py-4 border-b ${darkMode ? 'border-border-dark' : 'border-border-light'}`}>
+                      <h2 className={`text-lg font-semibold ${darkMode ? 'text-foreground-dark' : 'text-foreground-light'}`}>
                         Agendar Reunião
                       </h2>
                     </div>
                     <div className="p-6 space-y-4">
                       <div>
-                        <label className={`block text-sm font-medium mb-1 ${darkMode ? 'text-gray-300' : 'text-gray-700'}`}>
+                        <label className={`block text-sm font-medium mb-1 ${darkMode ? 'text-foreground-dark' : 'text-foreground-light'}`}>
                           Título da Reunião *
                         </label>
                         <input
@@ -427,15 +411,11 @@ function HomePage({ darkMode, onToggleDarkMode }: HomePageProps) {
                           value={scheduleForm.title}
                           onChange={(e) => setScheduleForm(prev => ({ ...prev, title: e.target.value }))}
                           placeholder="Ex: Reunião de Equipe"
-                          className={`w-full px-4 py-2 rounded-lg border ${
-                            darkMode 
-                              ? 'bg-gray-700 border-gray-600 text-white placeholder-gray-400' 
-                              : 'bg-white border-gray-300 text-gray-900'
-                          }`}
+                          className="input-glass"
                         />
                       </div>
                       <div>
-                        <label className={`block text-sm font-medium mb-1 ${darkMode ? 'text-gray-300' : 'text-gray-700'}`}>
+                        <label className={`block text-sm font-medium mb-1 ${darkMode ? 'text-foreground-dark' : 'text-foreground-light'}`}>
                           Data e Hora *
                         </label>
                         <input
@@ -443,25 +423,17 @@ function HomePage({ darkMode, onToggleDarkMode }: HomePageProps) {
                           value={scheduleForm.scheduledAt}
                           onChange={(e) => setScheduleForm(prev => ({ ...prev, scheduledAt: e.target.value }))}
                           min={new Date().toISOString().slice(0, 16)}
-                          className={`w-full px-4 py-2 rounded-lg border ${
-                            darkMode 
-                              ? 'bg-gray-700 border-gray-600 text-white' 
-                              : 'bg-white border-gray-300 text-gray-900'
-                          }`}
+                          className="input-glass"
                         />
                       </div>
                       <div>
-                        <label className={`block text-sm font-medium mb-1 ${darkMode ? 'text-gray-300' : 'text-gray-700'}`}>
+                        <label className={`block text-sm font-medium mb-1 ${darkMode ? 'text-foreground-dark' : 'text-foreground-light'}`}>
                           Duração (minutos)
                         </label>
                         <select
                           value={scheduleForm.duration}
                           onChange={(e) => setScheduleForm(prev => ({ ...prev, duration: parseInt(e.target.value) }))}
-                          className={`w-full px-4 py-2 rounded-lg border ${
-                            darkMode 
-                              ? 'bg-gray-700 border-gray-600 text-white' 
-                              : 'bg-white border-gray-300 text-gray-900'
-                          }`}
+                          className="input-glass"
                         >
                           <option value={30}>30 minutos</option>
                           <option value={60}>1 hora</option>
@@ -470,11 +442,11 @@ function HomePage({ darkMode, onToggleDarkMode }: HomePageProps) {
                         </select>
                       </div>
                     </div>
-                    <div className={`px-6 py-4 border-t ${darkMode ? 'border-gray-700' : 'border-gray-200'} flex gap-3`}>
+                    <div className={`px-6 py-4 border-t ${darkMode ? 'border-border-dark' : 'border-border-light'} flex gap-3`}>
                       <button
                         onClick={() => setShowScheduleForm(false)}
                         className={`flex-1 py-2 rounded-lg font-medium ${
-                          darkMode ? 'bg-gray-700 text-white hover:bg-gray-600' : 'bg-gray-200 text-gray-700 hover:bg-gray-300'
+                          darkMode ? 'bg-white/10 text-foreground-dark hover:bg-white/15' : 'bg-black/5 text-foreground-light hover:bg-black/10'
                         }`}
                       >
                         Voltar
@@ -484,8 +456,8 @@ function HomePage({ darkMode, onToggleDarkMode }: HomePageProps) {
                         disabled={isCreatingSchedule || !scheduleForm.title || !scheduleForm.scheduledAt}
                         className={`flex-1 py-2 rounded-lg font-medium text-white ${
                           isCreatingSchedule || !scheduleForm.title || !scheduleForm.scheduledAt
-                            ? 'bg-gray-500 cursor-not-allowed'
-                            : 'bg-green-600 hover:bg-green-700'
+                            ? 'bg-muted-light cursor-not-allowed'
+                            : 'bg-success hover:bg-success/90'
                         }`}
                       >
                         {isCreatingSchedule ? 'Agendando...' : 'Agendar'}
@@ -499,13 +471,13 @@ function HomePage({ darkMode, onToggleDarkMode }: HomePageProps) {
 
           <div className="relative">
             <div className="absolute inset-0 flex items-center">
-              <div className={`w-full border-t ${darkMode ? 'border-gray-600' : 'border-gray-200'}`}></div>
+              <div className={`w-full border-t ${darkMode ? 'border-border-dark' : 'border-border-light'}`}></div>
             </div>
             <div className="relative flex justify-center text-sm">
               <span className={`px-4 font-medium ${
                 darkMode 
-                  ? 'bg-gray-800 text-gray-400' 
-                  : 'bg-white text-gray-500'
+                  ? 'bg-card-dark text-muted-dark' 
+                  : 'bg-card-light text-muted-light'
               }`}>ou</span>
             </div>
           </div>
@@ -515,20 +487,12 @@ function HomePage({ darkMode, onToggleDarkMode }: HomePageProps) {
               type="text"
               name="roomId"
               placeholder="Digite o código da sala"
-              className={`w-full px-4 py-3 rounded-xl focus:ring-2 focus:border-transparent transition-all duration-200 ${
-                darkMode 
-                  ? 'border border-gray-600 bg-gray-700 text-white placeholder-gray-400 focus:ring-purple-500 focus:bg-gray-600' 
-                  : 'border border-gray-200 bg-gray-50 focus:ring-indigo-500 focus:bg-white'
-              }`}
+              className="input-glass"
               required
             />
             <button
               type="submit"
-              className={`w-full py-3 rounded-xl transition-all duration-200 font-semibold flex items-center justify-center gap-2 border-2 ${
-                darkMode 
-                  ? 'bg-gray-800 text-purple-400 border-purple-600 hover:border-purple-500 hover:bg-gray-700' 
-                  : 'bg-white text-indigo-600 border-indigo-600 hover:border-indigo-700 hover:bg-gray-50'
-              }`}
+              className="btn-outline w-full py-3 flex items-center justify-center gap-2"
             >
               <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M11 16l-4-4m0 0l4-4m-4 4h14m-5 4v1a3 3 0 01-3 3H6a3 3 0 01-3-3V7a3 3 0 013-3h7a3 3 0 013 3v1" />
@@ -541,12 +505,10 @@ function HomePage({ darkMode, onToggleDarkMode }: HomePageProps) {
           {isAuthenticated && (
             <div className={`mt-6 p-4 rounded-xl border ${
               darkMode 
-                ? 'bg-purple-900/30 border-purple-700/50' 
-                : 'bg-indigo-50 border-indigo-200'
+                ? 'bg-primary/5 border-primary/20' 
+                : 'bg-primary-50 border-primary/20'
             }`}>
-              <h3 className={`text-sm font-semibold mb-3 flex items-center gap-2 ${
-                darkMode ? 'text-purple-300' : 'text-indigo-700'
-              }`}>
+              <h3 className={`text-sm font-semibold mb-3 flex items-center gap-2 text-primary`}>
                 <svg className="w-4 h-4" fill="currentColor" viewBox="0 0 20 20">
                   <path fillRule="evenodd" d="M5 9V7a5 5 0 0110 0v2a2 2 0 012 2v5a2 2 0 01-2 2H5a2 2 0 01-2-2v-5a2 2 0 012-2zm8-2v2H7V7a3 3 0 016 0z" clipRule="evenodd" />
                 </svg>
@@ -557,8 +519,8 @@ function HomePage({ darkMode, onToggleDarkMode }: HomePageProps) {
                   onClick={() => setShowHistory(true)}
                   className={`w-full py-2 px-3 rounded-lg text-sm font-medium transition-all flex items-center gap-2 ${
                     darkMode 
-                      ? 'bg-purple-800/50 hover:bg-purple-800 text-purple-200' 
-                      : 'bg-indigo-100 hover:bg-indigo-200 text-indigo-700'
+                      ? 'bg-primary/10 hover:bg-primary/15 text-primary-300' 
+                      : 'bg-primary-50 hover:bg-primary-100 text-primary-700'
                   }`}
                 >
                   <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -570,8 +532,8 @@ function HomePage({ darkMode, onToggleDarkMode }: HomePageProps) {
                   onClick={() => setShowJobsManager(true)}
                   className={`w-full py-2 px-3 rounded-lg text-sm font-medium transition-all flex items-center gap-2 ${
                     darkMode 
-                      ? 'bg-green-800/50 hover:bg-green-800 text-green-200' 
-                      : 'bg-green-100 hover:bg-green-200 text-green-700'
+                      ? 'bg-success/10 hover:bg-success/15 text-success' 
+                      : 'bg-green-50 hover:bg-green-100 text-green-700'
                   }`}
                 >
                   <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -613,8 +575,8 @@ function HomePage({ darkMode, onToggleDarkMode }: HomePageProps) {
                 onClick={logout}
                 className={`w-full py-2 rounded-lg text-sm font-medium transition-all flex items-center justify-center gap-2 ${
                   darkMode 
-                    ? 'text-red-400 hover:bg-red-900/30' 
-                    : 'text-red-600 hover:bg-red-50'
+                    ? 'text-destructive hover:bg-destructive/10' 
+                    : 'text-destructive hover:bg-destructive/10'
                 }`}
               >
                 <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -627,8 +589,8 @@ function HomePage({ darkMode, onToggleDarkMode }: HomePageProps) {
                 onClick={logout}
                 className={`w-full py-2 rounded-lg text-sm font-medium transition-all flex items-center justify-center gap-2 ${
                   darkMode 
-                    ? 'text-purple-400 hover:bg-purple-900/30' 
-                    : 'text-indigo-600 hover:bg-indigo-50'
+                    ? 'text-primary hover:bg-primary/10' 
+                    : 'text-primary hover:bg-primary/10'
                 }`}
               >
                 <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -675,12 +637,11 @@ function AuthenticatedRoutes() {
   // Mostrar loading enquanto verifica autenticação
   if (isLoading) {
     return (
-      <div className={`min-h-screen flex items-center justify-center ${
-        darkMode 
-          ? 'bg-gradient-to-br from-gray-900 via-purple-900 to-violet-900' 
-          : 'bg-gradient-to-br from-indigo-600 via-purple-600 to-pink-600'
-      }`}>
-        <div className="animate-spin w-8 h-8 border-4 border-white border-t-transparent rounded-full"></div>
+      <div className="min-h-screen flex items-center justify-center mesh-bg">
+        <div className="relative w-12 h-12">
+          <div className="absolute inset-0 rounded-full border-2 border-primary/20"></div>
+          <div className="absolute inset-0 rounded-full border-2 border-transparent border-t-primary animate-spin"></div>
+        </div>
       </div>
     );
   }

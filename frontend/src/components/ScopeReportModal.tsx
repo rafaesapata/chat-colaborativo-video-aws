@@ -249,11 +249,11 @@ export default function ScopeReportModal({
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm p-4">
       <div className={`relative w-full max-w-4xl max-h-[90vh] rounded-2xl shadow-2xl overflow-hidden flex flex-col ${
-        darkMode ? 'bg-gray-800 text-white' : 'bg-white text-gray-900'
+        darkMode ? 'bg-card-dark text-white' : 'bg-white text-foreground-light'
       }`}>
         {/* Header */}
         <div className={`p-4 border-b flex items-center justify-between ${
-          darkMode ? 'border-gray-700 bg-gradient-to-r from-teal-900 to-cyan-900' : 'border-gray-200 bg-gradient-to-r from-teal-500 to-cyan-500'
+          darkMode ? 'border-border-dark bg-gradient-to-r from-teal-900 to-cyan-900' : 'border-border-light bg-gradient-to-r from-teal-500 to-cyan-500'
         }`}>
           <div className="flex items-center gap-3">
             <div className="w-10 h-10 rounded-xl bg-white/20 flex items-center justify-center">
@@ -274,7 +274,7 @@ export default function ScopeReportModal({
             </button>
             <button
               onClick={handleExportPDF}
-              className="flex items-center gap-2 px-3 py-2 rounded-lg bg-white text-teal-700 text-sm font-medium hover:bg-gray-100 transition"
+              className="flex items-center gap-2 px-3 py-2 rounded-lg bg-white text-teal-700 text-sm font-medium hover:bg-black/5 transition"
             >
               <Download size={16} />
               Exportar PDF
@@ -292,45 +292,45 @@ export default function ScopeReportModal({
         <div ref={reportRef} className="flex-1 overflow-y-auto p-6">
           {/* Summary Cards */}
           <div className="grid grid-cols-4 gap-4 mb-6">
-            <div className={`p-4 rounded-xl ${darkMode ? 'bg-gray-700/50' : 'bg-gray-50'}`}>
+            <div className={`p-4 rounded-xl ${darkMode ? 'bg-white/5' : 'bg-black/3'}`}>
               <div className="flex items-center gap-2 mb-2">
                 <Target size={16} className="text-teal-500" />
-                <span className={`text-xs ${darkMode ? 'text-gray-400' : 'text-gray-500'}`}>Completude</span>
+                <span className={`text-xs ${darkMode ? 'text-muted-dark' : 'text-muted-light'}`}>Completude</span>
               </div>
               <div className="text-2xl font-bold">{summary.completeness}%</div>
-              <div className={`h-2 rounded-full mt-2 ${darkMode ? 'bg-gray-600' : 'bg-gray-200'}`}>
+              <div className={`h-2 rounded-full mt-2 ${darkMode ? 'bg-white/10' : 'bg-black/5'}`}>
                 <div className={`h-full rounded-full ${
                   summary.completeness >= 70 ? 'bg-green-500' : summary.completeness >= 40 ? 'bg-yellow-500' : 'bg-red-500'
                 }`} style={{ width: `${summary.completeness}%` }} />
               </div>
             </div>
-            <div className={`p-4 rounded-xl ${darkMode ? 'bg-gray-700/50' : 'bg-gray-50'}`}>
+            <div className={`p-4 rounded-xl ${darkMode ? 'bg-white/5' : 'bg-black/3'}`}>
               <div className="flex items-center gap-2 mb-2">
                 <CheckCircle size={16} className="text-green-500" />
-                <span className={`text-xs ${darkMode ? 'text-gray-400' : 'text-gray-500'}`}>Requisitos</span>
+                <span className={`text-xs ${darkMode ? 'text-muted-dark' : 'text-muted-light'}`}>Requisitos</span>
               </div>
               <div className="text-2xl font-bold">{summary.requirements.length}</div>
-              <div className={`text-xs mt-1 ${darkMode ? 'text-gray-500' : 'text-gray-400'}`}>
+              <div className={`text-xs mt-1 ${darkMode ? 'text-muted-light' : 'text-muted-dark'}`}>
                 {summary.requirements.filter(r => r.status === 'confirmed').length} confirmados
               </div>
             </div>
-            <div className={`p-4 rounded-xl ${darkMode ? 'bg-gray-700/50' : 'bg-gray-50'}`}>
+            <div className={`p-4 rounded-xl ${darkMode ? 'bg-white/5' : 'bg-black/3'}`}>
               <div className="flex items-center gap-2 mb-2">
                 <Layers size={16} className="text-blue-500" />
-                <span className={`text-xs ${darkMode ? 'text-gray-400' : 'text-gray-500'}`}>Features</span>
+                <span className={`text-xs ${darkMode ? 'text-muted-dark' : 'text-muted-light'}`}>Features</span>
               </div>
               <div className="text-2xl font-bold">{summary.features.length}</div>
-              <div className={`text-xs mt-1 ${darkMode ? 'text-gray-500' : 'text-gray-400'}`}>
+              <div className={`text-xs mt-1 ${darkMode ? 'text-muted-light' : 'text-muted-dark'}`}>
                 módulos identificados
               </div>
             </div>
-            <div className={`p-4 rounded-xl ${darkMode ? 'bg-gray-700/50' : 'bg-gray-50'}`}>
+            <div className={`p-4 rounded-xl ${darkMode ? 'bg-white/5' : 'bg-black/3'}`}>
               <div className="flex items-center gap-2 mb-2">
                 <AlertTriangle size={16} className="text-orange-500" />
-                <span className={`text-xs ${darkMode ? 'text-gray-400' : 'text-gray-500'}`}>Pendências</span>
+                <span className={`text-xs ${darkMode ? 'text-muted-dark' : 'text-muted-light'}`}>Pendências</span>
               </div>
               <div className="text-2xl font-bold">{summary.openQuestions.length + summary.risks.length}</div>
-              <div className={`text-xs mt-1 ${darkMode ? 'text-gray-500' : 'text-gray-400'}`}>
+              <div className={`text-xs mt-1 ${darkMode ? 'text-muted-light' : 'text-muted-dark'}`}>
                 questões/riscos
               </div>
             </div>
@@ -341,14 +341,14 @@ export default function ScopeReportModal({
             <h3 className={`text-sm font-semibold mb-2 flex items-center gap-2 ${darkMode ? 'text-teal-300' : 'text-teal-700'}`}>
               <Target size={16} /> Objetivo do Projeto
             </h3>
-            <p className={`text-sm ${darkMode ? 'text-gray-300' : 'text-gray-700'}`}>
+            <p className={`text-sm ${darkMode ? 'text-foreground-dark' : 'text-muted-light'}`}>
               {summary.objective || 'Objetivo a ser definido durante o levantamento de requisitos.'}
             </p>
           </div>
 
           {/* Requirements by Priority */}
           <div className="mb-6">
-            <h3 className={`text-sm font-semibold mb-3 ${darkMode ? 'text-gray-200' : 'text-gray-800'}`}>
+            <h3 className={`text-sm font-semibold mb-3 ${darkMode ? 'text-foreground-dark' : 'text-foreground-light'}`}>
               📋 Requisitos por Prioridade
             </h3>
             {Object.entries(groupedRequirements).map(([priority, reqs]) => reqs.length > 0 && (
@@ -368,21 +368,21 @@ export default function ScopeReportModal({
                         : darkMode ? 'bg-green-900/20 border-green-500' : 'bg-green-50 border-green-500'
                     }`}>
                       <div className="flex items-center justify-between mb-1">
-                        <span className={`text-sm font-medium ${darkMode ? 'text-gray-200' : 'text-gray-800'}`}>
+                        <span className={`text-sm font-medium ${darkMode ? 'text-foreground-dark' : 'text-foreground-light'}`}>
                           {req.title}
                         </span>
                         <div className="flex items-center gap-2">
-                          <span className={`text-[10px] px-2 py-0.5 rounded ${darkMode ? 'bg-gray-700 text-gray-300' : 'bg-gray-200 text-gray-600'}`}>
+                          <span className={`text-[10px] px-2 py-0.5 rounded ${darkMode ? 'bg-white/5 text-foreground-dark' : 'bg-black/5 text-muted-light'}`}>
                             {getTypeLabel(req.type)}
                           </span>
                           <span className={`text-[10px] ${
-                            req.status === 'confirmed' ? 'text-green-500' : req.status === 'clarified' ? 'text-yellow-500' : 'text-gray-400'
+                            req.status === 'confirmed' ? 'text-green-500' : req.status === 'clarified' ? 'text-yellow-500' : 'text-muted-dark'
                           }`}>
                             {req.status === 'confirmed' ? '✅' : req.status === 'clarified' ? '🔄' : '⏳'}
                           </span>
                         </div>
                       </div>
-                      <p className={`text-xs ${darkMode ? 'text-gray-400' : 'text-gray-600'}`}>{req.description}</p>
+                      <p className={`text-xs ${darkMode ? 'text-muted-dark' : 'text-muted-light'}`}>{req.description}</p>
                     </div>
                   ))}
                 </div>
@@ -393,14 +393,14 @@ export default function ScopeReportModal({
           {/* Features */}
           {summary.features.length > 0 && (
             <div className="mb-6">
-              <h3 className={`text-sm font-semibold mb-3 ${darkMode ? 'text-gray-200' : 'text-gray-800'}`}>
+              <h3 className={`text-sm font-semibold mb-3 ${darkMode ? 'text-foreground-dark' : 'text-foreground-light'}`}>
                 📦 Features / Módulos
               </h3>
               <div className="grid grid-cols-2 gap-3">
                 {summary.features.map((feat) => (
-                  <div key={feat.id} className={`p-3 rounded-lg ${darkMode ? 'bg-gray-700/50' : 'bg-gray-50'}`}>
+                  <div key={feat.id} className={`p-3 rounded-lg ${darkMode ? 'bg-white/5' : 'bg-black/3'}`}>
                     <div className="flex items-center justify-between mb-1">
-                      <span className={`text-sm font-medium ${darkMode ? 'text-gray-200' : 'text-gray-800'}`}>
+                      <span className={`text-sm font-medium ${darkMode ? 'text-foreground-dark' : 'text-foreground-light'}`}>
                         {feat.name}
                       </span>
                       <span className={`text-[10px] px-2 py-0.5 rounded ${
@@ -413,8 +413,8 @@ export default function ScopeReportModal({
                         {getComplexityLabel(feat.complexity)}
                       </span>
                     </div>
-                    <p className={`text-xs ${darkMode ? 'text-gray-400' : 'text-gray-500'}`}>{feat.description}</p>
-                    <div className={`text-[10px] mt-2 ${darkMode ? 'text-gray-500' : 'text-gray-400'}`}>
+                    <p className={`text-xs ${darkMode ? 'text-muted-dark' : 'text-muted-light'}`}>{feat.description}</p>
+                    <div className={`text-[10px] mt-2 ${darkMode ? 'text-muted-light' : 'text-muted-dark'}`}>
                       {feat.requirements.length} requisito(s) associado(s)
                     </div>
                   </div>
@@ -427,7 +427,7 @@ export default function ScopeReportModal({
           <div className="grid grid-cols-2 gap-4 mb-6">
             {summary.openQuestions.length > 0 && (
               <div>
-                <h3 className={`text-sm font-semibold mb-2 flex items-center gap-2 ${darkMode ? 'text-gray-200' : 'text-gray-800'}`}>
+                <h3 className={`text-sm font-semibold mb-2 flex items-center gap-2 ${darkMode ? 'text-foreground-dark' : 'text-foreground-light'}`}>
                   <Clock size={14} /> Questões em Aberto
                 </h3>
                 <div className="space-y-2">
@@ -441,7 +441,7 @@ export default function ScopeReportModal({
             )}
             {summary.risks.length > 0 && (
               <div>
-                <h3 className={`text-sm font-semibold mb-2 flex items-center gap-2 ${darkMode ? 'text-gray-200' : 'text-gray-800'}`}>
+                <h3 className={`text-sm font-semibold mb-2 flex items-center gap-2 ${darkMode ? 'text-foreground-dark' : 'text-foreground-light'}`}>
                   <AlertTriangle size={14} /> Riscos
                 </h3>
                 <div className="space-y-2">
@@ -457,13 +457,13 @@ export default function ScopeReportModal({
 
           {/* Next Steps */}
           {summary.nextSteps.length > 0 && (
-            <div className={`p-4 rounded-xl ${darkMode ? 'bg-gray-700/30' : 'bg-gray-50'}`}>
-              <h3 className={`text-sm font-semibold mb-2 ${darkMode ? 'text-gray-200' : 'text-gray-800'}`}>
+            <div className={`p-4 rounded-xl ${darkMode ? 'bg-white/5' : 'bg-black/3'}`}>
+              <h3 className={`text-sm font-semibold mb-2 ${darkMode ? 'text-foreground-dark' : 'text-foreground-light'}`}>
                 🚀 Próximos Passos
               </h3>
               <div className="space-y-2">
                 {summary.nextSteps.map((step, i) => (
-                  <div key={i} className={`flex items-center gap-2 text-sm ${darkMode ? 'text-gray-300' : 'text-gray-700'}`}>
+                  <div key={i} className={`flex items-center gap-2 text-sm ${darkMode ? 'text-foreground-dark' : 'text-muted-light'}`}>
                     <span className={`w-5 h-5 rounded-full flex items-center justify-center text-xs font-bold ${
                       darkMode ? 'bg-teal-900 text-teal-300' : 'bg-teal-100 text-teal-700'
                     }`}>{i + 1}</span>
@@ -476,9 +476,9 @@ export default function ScopeReportModal({
         </div>
 
         {/* Footer */}
-        <div className={`p-4 border-t ${darkMode ? 'border-gray-700 bg-gray-800/50' : 'border-gray-200 bg-gray-50'}`}>
+        <div className={`p-4 border-t ${darkMode ? 'border-border-dark bg-card-dark/50' : 'border-border-light bg-black/3'}`}>
           <div className="flex items-center justify-between">
-            <span className={`text-xs ${darkMode ? 'text-gray-500' : 'text-gray-400'}`}>
+            <span className={`text-xs ${darkMode ? 'text-muted-light' : 'text-muted-dark'}`}>
               Gerado em {new Date(summary.lastUpdated).toLocaleString('pt-BR')}
             </span>
             <button

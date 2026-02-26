@@ -55,7 +55,7 @@ export default function RecordingControl({
 
   return (
     <div className={`flex items-center gap-2 px-3 py-1.5 rounded-full ${
-      darkMode ? 'bg-gray-800/80' : 'bg-white/80'
+      darkMode ? 'bg-card-dark/80' : 'bg-white/80'
     } backdrop-blur-sm border ${
       darkMode ? 'border-red-500/50' : 'border-red-300'
     }`}>
@@ -65,7 +65,7 @@ export default function RecordingControl({
           isPaused ? 'bg-yellow-500' : 'bg-red-500 animate-pulse'
         }`} />
         <span className={`text-sm font-mono font-medium ${
-          darkMode ? 'text-white' : 'text-gray-900'
+          darkMode ? 'text-white' : 'text-foreground-light'
         }`}>
           {formatDuration(duration)}
         </span>
@@ -76,8 +76,8 @@ export default function RecordingControl({
         onClick={onTogglePause}
         className={`p-1.5 rounded-full transition-all hover:scale-110 ${
           darkMode
-            ? 'hover:bg-gray-700 text-gray-300'
-            : 'hover:bg-gray-200 text-gray-600'
+            ? 'hover:bg-white/10 text-foreground-dark'
+            : 'hover:bg-black/5 text-muted-light'
         }`}
         title={isPaused ? 'Retomar' : 'Pausar'}
       >
