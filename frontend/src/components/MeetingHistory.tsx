@@ -1,5 +1,5 @@
 import { useState, useEffect, useMemo } from 'react';
-import { X, Clock, Users, FileText, Trash2, Download, ChevronDown, ChevronUp, Play, Video, Brain, Search } from 'lucide-react';
+import { X, Clock, Users, FileText, Trash2, Download, ChevronDown, ChevronUp, Play, Video, Brain, Search, MessageSquare } from 'lucide-react';
 import { meetingHistoryService, MeetingRecord, RecordingFragment } from '../services/meetingHistoryService';
 import { getRecordingPlaybackUrl } from '../hooks/useRecording';
 import { interviewAIService, InterviewContext, InterviewReport } from '../services/interviewAIService';
@@ -31,6 +31,16 @@ export default function MeetingHistory({ isOpen, onClose, userLogin, darkMode }:
   const [currentMeetingReport, setCurrentMeetingReport] = useState<MeetingReportData | null>(null);
   const [currentMeetingReportRoomId, setCurrentMeetingReportRoomId] = useState<string | undefined>(undefined);
   const [searchQuery, setSearchQuery] = useState('');
+
+  const formatDate = (timestamp: number) => {
+    return new Date(timestamp).toLocaleDateString('pt-BR', {
+      day: '2-digit',
+      month: '2-digit',
+      year: 'numeric',
+      hour: '2-digit',
+      minute: '2-digit'
+    });
+  };
 
   const filteredMeetings = useMemo(() => {
     if (!searchQuery.trim()) return meetings;
@@ -266,25 +276,15 @@ export default function MeetingHistory({ isOpen, onClose, userLogin, darkMode }:
     return `${minutes} min`;
   };
 
-  const formatDate = (timestamp: number) => {
-    return new Date(timestamp).toLocaleDateString('pt-BR', {
-      day: '2-digit',
-      month: '2-digit',
-      year: 'numeric',
-      hour: '2-digit',
-      minute: '2-digit'
-    });
-  };
-
   if (!isOpen) return null;
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 backdrop-blur-sm p-4">
-      <div className={`relative w-full max-w-6xl max-h-[90vh] rounded-2xl shadow-2xl overflow-hidden animate-fade-in-scale ${
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 backdrop-blur-sm p-2 sm:p-4">
+      <div className={`relative w-full max-w-[95vw] xl:max-w-7xl max-h-[90vh] flex flex-col rounded-2xl shadow-2xl overflow-hidden animate-fade-in-scale ${
         darkMode ? 'bg-card-dark text-white' : 'bg-white text-foreground-light'
       }`}>
         {/* Header */}
-        <div className={`sticky top-0 z-10 flex flex-col gap-3 p-4 border-b ${
+        <div className={`shrink-0 sticky top-0 z-10 flex flex-col gap-3 p-4 border-b ${
           darkMode ? 'bg-card-dark border-border-dark' : 'bg-white border-border-light'
         }`}>
           <div className="flex items-center justify-between">
@@ -331,7 +331,7 @@ export default function MeetingHistory({ isOpen, onClose, userLogin, darkMode }:
         </div>
 
         {/* Content */}
-        <div className="overflow-y-auto max-h-[calc(90vh-130px)] p-4">
+        <div className="flex-1 overflow-y-auto p-4 min-h-0">
           {loading ? (
             <div className="space-y-3">
               {[...Array(4)].map((_, i) => (
@@ -373,9 +373,9 @@ export default function MeetingHistory({ isOpen, onClose, userLogin, darkMode }:
                       expandedMeeting === meeting.id ? null : meeting.id
                     )}
                   >
-                    <div className="flex items-start justify-between">
-                      <div className="flex-1">
-                        <div className="flex items-center gap-2 mb-1">
+                    <div className="flex items-start justify-between gap-3">
+                      <div className="flex-1 min-w-0">
+                        <div className="flex items-center gap-2 mb-1 flex-wrap">
                           <span className={`font-mono text-sm px-2 py-0.5 rounded ${
                             darkMode ? 'bg-primary-900/50 text-primary-300' : 'bg-primary-50 text-primary-700'
                           }`}>
@@ -404,6 +404,14 @@ export default function MeetingHistory({ isOpen, onClose, userLogin, darkMode }:
                               {meeting.transcriptions.length} transcrições
                             </span>
                           )}
+                          {(meeting.chatMessages?.length || 0) > 0 && (
+                            <span className={`text-xs px-2 py-0.5 rounded flex items-center gap-1 ${
+                              darkMode ? 'bg-primary-900/50 text-primary-300' : 'bg-primary-50 text-primary-700'
+                            }`}>
+                              <MessageSquare size={12} />
+                              {meeting.chatMessages!.length} msgs
+                            </span>
+                          )}
                         </div>
                         <p className={`text-sm ${darkMode ? 'text-foreground-dark' : 'text-muted-light'}`}>
                           {formatDate(meeting.startTime)}
@@ -423,7 +431,7 @@ export default function MeetingHistory({ isOpen, onClose, userLogin, darkMode }:
                           )}
                         </div>
                       </div>
-                      <div className="flex items-center gap-2">
+                      <div className="flex items-center gap-1 shrink-0">
                         {meeting.recordingKey && (
                           <button
                             onClick={(e) => {
@@ -527,6 +535,68 @@ export default function MeetingHistory({ isOpen, onClose, userLogin, darkMode }:
                               </span>
                               <p className={darkMode ? 'text-foreground-dark' : 'text-muted-light'}>
                                 {t.text}
+                              </p>
+                            </div>
+                          ))}
+                      </div>
+                    </div>
+                  )}
+
+                  {/* Expanded Chat Messages */}
+                  {expandedMeeting === meeting.id && (meeting.chatMessages?.length || 0) > 0 && (
+                    <div className={`border-t p-4 ${darkMode ? 'border-border-dark' : 'border-border-light'}`}>
+                      <div className="flex items-center justify-between mb-3">
+                        <h4 className={`text-sm font-semibold flex items-center gap-2 ${
+                          darkMode ? 'text-foreground-dark' : 'text-muted-light'
+                        }`}>
+                          <MessageSquare size={14} />
+                          Chat ({meeting.chatMessages!.length} mensagens)
+                        </h4>
+                        <button
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            const content = meetingHistoryService.exportChat(meeting);
+                            const blob = new Blob([content], { type: 'text/plain;charset=utf-8' });
+                            const url = URL.createObjectURL(blob);
+                            const a = document.createElement('a');
+                            a.href = url;
+                            a.download = `chat_${meeting.roomId}_${new Date(meeting.startTime).toISOString().split('T')[0]}.txt`;
+                            a.click();
+                            URL.revokeObjectURL(url);
+                          }}
+                          className={`text-xs px-2 py-1 rounded-lg flex items-center gap-1 transition ${
+                            darkMode
+                              ? 'hover:bg-white/10 text-muted-dark hover:text-white'
+                              : 'hover:bg-black/5 text-muted-light hover:text-foreground-light'
+                          }`}
+                          title="Exportar chat"
+                        >
+                          <Download size={12} />
+                          Exportar
+                        </button>
+                      </div>
+                      <div className={`max-h-60 overflow-y-auto space-y-2 rounded-lg p-3 ${
+                        darkMode ? 'bg-card-dark' : 'bg-white'
+                      }`}>
+                        {meeting.chatMessages!
+                          .sort((a, b) => a.timestamp - b.timestamp)
+                          .map(m => (
+                            <div key={m.id} className="text-sm">
+                              <span className={`font-medium ${
+                                darkMode ? 'text-primary-300' : 'text-primary'
+                              }`}>
+                                {m.author}
+                              </span>
+                              <span className={`text-xs ml-2 ${
+                                darkMode ? 'text-muted-light' : 'text-muted-dark'
+                              }`}>
+                                {new Date(m.timestamp).toLocaleTimeString('pt-BR', {
+                                  hour: '2-digit',
+                                  minute: '2-digit'
+                                })}
+                              </span>
+                              <p className={darkMode ? 'text-foreground-dark' : 'text-muted-light'}>
+                                {m.text}
                               </p>
                             </div>
                           ))}

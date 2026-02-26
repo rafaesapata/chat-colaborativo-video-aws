@@ -2850,7 +2850,23 @@ async function handleAdminAddBackground(body) {
   
   log(LOG_LEVELS.INFO, 'Background adicionado', { id: newBackground.id, name, createdBy: userLogin });
   
-  return successResponse({ background: newBackground });
+  // Gerar URL pré-assinada para o background recém-criado
+  let responseBackground = { ...newBackground };
+  if (newBackground.s3Key) {
+    try {
+      const command = new GetObjectCommand({
+        Bucket: BACKGROUNDS_BUCKET,
+        Key: newBackground.s3Key,
+      });
+      const signedUrl = await getSignedUrl(s3Client, command, { expiresIn: 3600 });
+      responseBackground.url = signedUrl;
+      responseBackground.preview = signedUrl;
+    } catch (e) {
+      log(LOG_LEVELS.WARN, 'Erro ao gerar URL assinada para novo background', { error: e.message });
+    }
+  }
+  
+  return successResponse({ background: responseBackground });
 }
 
 // POST /admin/backgrounds/upload-url - Gera URL pré-assinada para upload (apenas admin)
@@ -3760,7 +3776,8 @@ async function handleSaveMeetingHistory(body) {
     questionsAsked,
     recordingKey,
     recordingDuration,
-    recordingId
+    recordingId,
+    chatMessages
   } = body;
 
   if (!userLogin || !meetingId || !roomId) {
@@ -3796,6 +3813,19 @@ async function handleSaveMeetingHistory(body) {
       createdAt: { N: String(Date.now()) },
       ttl: { N: String(Math.floor(Date.now() / 1000) + (180 * 24 * 60 * 60)) }, // 180 dias
     };
+
+    // Adicionar chatMessages se existirem
+    if (chatMessages && Array.isArray(chatMessages) && chatMessages.length > 0) {
+      historyItem.chatMessages = { L: chatMessages.map(m => ({
+        M: {
+          id: { S: m.id || '' },
+          author: { S: m.author || '' },
+          text: { S: m.text || '' },
+          timestamp: { N: String(m.timestamp || 0) }
+        }
+      })) };
+      historyItem.chatMessageCount = { N: String(chatMessages.length) };
+    }
 
     // Adicionar campos opcionais de gravação se existirem
     if (recordingKey) {
@@ -3917,6 +3947,13 @@ async function handleAdminListHistory(body) {
           speaker: t.M?.speaker?.S || '',
           timestamp: parseInt(t.M?.timestamp?.N || '0'),
         })) || [],
+        chatMessages: item.chatMessages?.L?.map(m => ({
+          id: m.M?.id?.S || '',
+          author: m.M?.author?.S || '',
+          text: m.M?.text?.S || '',
+          timestamp: parseInt(m.M?.timestamp?.N || '0'),
+        })) || [],
+        chatMessageCount: parseInt(item.chatMessageCount?.N || '0'),
       }))
       .sort((a, b) => b.startTime - a.startTime);
 

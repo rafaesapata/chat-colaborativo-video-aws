@@ -200,6 +200,16 @@ export default function MeetingRoom({ darkMode }: { darkMode: boolean }) {
       
       setMessages(prev => [...prev, newMessage]);
       
+      // Salvar mensagem no histórico da reunião
+      if (currentMeetingId) {
+        meetingHistoryService.addChatMessage(currentMeetingId, {
+          id: data.data.messageId,
+          author: data.data.userName,
+          text: data.data.content,
+          timestamp: data.data.timestamp || Date.now(),
+        });
+      }
+      
       if (!isChatOpenRef.current && data.data.userId !== userId) {
         setUnreadCount(prev => prev + 1);
       }
