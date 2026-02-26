@@ -19,6 +19,13 @@ export interface RecordingFragment {
   timestamp: number;
 }
 
+export interface ChatMessage {
+  id: string;
+  author: string;
+  text: string;
+  timestamp: number;
+}
+
 export interface MeetingRecord {
   id: string;
   roomId: string;
@@ -29,6 +36,7 @@ export interface MeetingRecord {
   participants: string[];
   transcriptions: MeetingTranscription[];
   transcriptionCount?: number;
+  chatMessages?: ChatMessage[];
   userLogin: string;
   recordingKey?: string;
   recordingDuration?: number;
@@ -60,6 +68,7 @@ export const meetingHistoryService = {
           ...h,
           id: h.meetingId || h.id,
           transcriptions: h.transcriptions || [],
+          chatMessages: h.chatMessages || [],
         }));
       }
       console.warn('[MeetingHistory] Erro ao buscar histórico:', response.status);
@@ -105,6 +114,17 @@ export const meetingHistoryService = {
     const exists = meeting.transcriptions.some(t => t.id === transcription.id);
     if (!exists) {
       meeting.transcriptions.push(transcription);
+    }
+  },
+
+  // Adicionar mensagem de chat à reunião ativa
+  addChatMessage(meetingId: string, message: ChatMessage): void {
+    const meeting = activeMeetings.get(meetingId);
+    if (!meeting) return;
+    if (!meeting.chatMessages) meeting.chatMessages = [];
+    const exists = meeting.chatMessages.some(m => m.id === message.id);
+    if (!exists) {
+      meeting.chatMessages.push(message);
     }
   },
 
@@ -222,6 +242,23 @@ export const meetingHistoryService = {
     return header + date + duration + separator + transcriptions;
   },
 
+  // Exportar chat como texto
+  exportChat(meeting: MeetingRecord): string {
+    const header = `Chat da Reunião: ${meeting.roomId}\n`;
+    const date = `Data: ${new Date(meeting.startTime).toLocaleString('pt-BR')}\n`;
+    const separator = '─'.repeat(50) + '\n\n';
+    const messages = (meeting.chatMessages || [])
+      .sort((a, b) => a.timestamp - b.timestamp)
+      .map(m => {
+        const time = new Date(m.timestamp).toLocaleTimeString('pt-BR', {
+          hour: '2-digit', minute: '2-digit', second: '2-digit'
+        });
+        return `[${time}] ${m.author}: ${m.text}`;
+      })
+      .join('\n');
+    return header + date + separator + messages;
+  },
+
   // Buscar histórico do backend (admin)
   async getAdminHistory(userLogin: string, filters?: {
     userLogin?: string;
@@ -277,6 +314,7 @@ export const meetingHistoryService = {
           recordingDuration: meeting.recordingDuration,
           recordingId: meeting.recordingId,
           recordingFragments: meeting.recordingFragments,
+          chatMessages: meeting.chatMessages,
         }),
       });
       if (response.ok) {

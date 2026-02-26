@@ -131,8 +131,8 @@ export default function LoginScreen({ darkMode, onToggleDarkMode }: LoginScreenP
             <div className={`w-full border-t ${darkMode ? 'border-border-dark' : 'border-border-light'}`}></div>
           </div>
           <div className="relative flex justify-center text-sm">
-            <span className={`px-4 font-medium ${
-              darkMode ? 'bg-card-dark text-muted-dark' : 'bg-card-light text-muted-light'
+            <span className={`px-4 font-medium rounded-full ${
+              darkMode ? 'bg-surface-dark text-muted-dark' : 'bg-surface-light text-muted-light'
             }`}>ou</span>
           </div>
         </div>

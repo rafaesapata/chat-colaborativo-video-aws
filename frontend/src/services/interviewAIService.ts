@@ -146,7 +146,6 @@ function cleanExpiredCache() {
 }
 
 /**
-/**
  * §8 FIX: Include roomId in cache key to prevent cross-session data leakage
  */
 async function callInterviewAI(action: string, context: InterviewContext, params: any = {}): Promise<any> {

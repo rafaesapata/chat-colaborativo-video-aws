@@ -474,10 +474,10 @@ function HomePage({ darkMode, onToggleDarkMode }: HomePageProps) {
               <div className={`w-full border-t ${darkMode ? 'border-border-dark' : 'border-border-light'}`}></div>
             </div>
             <div className="relative flex justify-center text-sm">
-              <span className={`px-4 font-medium ${
+              <span className={`px-4 font-medium rounded-full ${
                 darkMode 
-                  ? 'bg-card-dark text-muted-dark' 
-                  : 'bg-card-light text-muted-light'
+                  ? 'bg-surface-dark text-muted-dark' 
+                  : 'bg-surface-light text-muted-light'
               }`}>ou</span>
             </div>
           </div>
@@ -649,21 +649,25 @@ function AuthenticatedRoutes() {
   // Se não está autenticado e não é convidado, mostrar tela de login
   if (!isAuthenticated && !isGuest) {
     return (
-      <Suspense fallback={<LoadingFallback />}>
-        <LoginScreen darkMode={darkMode} onToggleDarkMode={toggleDarkMode} />
-      </Suspense>
+      <div className={darkMode ? 'dark' : ''}>
+        <Suspense fallback={<LoadingFallback />}>
+          <LoginScreen darkMode={darkMode} onToggleDarkMode={toggleDarkMode} />
+        </Suspense>
+      </div>
     );
   }
 
   // Se está autenticado ou é convidado, mostrar as rotas normais
   return (
-    <Suspense fallback={<LoadingFallback />}>
-      <Routes>
-        <Route path="/" element={<HomePage darkMode={darkMode} onToggleDarkMode={toggleDarkMode} />} />
-        <Route path="/meeting/:roomId" element={<MeetingWrapper darkMode={darkMode} />} />
-        <Route path="/admin" element={<AdminPanel darkMode={darkMode} />} />
-      </Routes>
-    </Suspense>
+    <div className={darkMode ? 'dark' : ''}>
+      <Suspense fallback={<LoadingFallback />}>
+        <Routes>
+          <Route path="/" element={<HomePage darkMode={darkMode} onToggleDarkMode={toggleDarkMode} />} />
+          <Route path="/meeting/:roomId" element={<MeetingWrapper darkMode={darkMode} />} />
+          <Route path="/admin" element={<AdminPanel darkMode={darkMode} />} />
+        </Routes>
+      </Suspense>
+    </div>
   );
 }
 
