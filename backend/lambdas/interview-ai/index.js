@@ -145,6 +145,10 @@ exports.handler = async (event) => {
         result = await generateInterviewReport(context, reportConfig);
         break;
       
+      case 'generateMeetingReport':
+        result = await generateMeetingReport(context);
+        break;
+      
       case 'evaluateCompleteness':
         result = await evaluateInterviewCompleteness(context);
         break;
@@ -217,6 +221,7 @@ function validateAndSanitizeInput(body) {
     'evaluateAnswer', 
     'generateNewQuestions', 
     'generateReport',
+    'generateMeetingReport',
     'evaluateCompleteness',
     'saveReport',
     'getReport',
@@ -249,13 +254,18 @@ function validateAndSanitizeInput(body) {
   }
   
   // Sanitizar strings para prevenir injection e remover PII
+  const isReportAction = action === 'generateReport' || action === 'generateMeetingReport';
+  const maxTranscriptions = isReportAction ? 200 : 20;
   const sanitizedContext = {
     meetingType: sanitizeString(context.meetingType, 50),
     topic: sanitizeString(context.topic, 200),
     jobDescription: sanitizePII(sanitizeString(context.jobDescription || '', 10000)),
     candidateName: sanitizeString(context.candidateName || '', 100),
+    participants: Array.isArray(context.participants) ? context.participants.slice(0, 20).map(p => sanitizeString(p, 100)) : [],
+    duration: typeof context.duration === 'number' ? context.duration : 0,
+    startTime: typeof context.startTime === 'number' ? context.startTime : 0,
     transcriptionHistory: Array.isArray(context.transcriptionHistory) 
-      ? context.transcriptionHistory.slice(-20).map(t => sanitizePII(sanitizeString(t, 1000)))
+      ? context.transcriptionHistory.slice(-maxTranscriptions).map(t => sanitizePII(sanitizeString(t, 1000)))
       : [],
     questionsAsked: Array.isArray(context.questionsAsked)
       ? context.questionsAsked.slice(-20).map(qa => ({
@@ -1097,6 +1107,87 @@ Retorne APENAS o JSON, sem texto adicional.`;
 /**
  * Gera relatório completo da entrevista
  * Usa configurações customizáveis do painel de admin
+/**
+ * Gera relatorio de reuniao geral (nao-entrevista) com HTML no design Dark Editorial
+ */
+async function generateMeetingReport(context) {
+  const { topic, transcriptionHistory, candidateName, meetingType } = context;
+  const participants = context.participants || [];
+  const duration = context.duration || 0;
+  const startTime = context.startTime || Date.now();
+
+  const MAX_CHARS = 15000;
+  let transcription = transcriptionHistory.join('\n');
+  if (transcription.length > MAX_CHARS) {
+    transcription = transcription.substring(transcription.length - MAX_CHARS);
+    const nl = transcription.indexOf('\n');
+    if (nl > 0) transcription = '[...transcricao anterior omitida...]\n' + transcription.substring(nl + 1);
+  }
+
+  const prompt = `Voce e um assistente executivo especializado em gerar atas e resumos de reunioes corporativas.
+
+Analise a transcricao abaixo e gere um relatorio estruturado em JSON com os seguintes campos:
+
+1. "title": Titulo descritivo da reuniao (maximo 80 caracteres)
+2. "executiveSummary": Resumo executivo da reuniao (3-5 frases, objetivo e conciso)
+3. "keyPoints": Array de 5-10 pontos-chave discutidos. Cada item: { "title": "titulo curto", "description": "descricao detalhada", "category": "decisao|informacao|problema|ideia" }
+4. "decisions": Array de decisoes tomadas. Cada item: { "description": "o que foi decidido", "responsible": "quem ficou responsavel ou 'A definir'", "deadline": "prazo mencionado ou 'Nao definido'" }
+5. "actionItems": Array de proximos passos/acoes. Cada item: { "task": "descricao da tarefa", "owner": "responsavel ou 'A definir'", "priority": "alta|media|baixa", "deadline": "prazo ou 'A definir'" }
+6. "risks": Array de riscos ou preocupacoes levantadas. Cada item: { "description": "descricao do risco", "severity": "alto|medio|baixo", "mitigation": "mitigacao sugerida ou 'Nao discutido'" }
+7. "openQuestions": Array de perguntas que ficaram em aberto (strings simples)
+8. "sentiment": "positivo" | "neutro" | "negativo" - tom geral da reuniao
+9. "sentimentDescription": Breve descricao do clima da reuniao (1-2 frases)
+
+**CONTEXTO:**
+- Assunto/Sala: ${topic || 'Reuniao'}
+- Tipo: ${meetingType || 'REUNIAO'}
+- Participantes: ${participants.length > 0 ? participants.join(', ') : candidateName || 'Nao identificados'}
+
+**TRANSCRICAO:**
+${transcription}
+
+**INSTRUCOES:**
+- Seja preciso e objetivo. Extraia informacoes REAIS da transcricao.
+- Se algo nao foi discutido, NAO invente. Deixe arrays vazios.
+- Identifique quem disse o que quando possivel.
+- Priorize decisoes e acoes concretas.
+- O resumo deve ser util para quem nao participou da reuniao.
+
+Retorne APENAS o JSON, sem texto adicional.`;
+
+  const response = await invokeBedrockModel(prompt, 4096, 0, 0.2);
+
+  let reportData;
+  try {
+    const jsonMatch = response.match(/\{[\s\S]*\}/);
+    if (!jsonMatch) throw new Error('JSON nao encontrado na resposta');
+    reportData = JSON.parse(jsonMatch[0]);
+  } catch (e) {
+    console.error('[MeetingReport] Erro ao parsear JSON:', e.message);
+    throw new Error('Falha ao gerar relatorio da reuniao');
+  }
+
+  // Normalizar campos
+  reportData.title = (reportData.title || topic || 'Reuniao').substring(0, 100);
+  reportData.executiveSummary = reportData.executiveSummary || 'Resumo nao disponivel.';
+  reportData.keyPoints = Array.isArray(reportData.keyPoints) ? reportData.keyPoints : [];
+  reportData.decisions = Array.isArray(reportData.decisions) ? reportData.decisions : [];
+  reportData.actionItems = Array.isArray(reportData.actionItems) ? reportData.actionItems : [];
+  reportData.risks = Array.isArray(reportData.risks) ? reportData.risks : [];
+  reportData.openQuestions = Array.isArray(reportData.openQuestions) ? reportData.openQuestions : [];
+  reportData.sentiment = ['positivo', 'neutro', 'negativo'].includes(reportData.sentiment) ? reportData.sentiment : 'neutro';
+  reportData.sentimentDescription = reportData.sentimentDescription || '';
+  reportData.generatedAt = new Date().toISOString();
+  reportData.meetingType = meetingType || 'REUNIAO';
+  reportData.participants = participants.length > 0 ? participants : (candidateName ? [candidateName] : []);
+  reportData.transcriptionCount = transcriptionHistory.length;
+  reportData.duration = duration;
+  reportData.startTime = startTime;
+
+  return { meetingReport: reportData };
+}
+
+ /**
  * 
  * v6.0.0 - Validação server-side de scores, decisões e schema
  * - Recalcula overallScore a partir dos scores individuais (não confia na IA)

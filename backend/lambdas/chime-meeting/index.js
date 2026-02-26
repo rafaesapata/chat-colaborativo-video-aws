@@ -3625,7 +3625,7 @@ async function handleInterviewAI(body, event) {
     return errorResponse(400, 'action é obrigatório');
   }
   
-  const validActions = ['generateInitialQuestions', 'generateFollowUp', 'evaluateAnswer', 'generateNewQuestions', 'generateReport', 'evaluateCompleteness', 'listModels'];
+  const validActions = ['generateInitialQuestions', 'generateFollowUp', 'evaluateAnswer', 'generateNewQuestions', 'generateReport', 'generateMeetingReport', 'evaluateCompleteness', 'listModels'];
   if (!validActions.includes(action)) {
     return errorResponse(400, `action inválido. Valores permitidos: ${validActions.join(', ')}`);
   }
@@ -3807,6 +3807,20 @@ async function handleSaveMeetingHistory(body) {
       historyItem.recordingId = { S: recordingId };
     }
 
+    // Salvar fragmentos de gravação
+    const { recordingFragments } = body;
+    if (recordingFragments && Array.isArray(recordingFragments) && recordingFragments.length > 0) {
+      historyItem.recordingFragments = { L: recordingFragments.map(f => ({
+        M: {
+          recordingKey: { S: f.recordingKey || '' },
+          recordingDuration: { N: String(f.recordingDuration || 0) },
+          recordingId: { S: f.recordingId || '' },
+          fragmentIndex: { N: String(f.fragmentIndex || 0) },
+          timestamp: { N: String(f.timestamp || 0) },
+        }
+      })) };
+    }
+
     await dynamoClient.send(new PutItemCommand({
       TableName: MEETING_HISTORY_TABLE,
       Item: historyItem,
@@ -3887,6 +3901,13 @@ async function handleAdminListHistory(body) {
         recordingKey: item.recordingKey?.S || null,
         recordingDuration: parseInt(item.recordingDuration?.N || '0'),
         recordingId: item.recordingId?.S || null,
+        recordingFragments: item.recordingFragments?.L?.map(f => ({
+          recordingKey: f.M?.recordingKey?.S || '',
+          recordingDuration: parseInt(f.M?.recordingDuration?.N || '0'),
+          recordingId: f.M?.recordingId?.S || '',
+          fragmentIndex: parseInt(f.M?.fragmentIndex?.N || '0'),
+          timestamp: parseInt(f.M?.timestamp?.N || '0'),
+        })) || [],
         createdAt: parseInt(item.createdAt?.N || '0'),
         // Incluir transcrições se existirem (para download)
         transcriptions: item.transcriptions?.L?.map(t => ({

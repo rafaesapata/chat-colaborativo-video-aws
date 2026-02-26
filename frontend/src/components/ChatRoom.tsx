@@ -40,7 +40,7 @@ export default function ChatRoom({ messages, onSendMessage }: Props) {
                 {new Date(msg.timestamp).toLocaleTimeString()}
               </span>
             </div>
-            <div className="bg-gray-100 rounded-lg p-3 mt-1">
+            <div className="bg-gray-100 rounded-lg p-3 mt-1 whitespace-pre-wrap break-words">
               {msg.content}
             </div>
           </div>
@@ -49,13 +49,23 @@ export default function ChatRoom({ messages, onSendMessage }: Props) {
       </div>
 
       <form onSubmit={handleSubmit} className="border-t p-4">
-        <div className="flex gap-2">
-          <input
-            type="text"
+        <div className="flex gap-2 items-end">
+          <textarea
             value={input}
-            onChange={(e) => setInput(e.target.value)}
+            onChange={(e) => {
+              setInput(e.target.value);
+              e.target.style.height = 'auto';
+              e.target.style.height = Math.min(e.target.scrollHeight, 120) + 'px';
+            }}
+            onKeyDown={(e) => {
+              if (e.key === 'Enter' && !e.shiftKey) {
+                e.preventDefault();
+                handleSubmit(e);
+              }
+            }}
             placeholder="Digite sua mensagem..."
-            className="flex-1 border rounded-lg px-4 py-2 focus:outline-none focus:ring-2 focus:ring-blue-500"
+            rows={1}
+            className="flex-1 border rounded-lg px-4 py-2 focus:outline-none focus:ring-2 focus:ring-blue-500 resize-none min-h-[40px]"
           />
           <button
             type="submit"

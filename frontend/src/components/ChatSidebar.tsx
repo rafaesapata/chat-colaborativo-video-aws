@@ -21,7 +21,7 @@ interface ChatSidebarProps {
 export default function ChatSidebar({ isOpen, onClose, messages, onSendMessage, darkMode }: ChatSidebarProps) {
   const [inputText, setInputText] = useState('');
   const messagesEndRef = useRef<HTMLDivElement>(null);
-  const inputRef = useRef<HTMLInputElement>(null);
+  const inputRef = useRef<HTMLTextAreaElement>(null);
   const { isMobile } = useMobile();
 
   const scrollToBottom = () => {
@@ -43,6 +43,9 @@ export default function ChatSidebar({ isOpen, onClose, messages, onSendMessage, 
     if (inputText.trim()) {
       onSendMessage(inputText.trim());
       setInputText('');
+      if (inputRef.current) {
+        inputRef.current.style.height = 'auto';
+      }
     }
   };
 
@@ -51,6 +54,14 @@ export default function ChatSidebar({ isOpen, onClose, messages, onSendMessage, 
       e.preventDefault();
       handleSendMessage();
     }
+  };
+
+  // Auto-resize textarea
+  const handleInputChange = (e: React.ChangeEvent<HTMLTextAreaElement>) => {
+    setInputText(e.target.value);
+    const textarea = e.target;
+    textarea.style.height = 'auto';
+    textarea.style.height = Math.min(textarea.scrollHeight, 120) + 'px';
   };
 
   return (
@@ -112,7 +123,7 @@ export default function ChatSidebar({ isOpen, onClose, messages, onSendMessage, 
                   {message.isOwn ? 'Você' : message.author || 'Usuário'}
                 </div>
                 <div
-                  className={`${isMobile ? 'px-3 py-2 text-xs' : 'px-4 py-2.5 text-sm'} rounded-2xl ${
+                  className={`${isMobile ? 'px-3 py-2 text-xs' : 'px-4 py-2.5 text-sm'} rounded-2xl whitespace-pre-wrap break-words ${
                     message.isOwn
                       ? 'bg-blue-500 text-white rounded-br-md'
                       : darkMode
@@ -137,14 +148,14 @@ export default function ChatSidebar({ isOpen, onClose, messages, onSendMessage, 
       {/* Input */}
       <div className={`${isMobile ? 'p-3' : 'p-4'} border-t ${darkMode ? 'border-white/10' : 'border-black/5'}`}>
         <div className="relative">
-          <input
+          <textarea
             ref={inputRef}
-            type="text"
             value={inputText}
-            onChange={(e) => setInputText(e.target.value)}
-            onKeyPress={handleKeyPress}
+            onChange={handleInputChange}
+            onKeyDown={handleKeyPress}
             placeholder="Digite uma mensagem..."
-            className={`w-full ${isMobile ? 'h-10 pl-3 pr-10 text-sm' : 'h-11 pl-4 pr-12'} rounded-full border transition-all duration-200 focus:outline-none focus:ring-2 focus:ring-blue-500 ${
+            rows={1}
+            className={`w-full ${isMobile ? 'min-h-[40px] pl-3 pr-10 text-sm py-2' : 'min-h-[44px] pl-4 pr-12 py-3'} rounded-2xl border transition-all duration-200 focus:outline-none focus:ring-2 focus:ring-blue-500 resize-none ${
               darkMode
                 ? 'bg-gray-700 border-gray-600 text-white placeholder-gray-400'
                 : 'bg-gray-50 border-gray-200 text-gray-900 placeholder-gray-500'

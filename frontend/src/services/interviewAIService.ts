@@ -154,7 +154,7 @@ async function callInterviewAI(action: string, context: InterviewContext, params
   const cacheKey = `${action}_${roomId}_${JSON.stringify({ topic: context.topic, jobDescription: context.jobDescription?.substring(0, 100), ...params })}`;
   
   // Verificar cache (não usar cache para relatórios)
-  if (action !== 'generateReport') {
+  if (action !== 'generateReport' && action !== 'generateMeetingReport') {
     const cached = requestCache.get(cacheKey);
     if (cached && Date.now() - cached.timestamp < CACHE_TTL) {
       console.log('[InterviewAI] Usando resposta em cache para:', action);
@@ -173,7 +173,7 @@ async function callInterviewAI(action: string, context: InterviewContext, params
     });
     
     // §9 FIX: Cap transcriptions for reports to prevent timeout on large payloads
-    const transcriptionsToSend = action === 'generateReport' 
+    const transcriptionsToSend = (action === 'generateReport' || action === 'generateMeetingReport')
       ? context.transcriptionHistory.slice(-150) // Cap at last 150 to prevent Lambda timeout
       : context.transcriptionHistory.slice(-10); // Últimas 10 para outras ações
     
@@ -197,11 +197,14 @@ async function callInterviewAI(action: string, context: InterviewContext, params
           transcriptionHistory: transcriptionsToSend,
           questionsAsked: context.questionsAsked.map(qa => ({
             question: qa.question,
-            answer: qa.answer, // Incluir resposta para relatório
+            answer: qa.answer,
             answerQuality: qa.answerQuality,
             category: qa.category
           })),
-          candidateName: context.candidateName
+          candidateName: context.candidateName,
+          ...((context as any).participants ? { participants: (context as any).participants } : {}),
+          ...((context as any).duration ? { duration: (context as any).duration } : {}),
+          ...((context as any).startTime ? { startTime: (context as any).startTime } : {}),
         },
         ...params
       })
@@ -216,7 +219,7 @@ async function callInterviewAI(action: string, context: InterviewContext, params
     const result = await response.json();
     
     // Armazenar em cache (exceto relatórios)
-    if (action !== 'generateReport') {
+    if (action !== 'generateReport' && action !== 'generateMeetingReport') {
       requestCache.set(cacheKey, { data: result, timestamp: Date.now() });
     }
     
@@ -634,6 +637,23 @@ export const interviewAIService = {
     } catch (error: any) {
       console.error('[InterviewAI] Erro ao gerar relatório:', error);
       return this._getEmptyReport(context);
+    }
+  },
+
+  /**
+   * Gera relatório de reunião geral (não-entrevista) usando IA
+   */
+  async generateMeetingReport(context: InterviewContext & { participants?: string[]; duration?: number; startTime?: number }): Promise<any> {
+    try {
+      console.log('[InterviewAI] Gerando relatório de reunião...');
+      const result = await callInterviewAI('generateMeetingReport', context);
+      if (!result.meetingReport) {
+        throw new Error('Resposta inválida do backend');
+      }
+      return result.meetingReport;
+    } catch (error: any) {
+      console.error('[InterviewAI] Erro ao gerar relatório de reunião:', error);
+      throw error;
     }
   },
 

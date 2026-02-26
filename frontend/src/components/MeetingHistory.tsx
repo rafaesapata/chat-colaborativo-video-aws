@@ -4,6 +4,7 @@ import { meetingHistoryService, MeetingRecord, RecordingFragment } from '../serv
 import { getRecordingPlaybackUrl } from '../hooks/useRecording';
 import { interviewAIService, InterviewContext, InterviewReport } from '../services/interviewAIService';
 import InterviewReportModal from './InterviewReportModal';
+import MeetingReportModal, { MeetingReportData } from './MeetingReportModal';
 
 interface MeetingHistoryProps {
   isOpen: boolean;
@@ -24,6 +25,9 @@ export default function MeetingHistory({ isOpen, onClose, userLogin, darkMode }:
   const [showReportModal, setShowReportModal] = useState(false);
   const [currentReport, setCurrentReport] = useState<InterviewReport | null>(null);
   const [currentReportMeetingId, setCurrentReportMeetingId] = useState<string | null>(null);
+  const [showMeetingReportModal, setShowMeetingReportModal] = useState(false);
+  const [currentMeetingReport, setCurrentMeetingReport] = useState<MeetingReportData | null>(null);
+  const [currentMeetingReportRoomId, setCurrentMeetingReportRoomId] = useState<string | undefined>(undefined);
 
   useEffect(() => {
     if (isOpen && userLogin) {
@@ -60,9 +64,25 @@ export default function MeetingHistory({ isOpen, onClose, userLogin, darkMode }:
     URL.revokeObjectURL(url);
   };
 
+  const getFragmentsFromMeeting = (meeting: MeetingRecord): RecordingFragment[] => {
+    if (meeting.recordingFragments && meeting.recordingFragments.length > 0) {
+      return [...meeting.recordingFragments].sort((a, b) => a.fragmentIndex - b.fragmentIndex);
+    }
+    if (meeting.recordingKey) {
+      return [{
+        recordingKey: meeting.recordingKey,
+        recordingDuration: meeting.recordingDuration || 0,
+        recordingId: meeting.recordingId,
+        fragmentIndex: 0,
+        timestamp: meeting.startTime,
+      }];
+    }
+    return [];
+  };
+
   const handlePlayRecording = async (meeting: MeetingRecord, fragmentIndex: number = 0) => {
-    // Obter todos os fragmentos da reunião
-    const fragments = meetingHistoryService.getRecordingFragments(userLogin, meeting.id);
+    // Extrair fragmentos diretamente do objeto meeting (dados do backend)
+    const fragments = getFragmentsFromMeeting(meeting);
     
     if (fragments.length === 0) return;
     
@@ -141,6 +161,35 @@ export default function MeetingHistory({ isOpen, onClose, userLogin, darkMode }:
       return;
     }
 
+    // Para reuniões não-entrevista, gerar relatório de reunião
+    if (meeting.meetingType !== 'ENTREVISTA') {
+      setGeneratingReport(meeting.id);
+      try {
+        const context = {
+          meetingType: (meeting.meetingType || 'REUNIAO') as InterviewContext['meetingType'],
+          topic: meeting.meetingTopic || meeting.roomId || 'Reunião',
+          jobDescription: '',
+          transcriptionHistory: meeting.transcriptions.map(t => t.text),
+          questionsAsked: [],
+          candidateName: '',
+          participants: meeting.participants,
+          duration: meeting.duration,
+          startTime: meeting.startTime,
+        };
+        const report = await interviewAIService.generateMeetingReport(context);
+        setCurrentMeetingReport(report);
+        setCurrentMeetingReportRoomId(meeting.roomId);
+        setShowMeetingReportModal(true);
+      } catch (error) {
+        console.error('Erro ao gerar relatório de reunião:', error);
+        alert('Erro ao gerar relatório. Por favor, tente novamente.');
+      } finally {
+        setGeneratingReport(null);
+      }
+      return;
+    }
+
+    // Para entrevistas, manter fluxo existente
     setGeneratingReport(meeting.id);
     try {
       // Extrair informações da reunião
@@ -275,8 +324,8 @@ export default function MeetingHistory({ isOpen, onClose, userLogin, darkMode }:
                             }`}>
                               <Video size={12} />
                               {(() => {
-                                const fragments = meetingHistoryService.getRecordingFragments(userLogin, meeting.id);
-                                const totalDuration = meetingHistoryService.getTotalRecordingDuration(userLogin, meeting.id);
+                                const fragments = getFragmentsFromMeeting(meeting);
+                                const totalDuration = fragments.reduce((total, f) => total + f.recordingDuration, 0);
                                 if (fragments.length > 1) {
                                   return `${fragments.length} partes (${formatRecordingDuration(totalDuration)})`;
                                 }
@@ -504,6 +553,14 @@ export default function MeetingHistory({ isOpen, onClose, userLogin, darkMode }:
             darkMode={darkMode}
             meetingId={currentReportMeetingId || undefined}
             userLogin={userLogin}
+          />
+        )}
+        {showMeetingReportModal && currentMeetingReport && (
+          <MeetingReportModal
+            isOpen={showMeetingReportModal}
+            onClose={() => { setShowMeetingReportModal(false); setCurrentMeetingReport(null); }}
+            report={currentMeetingReport}
+            roomId={currentMeetingReportRoomId}
           />
         )}
       </div>
